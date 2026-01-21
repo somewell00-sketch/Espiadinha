@@ -101,7 +101,7 @@ main{ padding:16px 20px; display:flex; flex-direction:column; gap:14px; }
 .dayFeed, .sideList{ min-height:360px; }
 
 .dayHead, .sideHead, .dayStage .hd, .panel .hd{
-  padding:12px 24px;
+  padding:12px 12px;
   border-bottom:1px solid var(--stroke);
   display:flex;
   align-items:flex-start;
@@ -1029,8 +1029,8 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
 
       <div class="bd">
         <div class="row" style="margin-bottom:10px;">
-          <button id="btnExport">Salvar elenco e progresso</button>
-          <button id="btnImport">Carregar elenco salvo</button>
+          <button class="ghost" iid="btnExport">Salvar elenco e progresso</button>
+          <button class="ghost" iid="btnImport">Carregar elenco salvo</button>
           <span class="small" id="meta">—</span>
         </div>
 
