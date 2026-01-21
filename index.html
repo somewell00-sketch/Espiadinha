@@ -952,7 +952,8 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
   <div class="menuPanel" id="tabConfig">
     <div class="panel" style="border:none;">
       <div class="hd">
-        <h2>Config</h2>
+        <h2>Defina o elenco</h2>
+		  <span class="setupSub">Brinque de produção e escolha quem entra na casa e dê início à temporada.</span>
         <div class="row">
           <select id="addGender" class="genderSel">
             <option value="M">Homem</option>
@@ -961,20 +962,20 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
           </select>
 
           <button id="btnAdd">Adicionar</button>
-          <button class="ghost" id="btnAddRandom">Adicionar aleatório</button>
-          <button class="ghost" id="btnAddRandom5">Adicionar 5 aleatórios</button>
-          <button class="ghost" id="btnSeed">Preencher Exemplo</button>
-          <button class="ghost" id="btnRandomize">Randomizar atributos</button>
-          <input id="castSize" type="number" min="3" max="40" step="1" value="12" style="width:90px;" />
+          <button class="ghost" id="btnAddRandom">+1 Aleatório</button>
+         <!-- <button class="ghost" id="btnAddRandom5">+5 aleatórios</button>
+          <button class="ghost" id="btnSeed">Preencher Exemplo</button>-->
+          <input id="castSize" type="number" min="3" max="40" step="1" value="10" style="width:90px;" />
           <button class="ghost" id="btnGenCast">Gerar elenco</button>
+          <button class="ghost" id="btnRandomize">Sortear atributos</button>
           <button class="danger" id="btnRestartConfig">Reiniciar temporada</button>
-          <button class="ghost" id="btnNewSeasonConfig">Nova temporada</button>
+          <!--<button class="ghost" id="btnNewSeasonConfig">Nova temporada</button>-->
         </div>
       </div>
       <div class="bd">
         <div class="row" style="margin-bottom:10px;">
-          <button id="btnExport">Exportar JSON</button>
-          <button id="btnImport">Importar JSON</button>
+          <button id="btnExport">Salvar elenco e progresso</button>
+          <button id="btnImport">Carregar elenco salvo</button>
           <span class="small" id="meta">—</span>
         </div>
 
@@ -988,13 +989,12 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
 
         <div class="sep"></div>
         <div class="hint">
-          Dica: exporte o JSON ao fim de uma semana para manter checkpoints. O Reset apaga tudo salvo no seu navegador.
+          💡 Dica: salve a temporada ao fim de cada semana para não perder o progresso. Reiniciar apaga os dados salvos neste navegador.
         </div>
       
         <div class="sep"></div>
         <div class="hint" style="margin-bottom:8px;">
-          Participantes (editar): altere nome e atributos aqui. Participantes eliminados ficam bloqueados.
-        </div>
+Participantes: aqui você define quem entra no jogo. Depois da eliminação, não dá mais pra mudar.        </div>
         <div class="gridPlayers" id="configPlayersGrid"></div>
 </div>
     </div>
@@ -7665,7 +7665,7 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
 
     const btnToggle = document.createElement("button");
     btnToggle.className = "ghost";
-    btnToggle.textContent = p.status.alive ? "Eliminar manual" : "Recolocar";
+    btnToggle.textContent = p.status.alive ? "Eliminar" : "Recolocar";
     btnToggle.disabled = state.gameOver;
     btnToggle.addEventListener("click", () => {
       if (state.gameOver) return;
