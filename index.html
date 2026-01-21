@@ -6108,6 +6108,52 @@ function runIntroPings(meta) {
     bump(p, { pop: rnd(0.10, 0.25) });
   });
 }
+
+	function validateImportedState(obj) {
+  if (!obj || typeof obj !== "object") return null;
+
+  // Aceita imports que venham como { state: {...} } ou direto {...}
+  const s = (obj && obj.state && typeof obj.state === "object") ? obj.state : obj;
+
+  // Campos mínimos
+  if (!Array.isArray(s.players)) return null;
+
+  // Fallbacks pra não quebrar o app
+  if (!Array.isArray(s.log)) s.log = [];
+  if (!s.final || typeof s.final !== "object") s.final = { winnerId: null, secondId: null, thirdId: null };
+  if (typeof s.week !== "number") s.week = 1;
+  if (typeof s.dayIndex !== "number") s.dayIndex = 0;
+  if (typeof s.gameOver !== "boolean") s.gameOver = false;
+
+  // Week state
+  if (!s.weekState || typeof s.weekState !== "object") s.weekState = null;
+
+  // Rooms
+  if (!s.rooms || typeof s.rooms !== "object") s.rooms = { assigned: false, a: null, b: null, map: {} };
+
+  // Normaliza players minimamente
+  s.players = s.players.map((p, idx) => {
+    const out = p && typeof p === "object" ? p : {};
+    if (!out.id) out.id = `p_${idx}_${Math.random().toString(16).slice(2)}`;
+    if (!out.status || typeof out.status !== "object") out.status = { alive: true };
+    if (typeof out.status.alive !== "boolean") out.status.alive = true;
+    if (!out.attrs || typeof out.attrs !== "object") out.attrs = {};
+    if (!out.firstName && !out.name) out.name = out.name || "Participante";
+    return out;
+  });
+
+  // Garante apelido base (pra não sumir na UI)
+  (s.players || []).forEach((p) => {
+    if (!p.baseName || !String(p.baseName).trim()) {
+      // respeita nickname manual se existir
+      const manual = String(p.nickname || "").trim();
+      p.baseName = manual || String(p.firstName ?? p.name ?? "").trim();
+    }
+  });
+
+  return s;
+}
+
 /* ===== Boot Start ===== */
 function bootStart() {
   if (state.gameOver) return;
@@ -7208,21 +7254,25 @@ $("btnClearLogTop")?.addEventListener("click", () => {
   $("btnCloseIO")?.addEventListener("click", closeIO);
 
   $("btnDoImport")?.addEventListener("click", () => {
-    const txt = $("ioText")?.value?.trim() || "";
-    if (!txt) return;
-    try {
-      const obj = JSON.parse(txt);
-      const parsed = validateImportedState(obj);
-      if (!parsed) throw new Error("JSON inválido.");
-      state = parsed;
-      pendingAdvance = null;
-      save();
-      render();
-      closeIO();
-    } catch (e) {
-      alert(String(e?.message || e));
-    }
-  });
+  const txt = $("ioText")?.value?.trim() || "";
+  if (!txt) return;
+
+  try {
+    const obj = JSON.parse(txt);
+    const parsed = validateImportedState(obj);
+    if (!parsed) throw new Error("JSON inválido.");
+
+    state = parsed;
+    pendingAdvance = null;
+
+    save();
+    render();
+
+  } catch (e) {
+    alert(e.message || "Erro ao importar.");
+  }
+});
+
 
   $("btnAdd")?.addEventListener("click", () => {
     if (state.gameOver) return;
