@@ -759,6 +759,38 @@ body:not(.setupMode) #setupBanner{ display:none; }
 body.setupMode #tabConfig{ display:block !important; }
 body.setupMode .menuPanel{ display:none; }
 body.setupMode .menuPanel#tabConfig{ display:block !important; }
+
+.panelTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+.panelSubtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: rgba(255,255,255,.75);
+}
+
+.panelDivider {
+  margin: 12px 0 14px;
+  border: none;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    rgba(255,255,255,.15),
+    rgba(255,255,255,.05)
+  );
+}
+
+.panelActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 </style>
 
 </head>
@@ -969,37 +1001,45 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
   <!-- Config: parâmetros e IO -->
   <div class="menuPanel" id="tabConfig">
     <div class="panel" style="border:none;">
-      <div class="hd">
-        <h2>Defina o elenco</h2>
-        <div class="row">
-          <select id="addGender" class="genderSel">
-            <option value="M">Homem</option>
-            <option value="F">Mulher</option>
-            <option value="O">Outro</option>
-          </select>
+  <div class="hd">
 
-          <button id="btnAdd">Adicionar</button>
-          <button class="ghost" id="btnAddRandom">+1 Aleatório</button>
-         <!-- <button class="ghost" id="btnAddRandom5">+5 aleatórios</button>
-          <button class="ghost" id="btnSeed">Preencher Exemplo</button>-->
-          <div class="number-input">
-  <input
-    id="castSize"
-    type="number"
-    min="3"
-    max="40"
-    step="1"
-    value="10"
-  />
-  <span class="suffix">participantes</span>
+    <h2 class="panelTitle">Defina o elenco</h2>
+    <p class="panelSubtitle">
+      Escolha quem entra na casa antes da temporada começar.
+    </p>
+
+    <hr class="panelDivider" />
+
+    <div class="row panelActions">
+      <select id="addGender" class="genderSel">
+        <option value="M">Homem</option>
+        <option value="F">Mulher</option>
+        <option value="O">Outro</option>
+      </select>
+
+      <button id="btnAdd">Adicionar participante</button>
+      <button class="ghost" id="btnAddRandom">+1 aleatório</button>
+
+      <div class="number-input">
+        <input
+          id="castSize"
+          type="number"
+          min="3"
+          max="40"
+          step="1"
+          value="10"
+        />
+        <span class="suffix">participantes</span>
+      </div>
+
+      <button class="ghost" id="btnGenCast">Começar a temporada</button>
+      <button class="ghost" id="btnRandomize">Sortear atributos</button>
+      <button class="danger" id="btnRestartConfig">Reiniciar temporada</button>
+    </div>
+
+  </div>
 </div>
 
-          <button class="ghost" id="btnGenCast">Gerar elenco</button>
-          <button class="ghost" id="btnRandomize">Sortear atributos</button>
-          <button class="danger" id="btnRestartConfig">Reiniciar temporada</button>
-          <!--<button class="ghost" id="btnNewSeasonConfig">Nova temporada</button>-->
-        </div>
-      </div>
       <div class="bd">
         <div class="row" style="margin-bottom:10px;">
           <button id="btnExport">Salvar elenco e progresso</button>
