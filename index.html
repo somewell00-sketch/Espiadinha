@@ -3984,7 +3984,7 @@ if (maybeQuitEvent(ctx)) return;
       maybeSpecialFightEvent(ctx);
     }
 
-    const cap = clamp(Math.round(rnd(5, 10) + (ctx.festa ? 2 : 0) + (ctx.tension ? 1 : 0)), 4, 12);
+    const cap = clamp(Math.round(rnd(2, 5) + (ctx.festa ? 1 : 0) + (ctx.tension ? 1 : 0)), 2, 6);
 
     const candidates = alive
       .map((p) => {
