@@ -108,13 +108,15 @@ main{ padding:16px 20px; display:flex; flex-direction:column; gap:14px; }
   justify-content:space-between;
   gap:12px;
   flex-wrap:wrap;
+	
+    background-color: #5001B3;
 }
 
 .dayTitle{ font-size:24px; font-weight:700; color:var(--text-2); }
 .daySub{ margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 
 .dayBody, .panel .bd{ padding:12px; }
-.sideBody{ padding:10px; max-height:520px; overflow:auto; }
+.sideBody{ padding:10px; max-height:840px; overflow:auto; }
 
 .dayBlock,
 .dayBox,
@@ -417,9 +419,10 @@ button{
 button:hover{ filter: brightness(1.08); }
 
 button.primary{
-  background: var(--bbb-primary);
+  background: var(--bbb-accent);
   border-color: rgba(80,1,179,.95);
   box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset, 0 10px 22px rgba(0,0,0,.22);
+color: var(--bbb-primary);
 }
 button.primary:hover{ filter: brightness(1.06); }
 
