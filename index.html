@@ -760,36 +760,21 @@ body.setupMode #tabConfig{ display:block !important; }
 body.setupMode .menuPanel{ display:none; }
 body.setupMode .menuPanel#tabConfig{ display:block !important; }
 
-.panelTitle {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: .2px;
-}
-
-.panelSubtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: rgba(255,255,255,.75);
-}
-
-.panelDivider {
-  margin: 12px 0 14px;
-  border: none;
-  height: 1px;
-  background: linear-gradient(
-    to right,
-    rgba(255,255,255,.15),
-    rgba(255,255,255,.05)
-  );
-}
-
-.panelActions {
+.titleBlock {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
 }
+
+.titleBlock h2 {
+  margin: 0;
+}
+
+.titleBlock .subtitle {
+  font-size: 13px;
+  opacity: .75;
+}
+
 
 </style>
 
@@ -1003,10 +988,12 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
     <div class="panel" style="border:none;">
   <div class="hd">
 
-    <h2 class="panelTitle">Defina o elenco</h2>
-    <p class="panelSubtitle">
-      Escolha quem entra na casa antes da temporada começar.
-    </p>
+    <div class="titleBlock">
+      <h2>Defina o elenco</h2>
+      <small class="subtitle">
+        Escolha quem entra na casa antes da temporada começar.
+      </small>
+    </div>
 
     <hr class="panelDivider" />
 
