@@ -111,6 +111,24 @@ main{ padding:16px 20px; display:flex; flex-direction:column; gap:14px; }
 	
     background-color: var(--primary);
 }
+.number-input {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.number-input input {
+  width: 90px;
+  padding-right: 105px;
+}
+
+.number-input .suffix {
+  position: absolute;
+  right: 8px;
+  color: #666;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
 
 .dayTitle{ font-size:24px; font-weight:700; color:var(--text-2); }
 .daySub{ margin-top:6px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -965,7 +983,18 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
           <button class="ghost" id="btnAddRandom">+1 Aleatório</button>
          <!-- <button class="ghost" id="btnAddRandom5">+5 aleatórios</button>
           <button class="ghost" id="btnSeed">Preencher Exemplo</button>-->
-          <input id="castSize" type="number" min="3" max="40" step="1" value="10" style="width:90px;" />
+          <div class="number-input">
+  <input
+    id="castSize"
+    type="number"
+    min="3"
+    max="40"
+    step="1"
+    value="10"
+  />
+  <span class="suffix">participantes</span>
+</div>
+
           <button class="ghost" id="btnGenCast">Gerar elenco</button>
           <button class="ghost" id="btnRandomize">Sortear atributos</button>
           <button class="danger" id="btnRestartConfig">Reiniciar temporada</button>
