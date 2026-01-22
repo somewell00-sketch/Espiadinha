@@ -6115,6 +6115,13 @@ function runIntroPings(meta) {
     bump(p, { pop: rnd(0.10, 0.25) });
   });
 }
+async function loadPresetJson(path) {
+  const res = await fetch(path, { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error("Não foi possível carregar o elenco.");
+  }
+  return await res.json();
+}
 
 	function validateImportedState(obj) {
   if (!obj || typeof obj !== "object") return null;
@@ -7279,9 +7286,11 @@ $("btnClearLogTop")?.addEventListener("click", () => {
     alert(e.message || "Erro ao importar.");
   }
 });
-$("presetSelect")?.addEventListener("change", async (e) => {
-  const path = e.target.value;
+$("btnLoadPreset")?.addEventListener("click", async () => {
+  const sel = $("presetSelect");
+  const path = sel?.value || "";
   if (!path) return;
+
   try {
     const obj = await loadPresetJson(path);
     const parsed = validateImportedState(obj);
@@ -7289,12 +7298,14 @@ $("presetSelect")?.addEventListener("change", async (e) => {
 
     state = parsed;
     pendingAdvance = null;
+
     save();
     render();
-  } catch (err) {
-    alert(err.message || "Erro ao carregar elenco.");
+  } catch (e) {
+    alert(e.message || "Erro ao carregar elenco.");
   }
 });
+
 
   $("btnAdd")?.addEventListener("click", () => {
     if (state.gameOver) return;
