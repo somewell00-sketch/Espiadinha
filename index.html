@@ -1017,6 +1017,14 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
       </div>
 
       <button class="ghost" id="btnGenCast">Gerar elenco</button>
+		 <option value="">Carregar elenco pronto…</option>
+  <option value="presets/tiny.json">Tiny</option>
+  <option value="presets/bbb26.json">BBB 26</option>
+  <option value="presets/bbb21.json">BBB 21</option>
+  <option value="presets/allstars.json">BBB All-Stars</option>
+</select>
+
+<button class="ghost" id="btnLoadPreset">Carregar</button>
       <button class="ghost" id="btnRandomize">Sortear atributos</button>
       <button class="danger" id="btnRestartConfig">Reiniciar temporada</button>
 		<div class="setupActions">
@@ -1033,13 +1041,6 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
           <button class="ghost" id="btnImport">Carregar elenco salvo</button>
           <span class="small" id="meta">—</span>
 			<select id="presetSelect" class="ghost">
-  <option value="">Carregar elenco pronto…</option>
-  <option value="presets/tiny.json">Tiny</option>
-  <option value="presets/bbb26.json">BBB 26</option>
-  <option value="presets/bbb21.json">BBB 21</option>
-</select>
-
-<button class="ghost" id="btnLoadPreset">Carregar</button>
         </div>
 
         <div id="io" style="display:none;">
