@@ -104,8 +104,8 @@
       "firstName": "Nivaldo",
       "lastName": "Lemos",
       "gender": "M",
-      "nickname": "",
-      "_autoNick": "Nivaldo",
+      "nickname": "Niv",
+      "_autoNick": "Niv",
       "attrs": {
         "provas": 5,
         "estrategia": 5,
@@ -835,8 +835,8 @@
       "firstName": "Samuel",
       "lastName": "",
       "gender": "M",
-      "nickname": "",
-      "_autoNick": "Samuel",
+      "nickname": "Granada",
+      "_autoNick": "Grany",
       "attrs": {
         "provas": 5,
         "estrategia": 5,
