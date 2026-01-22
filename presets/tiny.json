@@ -18,8 +18,8 @@
       "firstName": "Luís",
       "lastName": "",
       "gender": "M",
-      "nickname": "",
-      "_autoNick": "Luís",
+      "nickname": "Jeh",
+      "_autoNick": "Jeh",
       "attrs": {
         "provas": 5,
         "estrategia": 5,
@@ -147,8 +147,8 @@
       "firstName": "Pauly",
       "lastName": "",
       "gender": "M",
-      "nickname": "",
-      "_autoNick": "Pauly",
+      "nickname": "Larimar",
+      "_autoNick": "Larimar",
       "attrs": {
         "provas": 5,
         "estrategia": 5,
@@ -578,7 +578,7 @@
       "lastName": "Coradini",
       "gender": "M",
       "nickname": "",
-      "_autoNick": "Júnior",
+      "_autoNick": "Coradini",
       "attrs": {
         "provas": 5,
         "estrategia": 5,
@@ -706,8 +706,8 @@
       "firstName": "Leonardo",
       "lastName": "Barjud",
       "gender": "M",
-      "nickname": "",
-      "_autoNick": "Leonardo",
+      "nickname": "Leomie",
+      "_autoNick": "Leomie",
       "attrs": {
         "provas": 5,
         "estrategia": 5,
