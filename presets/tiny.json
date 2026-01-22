@@ -915,6 +915,50 @@
       },
       "secret": { "gayScore": 8 },
       "name": "Alessandro"
+    },
+    
+    {
+      "id": "2d1e0f9a-8b7c-4d6e-9f0a-1b2c3d4e5f6a",
+      "firstName": "Laau",
+      "lastName": "Raymond",
+      "gender": "M",
+      "nickname": "",
+      "_autoNick": "Laau",
+      "attrs": {
+        "provas": 5,
+        "estrategia": 5,
+        "social": 5,
+        "emocional": 5,
+        "conflito": 5,
+        "rejeicao": 0,
+        "excentricidade": 1,
+        "serenidade": 1
+      },
+      "status": {
+        "alive": true,
+        "pop": 5,
+        "alvo": 0,
+        "strikes": 0,
+        "leaderCount": 0,
+        "anjoCount": 0,
+        "paredaoCount": 0,
+        "popWeek": {},
+        "favPublic": false,
+        "room": null,
+        "weeksSinceWin": 0,
+        "weeksSinceParedao": 0,
+        "weeksSinceEvent": 0,
+        "popPrev": 5,
+        "popStableStreak": 0,
+        "decisionStreak": 0,
+        "didSomethingThisWeek": false,
+        "madeDecisionThisWeek": false,
+        "wonSomethingThisWeek": false,
+        "planta": false,
+        "plantStreak": 0
+      },
+      "secret": { "gayScore": 8 },
+      "name": "Laau"
     }
   ],
   "log": [
