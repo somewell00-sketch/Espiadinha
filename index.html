@@ -1032,6 +1032,13 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
           <button class="ghost" id="btnExport">Salvar elenco e progresso</button>
           <button class="ghost" id="btnImport">Carregar elenco salvo</button>
           <span class="small" id="meta">—</span>
+			<select id="presetSelect" class="ghost">
+  <option value="">Carregar elenco pronto…</option>
+  <option value="presets/tiny.json">Tiny (12)</option>
+  <option value="presets/bbb26.json">BBB 26</option>
+</select>
+
+<button class="ghost" id="btnLoadPreset">Carregar</button>
         </div>
 
         <div id="io" style="display:none;">
@@ -7272,7 +7279,22 @@ $("btnClearLogTop")?.addEventListener("click", () => {
     alert(e.message || "Erro ao importar.");
   }
 });
+$("presetSelect")?.addEventListener("change", async (e) => {
+  const path = e.target.value;
+  if (!path) return;
+  try {
+    const obj = await loadPresetJson(path);
+    const parsed = validateImportedState(obj);
+    if (!parsed) throw new Error("Elenco inválido.");
 
+    state = parsed;
+    pendingAdvance = null;
+    save();
+    render();
+  } catch (err) {
+    alert(err.message || "Erro ao carregar elenco.");
+  }
+});
 
   $("btnAdd")?.addEventListener("click", () => {
     if (state.gameOver) return;
