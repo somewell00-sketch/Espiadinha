@@ -1,0 +1,50 @@
+/* =========================================================
+   BBB palette logic
+   - Primary: #5001B3 (brand / system / CTAs / active states)
+   - Secondary: neon green accent (vote / confirmation / highlights)
+   - Tags stay as today (kept intact below)
+   ========================================================= */
+
+:root{
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+
+  /* Brand */
+  --bbb-primary: #5001B3;
+
+  /* Secondary accent (from your screenshot vibe) */
+  --bbb-accent: #59FFB0;
+
+  /* Surfaces (kept close to your current dark UI) */
+  --bg: #0b0c10;
+  --panel: #12141b;
+  --panel-2: #0e1016;
+  --stroke: #22242b;
+  --stroke-2: #2b3145;
+
+  /* Text */
+  --text: #e8e8ea;
+  --text-2: #cfd2da;
+  --muted: #9aa2b2;
+
+  /* Interactive */
+  --focus: rgba(89,255,176,.55);
+  --primary-glow: rgba(80,1,179,.35);
+  --accent-glow: rgba(89,255,176,.30);
+
+  /* Severity (kept) */
+  --danger-bg: #2f1318;
+  --danger-br: #5a1f2b;
+}
+
+/* Base */
+body{ margin:0; background:var(--bg); color:var(--text); }
+
+header{
+  padding:16px 20px;
+  border-bottom:1px solid var(--stroke);
+  display:flex; gap:12px; align-items:center; justify-content:space-between;
+  background: linear-gradient(180deg, rgba(80,1,179,.18), rgba(0,0,0,0));
+}
+header h1{ font-size:16px; margin:0; font-weight:650; letter-spacing:.2px; }
+
+main{ padding:16px 20px; display:flex; flex-direction:column; gap:14px; }

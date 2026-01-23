@@ -1,0 +1,82 @@
+/* ===== Festa: cores por estetica (UNCHANGED) ===== */
+.dayCard.party { background: rgba(238, 192, 82, 0.18); }
+.dayCard.party.party-style-neon { background: linear-gradient(135deg, rgba(255,0,200,.22), rgba(0,255,255,.18)); }
+.dayCard.party.party-style-cyberpunk { background: linear-gradient(135deg, rgba(0,255,255,.22), rgba(255,0,128,.18)); }
+.dayCard.party.party-style-anos-80 { background: linear-gradient(135deg, rgba(255,105,180,.22), rgba(0,255,255,.18)); }
+.dayCard.party.party-style-gotica { background: rgba(40,20,60,.35); }
+.dayCard.party.party-style-disco { background: linear-gradient(135deg, rgba(255,215,0,.25), rgba(255,105,180,.20)); }
+.dayCard.party.party-style-hip-hop { background: linear-gradient(135deg, rgba(30,30,30,.35), rgba(255,215,0,.18)); }
+.dayCard.party.party-style-glitter { background: linear-gradient(135deg, rgba(255,255,255,.28), rgba(255,215,0,.22)); }
+.dayCard.party.party-style-psicadelica { background: linear-gradient(135deg, rgba(138,43,226,.28), rgba(255,99,71,.22)); }
+.dayCard.party.party-style-surrealista { background: linear-gradient(135deg, rgba(72,61,139,.30), rgba(176,224,230,.22)); }
+.dayCard.party.party-style-vintage { background: rgba(160,130,90,.28); }
+.dayCard.party.party-style-militar { background: rgba(85,107,47,.35); }
+.dayCard.party.party-style-barbiecore { background: linear-gradient(135deg, rgba(255,105,180,.35), rgba(255,182,193,.28)); }
+.dayCard.party.party-style-minimalista { background: rgba(220,220,220,.22); }
+.dayCard.party.party-style-punk-rock { background: linear-gradient(135deg, rgba(0,0,0,.35), rgba(255,0,0,.18)); }
+.dayCard.party.party-style-estilo-barroco { background: rgba(120,85,40,.30); }
+.dayCard.party.party-style-steampunk { background: linear-gradient(135deg, rgba(140,90,50,.30), rgba(70,70,70,.20)); }
+.dayCard.party.party-style-k-pop { background: linear-gradient(135deg, rgba(255,105,180,.28), rgba(186,85,211,.20)); }
+.dayCard.party.party-style-holografica { background: linear-gradient(135deg, rgba(0,255,255,.18), rgba(255,0,255,.18), rgba(255,255,0,.12)); }
+.dayCard.party.party-style-safari { background: rgba(160,120,60,.28); }
+.dayCard.party.party-style-caotica { background: linear-gradient(135deg, rgba(255,69,0,.20), rgba(138,43,226,.18)); }
+.dayCard.party.party-style-nautica { background: linear-gradient(135deg, rgba(0,80,160,.28), rgba(255,255,255,.16)); }
+.dayCard.party.party-style-folclorica-brasileira { background: linear-gradient(135deg, rgba(0,155,72,.22), rgba(255,223,0,.18)); }
+.dayCard.party.party-style-oriental-futurista { background: linear-gradient(135deg, rgba(200,0,0,.22), rgba(0,255,180,.16)); }
+.dayCard.party.party-style-heavy-metal { background: linear-gradient(135deg, rgba(25,25,25,.38), rgba(120,120,120,.18)); }
+.dayCard.party.party-style-preto-e-branco { background: linear-gradient(135deg, rgba(0,0,0,.28), rgba(255,255,255,.20)); }
+.dayCard.party.party-style-boho-chic { background: rgba(205,133,63,.26); }
+.dayCard.party.party-style-infantil { background: linear-gradient(135deg, rgba(135,206,250,.22), rgba(255,182,193,.20)); }
+.dayCard.party.party-style-pin-up { background: linear-gradient(135deg, rgba(255,20,147,.22), rgba(255,245,238,.18)); }
+.dayCard.party.party-style-grunge { background: linear-gradient(135deg, rgba(30,30,30,.35), rgba(90,90,90,.18)); }
+
+/* =========================================================
+   Event colors (swap positives to the green accent)
+   ========================================================= */
+
+/* =========================================================
+   Event colors (swap positives to the green accent)
+   ========================================================= */
+.gamePos, .evPos{ color: var(--bbb-accent); }
+.gameNeg, .evNeg{ color:#ffb08a; }
+.gameNeu, .evNeu{ color:var(--text); }
+.evCrush{ color:#ffa6ca; }
+.dayCard.evCrush{ border-left-color: currentColor; border-right-color: currentColor; }
+
+/* =========================================================
+   Sidebar text
+
+/* Tags unchanged */
+.tag{ font-size:11px; padding:4px 8px; border-radius:999px; border:1px solid #2b3145; background:#111420; color:#cfd2da; }
+.tag.leader { border-color:#e0c13a; }
+.tag.anjo { border-color:#3a78ff; }
+.tag.imune { border-color:#2dbb5f; }
+.tag.paredao { border-color:#d63a3a; }
+.tag.vip { background: linear-gradient(135deg, #f6d365, #d4af37); border-color:#d4af37; color:#000; }
+.tag.xepa { background:#2b2f36; border-color:#3a3f47; color:#cfd2da; }
+.tag.roomA{ background: var(--roomA-bg, #e8f6ff); border-color: var(--roomA-br, #8fd3ff); color: var(--roomA-tx, #001018); }
+.tag.roomB{ background: var(--roomB-bg, #1a1d27); border-color: var(--roomB-br, #3a3f55); color: var(--roomB-tx, #e8e8ea); }
+.tag.roomA::before, .tag.roomB::before{ content:"\1F6CF\FE0F"; margin-right:4px; font-size:11px; }
+.tag.elim{ opacity:.85; }
+.tag.win{ border-color:#e0c13a; }
+.tag.emo{ background:transparent; border-color:transparent; padding:2px 0; font-size:14px; }
+.tag.sex{ background:transparent; border-color:transparent; padding:2px 0; font-size:14px; }
+.tag.plant{ background:transparent; border-color:transparent; padding:2px 0; font-size:14px; }
+
+.popCell{ width:90px; color:var(--text-2); font-weight:650; }
+.histCell{ color:var(--muted); }
+
+/* =========================================================
+   Drawer
+
+/* =========================================================
+   Game type colors (kept for semantic types)
+   Add primary tint to "system" moments if you want
+   ========================================================= */
+.gameLeader { color:#ffe07a !important; }
+.gameAnjo   { color:#7fb6ff !important; }
+.gameImune  { color:#7fe0a2 !important; }
+.gameParedao{ color:#ffb08a !important; }
+.gameNeu    { color:var(--text); }
+
+.gameCard{
