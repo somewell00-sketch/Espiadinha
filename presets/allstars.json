@@ -790,19 +790,19 @@
     },
     {
       "id": "d7e6f5a4-b3c2-4d1e-9f8a-7b6c5d4e3f2a",
-      "firstName": "Adriano",
-      "lastName": "Castro",
+      "firstName": "Fred",
+      "lastName": "Nicácio",
       "gender": "M",
       "nickname": "",
-      "_autoNick": "Adriano",
+      "_autoNick": "Fred",
       "attrs": {
         "provas": 5,
         "estrategia": 5,
-        "social": 5,
-        "emocional": 5,
+        "social": 9,
+        "emocional": 9,
         "conflito": 5,
         "rejeicao": 0,
-        "excentricidade": 5,
+        "excentricidade": 9,
         "serenidade": 5
       },
       "status": {
@@ -828,8 +828,8 @@
         "planta": false,
         "plantStreak": 0
       },
-      "secret": { "gayScore": 2 },
-      "name": "Adriano Castro"
+      "secret": { "gayScore": 8 },
+      "name": "Fred Nicácio"
     },
     {
       "id": "e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b",
