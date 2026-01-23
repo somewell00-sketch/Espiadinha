@@ -2816,6 +2816,7 @@ if (alive.length <= 4) return false;
   // Regra:
   // - Se não tem amigos (0 vínculos >= +0.5)
   // - E tem desafeto com 3+ pessoas (vínculos <= -1.0, seja p->outros ou outros->p)
+  // - No máximo 3 "excluídos" por vez (os 3 com menos boas relações)
   // Então ganha um bônus de popularidade (o público tende a comprar a narrativa do "excluído").
   function applyExclusionPopularityBoost(ctx) {
     if (state.gameOver) return;
@@ -2824,13 +2825,14 @@ if (alive.length <= 4) return false;
     if (!alive || alive.length < 3) return;
 
     const aliveSet = new Set(alive.map((x) => x.id));
-    const boosted = [];
-    const isolatedNotes = [];
 
+    // 1) calcula métricas sociais
+    const social = [];
     for (const p of alive) {
       if (!p || !p.id || !p.status?.alive) continue;
 
-      let friends = 0;           // p -> outros (amizades)
+      let friendsOut = 0;        // p -> outros (amizades)
+      let friendsIn = 0;         // outros -> p (amizades recebidas)
       let rivalsOut = 0;         // p -> outros (desafetos)
       let rivalsIn = 0;          // outros -> p (desafetos recebidos)
 
@@ -2840,23 +2842,47 @@ if (alive.length <= 4) return false;
         if (otherId === p.id) continue;
 
         const scoreOut = relGet(p.id, otherId);
-        if (scoreOut >= 0.5) friends += 1;
+        if (scoreOut >= 0.5) friendsOut += 1;
         if (scoreOut <= -1.0) rivalsOut += 1;
       }
 
       for (const o of alive) {
-        if (o.id === p.id) continue;
+        if (!o?.id || o.id === p.id) continue;
         const scoreToP = relGet(o.id, p.id);
+        if (scoreToP >= 0.5) friendsIn += 1;
         if (scoreToP <= -1.0) rivalsIn += 1;
       }
 
+      const friends = Math.max(friendsOut, friendsIn);
       const rivals = Math.max(rivalsOut, rivalsIn);
-      const excluded = (friends === 0 && rivals >= 3);
+      const goodLinks = friendsOut + friendsIn;
+      const isCandidate = (friends === 0 && rivals >= 3);
 
-      // tracking de estado (pra emoji e eventos)
+      social.push({ p, friends, rivals, goodLinks, isCandidate });
+    }
+
+    // 2) escolhe no máximo 3 candidatos (os com menos boas relações; em empate, mais desafetos)
+    const chosen = social
+      .filter((x) => x.isCandidate)
+      .sort((a, b) => {
+        if (a.goodLinks !== b.goodLinks) return a.goodLinks - b.goodLinks;
+        if (a.rivals !== b.rivals) return b.rivals - a.rivals;
+        return (a.p.status?.pop ?? 0) - (b.p.status?.pop ?? 0); // desempate leve
+      })
+      .slice(0, 3);
+
+    const chosenIds = new Set(chosen.map((x) => x.p.id));
+    const boosted = [];
+    const isolatedNotes = [];
+
+    // 3) atualiza estado + aplica bônus apenas nos escolhidos
+    for (const s of social) {
+      const p = s.p;
       p.status = p.status || {};
+      const nowExcluded = chosenIds.has(p.id);
       const wasExcluded = !!p.status.excluido;
-      if (excluded) {
+
+      if (nowExcluded) {
         p.status.excluido = true;
         p.status.excluidoStreak = (p.status.excluidoStreak ?? 0) + 1;
       } else {
@@ -2864,14 +2890,14 @@ if (alive.length <= 4) return false;
         p.status.excluidoStreak = 0;
       }
 
-      if (!excluded) continue;
+      if (!nowExcluded) continue;
 
       // evento de isolamento (não floodar): quando entra no estado ou a cada 3 dias seguidos
       if (!wasExcluded || (p.status.excluidoStreak % 3 === 0)) {
         isolatedNotes.push(p);
       }
 
-      const intensity = clamp((rivals - 2) / 6, 0, 1); // 3->~0.16, 8->1
+      const intensity = clamp((s.rivals - 2) / 6, 0, 1); // 3->~0.16, 8->1
       const base = 0.12 + 0.18 * intensity;
       const extra = (ctx?.tension ? 0.05 : 0);
       const dPop = base + extra + rnd(-0.03, 0.06);
@@ -2885,7 +2911,7 @@ if (alive.length <= 4) return false;
     // Card único no feed do dia (pra não floodar)
     const items = boosted
       .slice(0, 6)
-      .map((x) => `<strong>${escapeHtml(displayName(x.p))}</strong> (+${(Math.round((x.dPop || 0) * 100) / 100).toFixed(2)})`)
+      .map((x) => `<strong>${escapeHtml(displayName(x.p))}</strong>`)
       .join(", ");
 
     dayAdd(`
