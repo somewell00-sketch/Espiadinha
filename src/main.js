@@ -1401,7 +1401,7 @@ if (d.strikes !== undefined) {
   /* ===== Logging ===== */
   function dayCtx() {
     const d = WEEK_DAYS[state.dayIndex] || WEEK_DAYS[0];
-    const festa = (d.key === "qua") && (state.week >= 2);
+    const festa = /festa/i.test(String(d.notes || "")) || (d.key === "qua");
     const tension = d.key === "seg" || d.key === "ter";
     return { ...d, festa, tension };
   }
@@ -6367,7 +6367,7 @@ function buildDailyComment(meta) {
 
     
     // 1.65) Festa (Quarta): comentários sobre tema, show, dança e fofoca
-    const isPartyDay = String(ctx?.name || '').toLowerCase().includes('festa');
+    const isPartyDay = Boolean(ctx?.festa) || /festa/i.test(String(ctx?.notes || "")) || /festa/i.test(String(ctx?.name || ""));
     if (!state.gameOver && isPartyDay) {
       // headline de festa sempre "fixo" pra não sumir
       addTweet(tweet(fill(pickOne(TEMPLATES.party_headline), { X: 'o' })), true);
