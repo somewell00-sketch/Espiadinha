@@ -6225,7 +6225,9 @@ function buildDailyComment(meta) {
       return { u: userHandle(), t: text };
     }
 
-    const tweets = [];
+    const pinned = [];
+    const others = [];
+    const addTweet = (t, pin=false) => { (pin ? pinned : others).push(t); };
 
     const shipTag = (p1, p2) => {
       const a = String(displayName(p1) || '').trim().replace(/\s+/g,'');
@@ -6266,26 +6268,26 @@ function buildDailyComment(meta) {
 
     // 1) Headline do dia
     if (state.week === 1 && state.dayIndex === 0) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.first_day), { X: 'o' })));
+      addTweet(tweet(fill(pickOne(TEMPLATES.first_day), { X: 'o' })));
     } else if (ctx.key === 'ter' && ws.eliminadoId) {
       const out = state.players.find(x=>x.id===ws.eliminadoId);
       if (out) {
-        tweets.push(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })));
+        addTweet(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })), true);
         // Reação do público na eliminação: metade comemora, metade chora
-        tweets.push(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_celebrate : TEMPLATES.elim_rage), { OUT: fmtName(out) })));
-        if (Math.random() < 0.65) tweets.push(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_rage : TEMPLATES.elim_celebrate), { OUT: fmtName(out) })));
+        addTweet(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_celebrate : TEMPLATES.elim_rage), { OUT: fmtName(out) })));
+        if (Math.random() < 0.65) addTweet(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_rage : TEMPLATES.elim_celebrate), { OUT: fmtName(out) })));
       }
     } else if (ctx.key === 'dom' && (ws.paredaoIds || []).length === 3) {
       const ps = (ws.paredaoIds||[]).map(id => state.players.find(x=>x.id===id)).filter(Boolean);
-      if (ps.length === 3) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_paredao), { A: fmtName(ps[0]), B: fmtName(ps[1]), C: fmtName(ps[2]) })));
+      if (ps.length === 3) addTweet(tweet(fill(pickOne(TEMPLATES.headline_paredao), { A: fmtName(ps[0]), B: fmtName(ps[1]), C: fmtName(ps[2]) })), true);
     } else if (ctx.key === 'qui' && ws.leaderId) {
       const l = state.players.find(x=>x.id===ws.leaderId);
-      if (l) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_lider), { L: fmtName(l) })));
+      if (l) addTweet(tweet(fill(pickOne(TEMPLATES.headline_lider), { L: fmtName(l) })), true);
     } else if (ctx.key === 'sex' && ws.anjoId) {
       const a = state.players.find(x=>x.id===ws.anjoId);
-      if (a) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_anjo), { A: fmtName(a) })));
+      if (a) addTweet(tweet(fill(pickOne(TEMPLATES.headline_anjo), { A: fmtName(a) })), true);
     } else {
-      tweets.push(tweet(pickOne(TEMPLATES.analyst)));
+      addTweet(tweet(pickOne(TEMPLATES.analyst)));
     }
 
     // 1.5) Se teve Big Fight hoje, injeta comentários de treta
@@ -6296,13 +6298,13 @@ function buildDailyComment(meta) {
         const aName = fmtName(A);
         const bName = fmtName(B);
         // hype ou ranço (mistura)
-        tweets.push(tweet(fill(pickOne(Math.random() < 0.65 ? TEMPLATES.fight_hype : TEMPLATES.fight_tired), { A: aName, B: bName })));
+        addTweet(tweet(fill(pickOne(Math.random() < 0.65 ? TEMPLATES.fight_hype : TEMPLATES.fight_tired), { A: aName, B: bName })));
         // torcida (um dos lados)
         const team = Math.random() < 0.5 ? 'A' : 'B';
         if (team === 'A') {
-          tweets.push(tweet(fill(pickOne(TEMPLATES.fight_teamA), { A: aName, B: bName, X: suf(A) })));
+          addTweet(tweet(fill(pickOne(TEMPLATES.fight_teamA), { A: aName, B: bName, X: suf(A) })));
         } else {
-          tweets.push(tweet(fill(pickOne(TEMPLATES.fight_teamB), { A: aName, B: bName, X: suf(B) })));
+          addTweet(tweet(fill(pickOne(TEMPLATES.fight_teamB), { A: aName, B: bName, X: suf(B) })));
         }
       }
     }
@@ -6312,8 +6314,8 @@ function buildDailyComment(meta) {
     if (ws.bigFone?.triggered && ws.bigFone?.answeredById) {
       const bfP = state.players.find(x => x.id === ws.bigFone.answeredById);
       if (bfP) {
-        tweets.push(tweet(pickOne(TEMPLATES.bigfone)));
-        tweets.push(tweet(pickOne(TEMPLATES.bigfone_react)));
+        addTweet(tweet(pickOne(TEMPLATES.bigfone)));
+        addTweet(tweet(pickOne(TEMPLATES.bigfone_react)));
       }
     }
 
@@ -6326,9 +6328,9 @@ function buildDailyComment(meta) {
     if (couples.length && coupleKey !== prevCoupleKey) {
       const [A,B] = couples[rndInt(0, couples.length-1)];
       const tag = shipTag(A,B);
-      tweets.push(tweet(fill(pickOne(TEMPLATES.couple), { A: fmtName(A), B: fmtName(B), SHIP: tag })));
+      addTweet(tweet(fill(pickOne(TEMPLATES.couple), { A: fmtName(A), B: fmtName(B), SHIP: tag })));
       if (Math.random() < 0.35) {
-        tweets.push(tweet(fill(pickOne(TEMPLATES.couple_anti), { SHIP: tag })));
+        addTweet(tweet(fill(pickOne(TEMPLATES.couple_anti), { SHIP: tag })));
       }
       snap.coupleKey = coupleKey;
     } else {
@@ -6336,7 +6338,7 @@ function buildDailyComment(meta) {
       const unis = unilateralCrushPairs();
       if (unis.length && Math.random() < 0.22) {
         const [A,B] = unis[rndInt(0, unis.length-1)];
-        tweets.push(tweet(fill(pickOne(TEMPLATES.crush_unrec), { A: fmtName(A), B: fmtName(B), X: suf(A) })));
+        addTweet(tweet(fill(pickOne(TEMPLATES.crush_unrec), { A: fmtName(A), B: fmtName(B), X: suf(A) })));
       }
     }
     state.narrative = state.narrative || { daily: {}, prevSnap: {} };
@@ -6351,20 +6353,20 @@ function buildDailyComment(meta) {
       const runner = state.players.find(x => x.id === lastElimId) || null;
 
       if (winner) {
-        tweets.push(tweet(fill(pickOne(TEMPLATES.final_win), { WIN: fmtName(winner) })));
+        addTweet(tweet(fill(pickOne(TEMPLATES.final_win), { WIN: fmtName(winner) })), true);
       }
       if (winner && runner && Math.random() < 0.6) {
-        tweets.push(tweet(fill(pickOne(TEMPLATES.final_robbed), { WIN: fmtName(winner), RUN: fmtName(runner) })));
+        addTweet(tweet(fill(pickOne(TEMPLATES.final_robbed), { WIN: fmtName(winner), RUN: fmtName(runner) })));
       }
       // despedida sempre aparece
-      tweets.push(tweet(pickOne(TEMPLATES.final_farewell)));
+      addTweet(tweet(pickOne(TEMPLATES.final_farewell)), true);
     } else {
       if (aliveNowN <= 5) {
-        tweets.push(tweet(pickOne(TEMPLATES.endgame_hype)));
+        addTweet(tweet(pickOne(TEMPLATES.endgame_hype)), true);
       }
       if (aliveNowN === 3) {
         const fav = aliveNow[rndInt(0, aliveNow.length - 1)];
-        if (fav) tweets.push(tweet(fill(pickOne(TEMPLATES.top3_favorites), { FAV: fmtName(fav) })));
+        if (fav) addTweet(tweet(fill(pickOne(TEMPLATES.top3_favorites), { FAV: fmtName(fav) })));
       }
     }
 
@@ -6377,9 +6379,9 @@ function buildDailyComment(meta) {
     const newFavs = curFavs.filter((p) => !state.narrative.seenFavIds.includes(p.id));
     if (newFavs.length) {
       const p = newFavs[rndInt(0, newFavs.length - 1)];
-      tweets.push(tweet(fill(pickOne(TEMPLATES.fandom_created), { N: fmtName(p) })));
+      addTweet(tweet(fill(pickOne(TEMPLATES.fandom_created), { N: fmtName(p) })));
       if (Math.random() < 0.40) {
-        tweets.push(tweet(fill(pickOne(TEMPLATES.hater_fandom), { N: fmtName(p) })));
+        addTweet(tweet(fill(pickOne(TEMPLATES.hater_fandom), { N: fmtName(p) })));
       }
       // marca como visto (evita repetir todo dia)
       newFavs.forEach((x) => { if (!state.narrative.seenFavIds.includes(x.id)) state.narrative.seenFavIds.push(x.id); });
@@ -6390,39 +6392,45 @@ function buildDailyComment(meta) {
     const topRej = topRejRow?.p || null;
 
     if (topRej && Number(topRej.attrs?.rejeicao ?? 0) >= 6.0) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.rej_leader), { N: fmtName(topRej) })));
+      addTweet(tweet(fill(pickOne(TEMPLATES.rej_leader), { N: fmtName(topRej) })));
     } else if (topPop) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.pop_leader), { N: fmtName(topPop) })));
+      addTweet(tweet(fill(pickOne(TEMPLATES.pop_leader), { N: fmtName(topPop) })));
       // contra-narrativa: sempre tem alguém que não compra o hype
       if (Math.random() < 0.42) {
-        tweets.push(tweet(fill(pickOne(TEMPLATES.hater_popularity), { N: fmtName(topPop) })));
+        addTweet(tweet(fill(pickOne(TEMPLATES.hater_popularity), { N: fmtName(topPop) })));
       }
       // se {N} tiver ★, rola ranço do fandom também
       if (isPublicFavorite(topPop) && Math.random() < 0.35) {
-        tweets.push(tweet(fill(pickOne(TEMPLATES.hater_fandom), { N: fmtName(topPop) })));
+        addTweet(tweet(fill(pickOne(TEMPLATES.hater_fandom), { N: fmtName(topPop) })));
       }
     }
 
     // 3) Em alta / Em baixa (momentum)
     if (up?.p && up.d.pop > 0.25 && up.p.id !== topPop?.id) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.up), { N: fmtName(up.p), X: suf(up.p) })));
+      addTweet(tweet(fill(pickOne(TEMPLATES.up), { N: fmtName(up.p), X: suf(up.p) })));
     }
     if (down?.p && down.d.pop < -0.25 && down.p.id !== topRej?.id) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.down), { N: fmtName(down.p), X: suf(down.p) })));
+      addTweet(tweet(fill(pickOne(TEMPLATES.down), { N: fmtName(down.p), X: suf(down.p) })));
     }
 
     // 4) Fora do radar
     if (invis?.p && (invis.p.status?.narr?.invisDays ?? 0) >= 3) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.invis), { N: fmtName(invis.p), X: suf(invis.p) })));
+      addTweet(tweet(fill(pickOne(TEMPLATES.invis), { N: fmtName(invis.p), X: suf(invis.p) })));
     }
 
     // 5) Ajusta quantidade (3 a 6) sem repetição demais
     const maxT = rndInt(3, 6);
-    while (tweets.length > maxT) {
-      tweets.splice(rndInt(1, tweets.length - 1), 1); // mantém o headline
+    let tweets = pinned.concat(others);
+
+    // Limite: mantém todos os pins e corta só o restante
+    if (tweets.length > maxT) {
+      const keepPins = pinned.length;
+      const remain = maxT - keepPins;
+      const trimmed = remain > 0 ? others.slice(0, remain) : [];
+      tweets = pinned.concat(trimmed);
     }
 
-    const html = tweets.map((x) => `
+const html = tweets.map((x) => `
       <div class="tweet">
         <div class="twUser">${escapeHtml(x.u)}</div>
         <div class="twText">${x.t}</div>
