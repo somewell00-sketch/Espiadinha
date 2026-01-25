@@ -5975,7 +5975,7 @@ function buildDailyComment(meta) {
     }
 
     const suf = (p) => (p?.gender === 'F' ? 'a' : (p?.gender === 'M' ? 'o' : 'e'));
-    const fmtName = (p) => `${escapeHtml(displayName(p))} <span class="twPron">${escapeHtml(pronounTag(p))}</span>`;
+const fmtName = (p) => escapeHtml(displayName(p));
 
     const TEMPLATES = {
       headline_elim: [
