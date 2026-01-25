@@ -78,6 +78,21 @@
 .dayBody, .panel .bd{ padding:12px; }
 .sideBody{ padding:10px; max-height:840px; overflow:auto; }
 
+/* Comentário diário (box acima da lista de participantes) */
+.sideComment{
+  margin:10px 10px 0 10px;
+  padding:10px 10px;
+  background:var(--panel-2);
+  border:1px solid var(--stroke);
+  border-radius:12px;
+  font-size:12px;
+  line-height:1.45;
+  color:var(--text);
+}
+.sideComment .muted{ color:var(--muted); }
+.sideComment .line{ display:block; margin:0 0 6px 0; }
+.sideComment .line:last-child{ margin-bottom:0; }
+
 .dayBlock,
 .dayBox,
 .sideItem,

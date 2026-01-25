@@ -731,6 +731,13 @@ function statusLabel(p) {
     crushRevealed: {},
     crushReciprocalBonus: {},
     alliances: [],
+    // Camada narrativa (não altera regras; só interpreta os dados do jogo)
+    narrative: {
+      // key: "w<week>-<dayKey>" -> { html, ts, picks }
+      daily: {},
+      // snapshot antes do dia simulado (playerId -> métricas)
+      prevSnap: {}
+    },
     weekState: {
       leaderId: null,
       lastLeaderId: null,
@@ -809,6 +816,11 @@ parsed.weekState.xepaIds = Array.isArray(parsed.weekState.xepaIds) ? parsed.week
       parsed.elimHistory = Array.isArray(parsed.elimHistory) ? parsed.elimHistory : [];
       parsed.alliances = Array.isArray(parsed.alliances) ? parsed.alliances : [];
 
+      // camada narrativa (migração)
+      parsed.narrative = parsed.narrative || { daily: {}, prevSnap: {} };
+      parsed.narrative.daily = (parsed.narrative && typeof parsed.narrative.daily === 'object' && parsed.narrative.daily) ? parsed.narrative.daily : {};
+      parsed.narrative.prevSnap = (parsed.narrative && typeof parsed.narrative.prevSnap === 'object' && parsed.narrative.prevSnap) ? parsed.narrative.prevSnap : {};
+
       // quartos (migração)
       parsed.rooms = parsed.rooms || { pair: null, colors: { A: null, B: null }, assigned: false };
       parsed.rooms.colors = parsed.rooms.colors || { A: null, B: null };
@@ -863,6 +875,14 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
         if (p.status.wonSomethingThisWeek === undefined) p.status.wonSomethingThisWeek = false;
         if (p.status.planta === undefined) p.status.planta = false;
         if (p.status.plantStreak === undefined) p.status.plantStreak = 0;
+        // narrativa: contadores simples para status mutável
+        if (p.status.narr === undefined || p.status.narr === null) {
+          p.status.narr = { invisDays: 0, pressureDays: 0, lastLabel: "" };
+        } else {
+          p.status.narr.invisDays = Math.max(0, parseInt(p.status.narr.invisDays ?? 0, 10));
+          p.status.narr.pressureDays = Math.max(0, parseInt(p.status.narr.pressureDays ?? 0, 10));
+          p.status.narr.lastLabel = String(p.status.narr.lastLabel ?? "");
+        }
       });
 
       return parsed;
@@ -935,7 +955,7 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
         excentricidade: rndInt(0, 10),
         serenidade: rndInt(1, 10)
       },
-      status: { alive: true, pop: 5.0, alvo: 0.0, strikes: 0, leaderCount: 0, anjoCount: 0, paredaoCount: 0, popWeek: {}, favPublic: false, room: null, weeksSinceWin: 0, weeksSinceParedao: 0, weeksSinceEvent: 0, popPrev: 5.0, popStableStreak: 0, decisionStreak: 0, didSomethingThisWeek: false, madeDecisionThisWeek: false, wonSomethingThisWeek: false, planta: false, plantStreak: 0, excluido: false, excluidoStreak: 0 },
+      status: { alive: true, pop: 5.0, alvo: 0.0, strikes: 0, leaderCount: 0, anjoCount: 0, paredaoCount: 0, popWeek: {}, favPublic: false, room: null, weeksSinceWin: 0, weeksSinceParedao: 0, weeksSinceEvent: 0, popPrev: 5.0, popStableStreak: 0, decisionStreak: 0, didSomethingThisWeek: false, madeDecisionThisWeek: false, wonSomethingThisWeek: false, planta: false, plantStreak: 0, excluido: false, excluidoStreak: 0, narr: { invisDays: 0, pressureDays: 0, lastLabel: "" } },
       secret: { gayScore: (gender === 'M' || gender === 'F') ? sampleGayScore() : null }
     };
   }
@@ -5225,6 +5245,10 @@ function bootStart() {
     dayBuffer = [];
     gameBuffer = [];
 
+    // snapshot para comentário diário (antes de qualquer alteração do dia)
+    state.narrative = state.narrative || { daily: {}, prevSnap: {} };
+    state.narrative.prevSnap = captureNarrativeSnapshot();
+
     ensureRoomsState();
     applyRoomCssVars();
     maybeRebalanceRooms(meta);
@@ -5373,6 +5397,9 @@ if (ctxFrozen.key === "seg") {
     }
 
     flushDayBlocks(meta);
+
+    // gera comentário diário BBB-style (mostrado na sidebar)
+    try { buildDailyComment(meta); } catch {}
 
     save();
     render(); // mostra o dia que acabou de simular
@@ -5811,6 +5838,145 @@ bump(b, { pop: impact, rejeicao: rejDelta });
     ensurePlantStatus(p);
     if (!p.status.planta) return;
     bump(p, { pop: -PLANT.popTaxPerWeek });
+  }
+
+  /* ===== Camada narrativa (comentário diário) =====
+     - Não altera regras do simulador.
+     - Só lê: pop, rejeição, alvo, paredão, vitórias, eliminações.
+  */
+  function narrativeKey(meta) {
+    const w = meta?.week ?? state.week;
+    const k = meta?.ctx?.key ?? dayCtx().key;
+    return `w${w}-${k}`;
+  }
+
+  function captureNarrativeSnapshot() {
+    const snap = {};
+    state.players.forEach((p) => {
+      if (!p || !p.id) return;
+      snap[p.id] = {
+        alive: !!p.status?.alive,
+        pop: Number(p.status?.pop ?? 0),
+        rej: Number(p.attrs?.rejeicao ?? 0),
+        alvo: Number(p.status?.alvo ?? 0),
+        strikes: Number(p.status?.strikes ?? 0),
+        leaderCount: Number(p.status?.leaderCount ?? 0),
+        anjoCount: Number(p.status?.anjoCount ?? 0),
+        paredaoCount: Number(p.status?.paredaoCount ?? 0)
+      };
+    });
+    return snap;
+  }
+
+  function fmtSigned(n) {
+    const v = Number(n || 0);
+    const s = (v > 0 ? "+" : v < 0 ? "" : "");
+    return `${s}${fmt2(v)}`;
+  }
+
+  function computeNarrativeLabel(p, d, after) {
+    const narr = p.status?.narr || { invisDays: 0, pressureDays: 0, lastLabel: "" };
+
+    const visScore =
+      Math.abs(d.pop) * 1.2 +
+      Math.abs(d.rej) * 1.1 +
+      Math.abs(d.alvo) * 0.8 +
+      (d.strikes !== 0 ? 1.6 : 0);
+
+    if (visScore < 0.18) narr.invisDays = (narr.invisDays || 0) + 1;
+    else narr.invisDays = 0;
+
+    const underPressure =
+      after.rej >= 6.5 ||
+      after.alvo >= 6.5 ||
+      d.rej >= 0.8 ||
+      d.strikes > 0;
+
+    if (underPressure) narr.pressureDays = (narr.pressureDays || 0) + 1;
+    else narr.pressureDays = 0;
+
+    let label = "estável";
+    if (!p.status?.alive) label = "fora do jogo";
+    else if (d.strikes > 0 || after.rej >= 7.2) label = "sob pressão";
+    else if (underPressure && narr.pressureDays >= 2) label = "em desgaste";
+    else if (d.pop >= 0.45 && d.rej <= 0.25) label = "em ascensão";
+    else if (narr.invisDays >= 3 && after.rej < 4.0) label = "invisível perigoso";
+    else if (narr.invisDays >= 2 && after.pop >= 7.0 && after.rej < 3.2) label = "confortável demais";
+
+    narr.lastLabel = label;
+    p.status.narr = narr;
+    return label;
+  }
+
+  function buildDailyComment(meta) {
+    const key = narrativeKey(meta);
+    const prev = state.narrative?.prevSnap || {};
+    const alive = alivePlayers();
+
+    const rows = alive.map((p) => {
+      const before = prev[p.id] || { pop: Number(p.status.pop ?? 0), rej: Number(p.attrs.rejeicao ?? 0), alvo: Number(p.status.alvo ?? 0), strikes: Number(p.status.strikes ?? 0) };
+      const after = { pop: Number(p.status.pop ?? 0), rej: Number(p.attrs.rejeicao ?? 0), alvo: Number(p.status.alvo ?? 0), strikes: Number(p.status.strikes ?? 0) };
+      const d = { pop: after.pop - before.pop, rej: after.rej - before.rej, alvo: after.alvo - before.alvo, strikes: after.strikes - before.strikes };
+      const label = computeNarrativeLabel(p, d, after);
+      return { p, before, after, d, label };
+    });
+
+    const byPop = rows.slice().sort((a,b)=> (b.after.pop - a.after.pop));
+    const byRej = rows.slice().sort((a,b)=> (b.after.rej - a.after.rej));
+    const byUp = rows.slice().sort((a,b)=> (b.d.pop - a.d.pop));
+    const byDown = rows.slice().sort((a,b)=> (a.d.pop - b.d.pop));
+    const byInvis = rows.slice().sort((a,b)=> ((b.p.status?.narr?.invisDays ?? 0) - (a.p.status?.narr?.invisDays ?? 0)));
+
+    const topPop = byPop[0]?.p || null;
+    const topRej = byRej[0]?.p || null;
+    const up = byUp[0] || null;
+    const down = byDown[0] || null;
+    const invis = byInvis[0] || null;
+
+    // Headline por evento fixo do calendário
+    const ctx = meta?.ctx || dayCtx();
+    const ws = state.weekState || {};
+    const lines = [];
+
+    if (ctx.key === "ter" && ws.eliminadoId) {
+      const out = state.players.find(x=>x.id===ws.eliminadoId);
+      if (out) lines.push(`<span class="line"><strong>Dia de eliminação</strong>: <strong>${escapeHtml(displayName(out))}</strong> deixa a casa e mexe no jogo.</span>`);
+    } else if (ctx.key === "dom" && (ws.paredaoIds || []).length === 3) {
+      const names = (ws.paredaoIds||[]).map(id => state.players.find(x=>x.id===id)).filter(Boolean).map(p=>`<strong>${escapeHtml(displayName(p))}</strong>`).join(", ");
+      lines.push(`<span class="line"><strong>Paredão formado</strong>: ${names}.</span>`);
+    } else if (ctx.key === "qui" && ws.leaderId) {
+      const l = state.players.find(x=>x.id===ws.leaderId);
+      if (l) lines.push(`<span class="line"><strong>Liderança</strong>: <strong>${escapeHtml(displayName(l))}</strong> assume o poder hoje.</span>`);
+    } else if (ctx.key === "sex" && ws.anjoId) {
+      const a = state.players.find(x=>x.id===ws.anjoId);
+      if (a) lines.push(`<span class="line"><strong>Anjo</strong>: <strong>${escapeHtml(displayName(a))}</strong> ganha espaço e influência.</span>`);
+    } else {
+      lines.push(`<span class="line"><strong>Resumo do dia</strong>: ajustes finos e leitura de jogo em andamento.</span>`);
+    }
+
+    if (up && up.d.pop > 0.25) {
+      lines.push(`<span class="line">📈 Em alta: <strong>${escapeHtml(displayName(up.p))}</strong> (${fmtSigned(up.d.pop)} pop).</span>`);
+    }
+    if (down && down.d.pop < -0.25) {
+      lines.push(`<span class="line">📉 Em baixa: <strong>${escapeHtml(displayName(down.p))}</strong> (${fmtSigned(down.d.pop)} pop).</span>`);
+    }
+
+    if (topRej && Number(topRej.attrs?.rejeicao ?? 0) >= 6.0) {
+      lines.push(`<span class="line">🤮 Mais rejeição agora: <strong>${escapeHtml(displayName(topRej))}</strong> (Rej ${fmt2(topRej.attrs.rejeicao)}).</span>`);
+    } else if (topPop) {
+      lines.push(`<span class="line">😍 Popularidade do momento: <strong>${escapeHtml(displayName(topPop))}</strong> (Pop ${fmt2(topPop.status.pop)}).</span>`);
+    }
+
+    if (invis && (invis.p.status?.narr?.invisDays ?? 0) >= 3) {
+      lines.push(`<span class="line">🕳️ Fora do radar: <strong>${escapeHtml(displayName(invis.p))}</strong> segue sem foco (${invis.p.status.narr.invisDays} dias).</span>`);
+    }
+
+    // fallback
+    if (lines.length === 0) lines.push(`<span class="line"><span class="muted">Sem comentário ainda.</span></span>`);
+
+    const html = lines.join("");
+    state.narrative = state.narrative || { daily: {}, prevSnap: {} };
+    state.narrative.daily[key] = { html, ts: Date.now() };
   }
 
   function updatePlantStateEndOfWeek(p) {
@@ -6848,6 +7014,14 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
     if ($("todayBadge")) $("todayBadge").textContent = state.gameOver ? "Final" : `🗓️ Semana ${state.week} • ${ctx.name}`;
     if ($("topMeta")) $("topMeta").textContent = `🧿 ${aliveN}/${state.players.length} na casa`;
     if ($("sideMeta")) $("sideMeta").textContent = `🧿 ${aliveN}/${state.players.length}`;
+
+    // Comentário diário (BBB-style)
+    const cbox = $("dailyComment");
+    if (cbox) {
+      const k = narrativeKey({ ctx: ctx, week: state.week });
+      const entry = state.narrative?.daily?.[k] || null;
+      cbox.innerHTML = entry?.html || `<span class="muted">Sem comentário ainda para hoje.</span>`;
+    }
 
     // todayBlock (filtrado por semana + dia atuais)
     const dayBlock = $("todayBlock");
