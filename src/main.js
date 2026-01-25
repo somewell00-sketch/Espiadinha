@@ -6367,7 +6367,8 @@ function buildDailyComment(meta) {
 
     
     // 1.65) Festa (Quarta): comentários sobre tema, show, dança e fofoca
-    if (!state.gameOver && ctx.key === 'qua') {
+    const isPartyDay = String(ctx?.name || '').toLowerCase().includes('festa');
+    if (!state.gameOver && isPartyDay) {
       // headline de festa sempre "fixo" pra não sumir
       addTweet(tweet(fill(pickOne(TEMPLATES.party_headline), { X: 'o' })), true);
 
