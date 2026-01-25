@@ -1401,7 +1401,7 @@ if (d.strikes !== undefined) {
   /* ===== Logging ===== */
   function dayCtx() {
     const d = WEEK_DAYS[state.dayIndex] || WEEK_DAYS[0];
-    const festa = /festa/i.test(String(d.notes || "")) || (d.key === "qua");
+    const festa = /festa/i.test(String(d.notes || "")) || (d.key === "qua" && state.week > 1);
     const tension = d.key === "seg" || d.key === "ter";
     return { ...d, festa, tension };
   }
