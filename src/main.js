@@ -7717,7 +7717,8 @@ const statusSpan = document.createElement("span");
       list.innerHTML = "";
       ordered.forEach((p) => {
         const tr = document.createElement("tr");
-        if (!p.status.alive) tr.className = "mutedRow";
+        const isAlive = (p.status && p.status.alive !== false);
+        if (!isAlive) tr.className = "mutedRow";
         tr.style.cursor = "pointer";
         tr.addEventListener("click", () => openDrawer(p));
 
@@ -7820,7 +7821,8 @@ list.appendChild(tr);
         buckets.enemies.sort((a, b) => relGet(p.id, a.id) - relGet(p.id, b.id));
 
         const tr = document.createElement("tr");
-        if (!p.status.alive) tr.className = "mutedRow";
+        const isAlive = (p.status && p.status.alive !== false);
+        if (!isAlive) tr.className = "mutedRow";
 
         const tdName = document.createElement("td");
         tdName.className = "nameCell";
