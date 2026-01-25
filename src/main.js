@@ -736,6 +736,7 @@ function statusLabel(p) {
     week: 1,
     dayIndex: 0,
     gameOver: false,
+    lastEvent: null,
     publicFavoriteIds: [],
     players: [],
     log: [],
@@ -4666,6 +4667,15 @@ function snapshotPopForWeek(weekNumber) {
 
   // Mantém snapshots e fluxo original do jogo
   snapshotPopForWeek(state.week);
+  // Guarda o evento de eliminação para o 🦜 Xuitter (sem depender de weekState, que é resetado)
+  state.lastEvent = {
+    type: "elimination",
+    week: state.week,
+    eliminatedId: eliminado.id,
+    publicoPerc: { ...perc },
+    ts: Date.now(),
+    shown: false
+  };
   resetWeekState();
 
   if (opts.advanceWeek) {
@@ -6315,7 +6325,41 @@ function buildDailyComment(meta) {
     };
 
     // 1) Headline do dia
-    if (state.week === 1 && state.dayIndex === 0) {
+    
+// Se uma eliminação acabou de acontecer, mostra reação mesmo que o jogo já tenha avançado o dia/semana.
+if (state.lastEvent && state.lastEvent.type === "elimination" && !state.lastEvent.shown) {
+  const le = state.lastEvent;
+  const out = state.players.find(x => x.id === le.eliminatedId);
+  if (out) {
+    addTweet(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })), true);
+
+    // métrica do paredão: maior porcentagem do eliminado (aprox)
+    const outPerc = (le.publicoPerc && le.publicoPerc[out.id]) ? le.publicoPerc[out.id] : null;
+
+    // heurísticas (sem depender de estruturas externas)
+    const hadStar = !!out?.status?.star || !!out?.status?.favPublic;
+    const highRej = (out?.attrs?.rejeicao ?? out?.status?.alvo ?? 0) >= 7 || (out?.status?.paredaoCount ?? 0) >= 2;
+
+    // eliminação apertada: diferença < 3pp entre maior e segunda maior
+    let close = false;
+    try {
+      const vals = Object.values(le.publicoPerc || {}).map(Number).filter(v => !Number.isNaN(v)).sort((a,b)=>b-a);
+      if (vals.length >= 2 && (vals[0] - vals[1]) < 3) close = true;
+    } catch(e) {}
+
+    // rejeição alta: > 70%
+    const record = (typeof outPerc === "number") && outPerc >= 70;
+
+    if (highRej) addTweet(tweet(pickOne(TEMPLATES.elim_foitarde)), true);
+    if (hadStar) addTweet(tweet(pickOne(TEMPLATES.elim_robbed)), true);
+    if (close) addTweet(tweet(pickOne(TEMPLATES.elim_close)), true);
+    if (record) addTweet(tweet(pickOne(TEMPLATES.elim_record)), true);
+    if (!highRej && !hadStar && !record) addTweet(tweet(pickOne(TEMPLATES.elim_saudade)), true);
+  }
+  state.lastEvent.shown = true;
+}
+
+if (state.week === 1 && state.dayIndex === 0) {
       addTweet(tweet(fill(pickOne(TEMPLATES.first_day), { X: 'o' })));
     } else if (ctx.key === 'ter' && ws.eliminadoId) {
       const out = state.players.find(x=>x.id===ws.eliminadoId);
