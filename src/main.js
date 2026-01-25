@@ -6052,6 +6052,28 @@ function buildDailyComment(meta) {
         `Eu queria ter metade da calma de {N} 😌🧘`,
         `{N} é o tipo de pessoa que cresce no caos 😈✨`,
       ],
+      fandom_created: [
+        `Já tô vendo o fandom de {N} se organizando 😂⭐`,
+        `Nasceu a torcida de {N} e eu tô com medo 😬⭐`,
+        `Pronto… agora {N} virou intocável pra muita gente 😅⭐`,
+        `Fandom de {N} já tá fazendo mutirão, certeza 😂📲`,
+        `Daqui a pouco não pode criticar {N} que o fandom vem 😮‍💨⭐`,
+      ],
+      hater_popularity: [
+        `Não entendo esse hype todo em {N} 🤔`,
+        `{N} popular por quê, exatamente? 😶`,
+        `O que {N} fez além de existir? 🙃`,
+        `Vocês se emocionam fácil… {N} nem entrega tudo isso 😅`,
+        `Pra mim {N} tá superestimado(a) 😬`,
+        `Eu juro que tento gostar de {N}, mas não desce 🥴`,
+      ],
+      hater_fandom: [
+        `Já começou o fandom de {N} 😒`,
+        `Torcida cega de {N} é complicado 🙄`,
+        `Virou intocável agora? {N} pode tudo? 😅`,
+        `O problema nem é {N}… é a torcida 😩`,
+        `Qualquer coisa que {N} faz vira “genial” pra fã 😂`,
+      ],
       rej_leader: [
         `Tá ficando difícil defender {N}… 😬`,
         `Mais um dia e o nome de {N} aparece. Não é coincidência 👀`,
@@ -6127,7 +6149,6 @@ function buildDailyComment(meta) {
         `{B} foi gigante nessa. Respeito 💪✨`,
       ],
 
-      ],
       endgame_hype: [
         `Reta final chegando e eu tô tremendo 😭🔥`,
         `Top 5 é quando o jogo fica REAL de verdade 😬🍿`,
@@ -6348,6 +6369,22 @@ function buildDailyComment(meta) {
     }
 
 
+
+    // (Extra) Quando alguém ganha ★ (favorito do público), o Xuitter reage com fandom + contra-narrativa
+    state.narrative = state.narrative || {};
+    state.narrative.seenFavIds = Array.isArray(state.narrative.seenFavIds) ? state.narrative.seenFavIds : [];
+    const curFavs = aliveNow.filter((p) => isPublicFavorite(p));
+    const newFavs = curFavs.filter((p) => !state.narrative.seenFavIds.includes(p.id));
+    if (newFavs.length) {
+      const p = newFavs[rndInt(0, newFavs.length - 1)];
+      tweets.push(tweet(fill(pickOne(TEMPLATES.fandom_created), { N: fmtName(p) })));
+      if (Math.random() < 0.40) {
+        tweets.push(tweet(fill(pickOne(TEMPLATES.hater_fandom), { N: fmtName(p) })));
+      }
+      // marca como visto (evita repetir todo dia)
+      newFavs.forEach((x) => { if (!state.narrative.seenFavIds.includes(x.id)) state.narrative.seenFavIds.push(x.id); });
+    }
+
     // 2) Top pop vs top rejeição
     const topPop = topPopRow?.p || null;
     const topRej = topRejRow?.p || null;
@@ -6356,6 +6393,14 @@ function buildDailyComment(meta) {
       tweets.push(tweet(fill(pickOne(TEMPLATES.rej_leader), { N: fmtName(topRej) })));
     } else if (topPop) {
       tweets.push(tweet(fill(pickOne(TEMPLATES.pop_leader), { N: fmtName(topPop) })));
+      // contra-narrativa: sempre tem alguém que não compra o hype
+      if (Math.random() < 0.42) {
+        tweets.push(tweet(fill(pickOne(TEMPLATES.hater_popularity), { N: fmtName(topPop) })));
+      }
+      // se {N} tiver ★, rola ranço do fandom também
+      if (isPublicFavorite(topPop) && Math.random() < 0.35) {
+        tweets.push(tweet(fill(pickOne(TEMPLATES.hater_fandom), { N: fmtName(topPop) })));
+      }
     }
 
     // 3) Em alta / Em baixa (momentum)
