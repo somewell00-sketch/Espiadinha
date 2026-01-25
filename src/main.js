@@ -5929,6 +5929,8 @@ bump(b, { pop: impact, rejeicao: rejDelta });
   }
 
   
+const XUITTER_NARRATIVE_VERSION = 17;
+
 function buildDailyComment(meta) {
     const key = narrativeKey(meta);
     const prev = state.narrative?.prevSnap || {};
@@ -6550,7 +6552,7 @@ const html = tweets.map((x) => `
     `).join('');
 
     state.narrative = state.narrative || { daily: {}, prevSnap: {} };
-    state.narrative.daily[key] = { html, ts: Date.now() };
+    state.narrative.daily[key] = { html, ts: Date.now(), v: XUITTER_NARRATIVE_VERSION };
   }
 
 
@@ -7594,7 +7596,12 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
     const cbox = $("dailyComment");
     if (cbox) {
       const k = narrativeKey({ ctx: ctx, week: state.week });
-      const entry = state.narrative?.daily?.[k] || null;
+      let entry = state.narrative?.daily?.[k] || null;
+      // Invalida cache quando a lógica muda (evita mostrar comentários antigos)
+      if (!entry || entry.v !== XUITTER_NARRATIVE_VERSION) {
+        try { buildDailyComment({ ctx: ctx, week: state.week, dayName: ctx.name }); } catch (e) {}
+        entry = state.narrative?.daily?.[k] || null;
+      }
       const header = `<div class="twHeader">🦜 Xuitter</div>`;
       const body = entry?.html || `<span class="muted">Sem comentários ainda para hoje.</span>`;
       cbox.innerHTML = header + body;
