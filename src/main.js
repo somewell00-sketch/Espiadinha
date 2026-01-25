@@ -87,7 +87,7 @@ const POP_VOTE = {
 "desperdício de recursos"
   ];
 
-  const pickOne = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const pickOne = (arr, fallback='') => (Array.isArray(arr) && arr.length ? arr[Math.floor(Math.random() * arr.length)] : fallback);
   const pickMany = (arr, n) => {
     if (!Array.isArray(arr) || n <= 0) return [];
     const a = arr.slice();
@@ -4378,7 +4378,12 @@ if (PUBLIC_COALITION.enabled && base.length === 3) {
       }
 
       if (PUBLIC_COALITION.logIt && typeof gameAdd === "function") {
-        const html = `
+        
+    // Fallback: nunca deixar o Xuitter sem comentários
+    if (pinned.length === 0 && others.length === 0) {
+      addTweet(tweet(pickOne(TEMPLATES.analyst)), true);
+    }
+const html = `
           <div class="gameCard gameNeu" style="padding:6px 8px;font-size:12px;line-height:1.35;opacity:.95;">
             <div>
               Torcidas de <strong>${escapeHtml(displayName(best.p1))}</strong> e
@@ -6588,6 +6593,11 @@ if (typeof isPartyDay !== 'undefined' && isPartyDay) {
       tweets = pinned.concat(trimmed);
     }
 
+// Fallback: nunca deixar o Xuitter vazio
+    if (!tweets || !tweets.length) {
+      try { tweets = [tweet(pickOne(TEMPLATES.analyst))]; } catch(e) { tweets = [{u:"User", t:"Sem comentários hoje."}]; }
+    }
+
 const html = tweets.map((x) => `
       <div class="tweet">
         <div class="twUser">${escapeHtml(x.u)}</div>
@@ -7643,11 +7653,11 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
       let entry = state.narrative?.daily?.[k] || null;
       // Invalida cache quando a lógica muda (evita mostrar comentários antigos)
       if (!entry || entry.v !== XUITTER_NARRATIVE_VERSION) {
-        try { buildDailyComment({ ctx: ctx, week: state.week, dayName: ctx.name }); } catch (e) {}
+        try { buildDailyComment({ ctx: ctx, week: state.week, dayName: ctx.name }); } catch (e) { console.error(e); state.narrative = state.narrative || {}; state.narrative.lastXuitterError = String(e && e.message ? e.message : e); }
         entry = state.narrative?.daily?.[k] || null;
       }
       const header = `<div class="twHeader">🦜 Xuitter</div>`;
-      const body = entry?.html || `<span class="muted">Sem comentários ainda para hoje.</span>`;
+      const body = (entry && typeof entry.html === 'string') ? entry.html : `<span class="muted">Sem comentários ainda para hoje.</span>${state?.narrative?.lastXuitterError ? `<div class="small muted" style="margin-top:6px;">⚠️ Xuitter erro: ${escapeHtml(state.narrative.lastXuitterError)}</div>` : ''}`;
       cbox.innerHTML = header + body;
     }
 
