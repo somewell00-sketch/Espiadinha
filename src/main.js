@@ -6373,9 +6373,10 @@ function buildDailyComment(meta) {
     }
 
     
-    // 1.65) Festa (Quarta): comentários sobre tema, show, dança e fofoca
-    const isPartyDay = Boolean(ctx?.festa) || /festa/i.test(String(ctx?.notes || "")) || /festa/i.test(String(ctx?.name || ""));
-    if (!state.gameOver && isPartyDay && state.week > 1) {
+    // 1.65) Festa do Líder (Quarta): comentários sobre tema, show, dança e fofoca
+    // Só deve acontecer em dia marcado como festa (quarta) e apenas a partir da Semana 2 (quando já existe Líder).
+    const isPartyDay = (!state.gameOver) && (state.week > 1) && !!ctx?.festa && !!state.weekLeaderId;
+    if (isPartyDay) {
       // headline de festa sempre "fixo" pra não sumir
       addTweet(tweet(fill(pickOne(TEMPLATES.party_headline), { X: 'o' })), true);
 
