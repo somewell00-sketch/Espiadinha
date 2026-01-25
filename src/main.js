@@ -6318,10 +6318,17 @@ function buildDailyComment(meta) {
     } else if (ctx.key === 'ter' && ws.eliminadoId) {
       const out = state.players.find(x=>x.id===ws.eliminadoId);
       if (out) {
+        // Headline de eliminação sempre fixo
         addTweet(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })), true);
-        // Reação do público na eliminação: metade comemora, metade chora
-        addTweet(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_celebrate : TEMPLATES.elim_rage), { OUT: fmtName(out) })));
-        if (Math.random() < 0.65) addTweet(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_rage : TEMPLATES.elim_celebrate), { OUT: fmtName(out) })));
+
+        // Reações fixas (pra não sumirem no corte): uma comemora e uma reclama
+        addTweet(tweet(fill(pickOne(TEMPLATES.elim_celebrate), { OUT: fmtName(out) })), true);
+        addTweet(tweet(fill(pickOne(TEMPLATES.elim_rage), { OUT: fmtName(out) })), true);
+
+        // Reação extra opcional (varia o tom)
+        if (Math.random() < 0.55) {
+          addTweet(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_rage : TEMPLATES.elim_celebrate), { OUT: fmtName(out) })));
+        }
       }
     } else if (ctx.key === 'dom' && (ws.paredaoIds || []).length === 3) {
       const ps = (ws.paredaoIds||[]).map(id => state.players.find(x=>x.id===id)).filter(Boolean);
@@ -6509,7 +6516,21 @@ function buildDailyComment(meta) {
     }
 
     // 5) Ajusta quantidade (3 a 6) sem repetição demais
-    const maxT = rndInt(3, 6);
+    let maxT = rndInt(3, 6);
+// Em dias grandes, deixa o feed mais cheio (sem cortar os pins)
+if (state.gameOver) {
+  maxT = rndInt(6, 10);
+} else if (ctx.key === 'ter' && ws.eliminadoId) {
+  maxT = rndInt(6, 10);
+} else {
+  const aliveCount = alivePlayers().length;
+  if (aliveCount <= 3) maxT = rndInt(5, 9);
+  else if (aliveCount <= 5) maxT = rndInt(4, 8);
+}
+if (typeof isPartyDay !== 'undefined' && isPartyDay) {
+  maxT = Math.max(maxT, rndInt(5, 9));
+}
+
     let tweets = pinned.concat(others);
 
     // Limite: mantém todos os pins e corta só o restante
