@@ -513,6 +513,15 @@ relAdd(aggressor.id, target.id, -rndInt(8, 16));
       relAdd(p.id, target.id, rndInt(-2, 4));
     });
 
+    // Sinaliza para a narrativa do dia (Xuitter)
+    state.weekState = state.weekState || {};
+    state.weekState.bigFight = {
+      reason,
+      ids: group.map(p => p.id),
+      aggressorId: aggressor.id,
+      targetId: target.id
+    };
+
     // Log visual grande
     const namesArr = group.map((p) => escapeHtml(displayName(p)));
 
@@ -551,7 +560,7 @@ dayAdd(
   function pronounTag(p) {
     const key = (p && p.gender) ? p.gender : 'O';
     const pr = key === 'M' ? 'He' : (key === 'F' ? 'She' : 'They');
-    return `()`;
+    return `(${pr})`;
   }
 
 function statusLabel(p) {
@@ -5246,6 +5255,9 @@ function bootStart() {
     const beforeDayIndex = state.dayIndex;
     const aliveN = alivePlayers().length;
 
+    // limpa flags diárias que não devem vazar para o próximo dia
+    if (state.weekState && state.weekState.bigFight) delete state.weekState.bigFight;
+
     const ctxFrozen = dayCtx();
     const weekFrozen = state.week;
     const meta = { ctx: ctxFrozen, week: weekFrozen, dayName: ctxFrozen.name };
@@ -5962,6 +5974,7 @@ function buildDailyComment(meta) {
       return `${name}${num}`;
     }
 
+    const suf = (p) => (p?.gender === 'F' ? 'a' : (p?.gender === 'M' ? 'o' : 'e'));
     const fmtName = (p) => `${escapeHtml(displayName(p))} <span class="twPron">${escapeHtml(pronounTag(p))}</span>`;
 
     const TEMPLATES = {
@@ -5986,64 +5999,90 @@ function buildDailyComment(meta) {
         `{A} ganhou anjo e tá com o jogo na mão por um instante.`,
       ],
       pop_leader: [
-        `{N} segue sendo a maioral! 😍`,
-        `Ou {N} nasceu pra esse jogo ou eu não sei mais nada 😍`,
-        `Toda rodada eu gosto mais de {N}, não tem jeito`,
-        `{N} tá confortável demais… parece dona da casa`,
-        `Se a votação fosse hoje, {N} levava fácil`,
-        `{N} não faz esforço e mesmo assim brilha`,
-        `{N} tá jogando bonito, viu`,
-        `Quem não gosta de {N} tá assistindo errado`,
-        `Eu queria ter metade da calma de {N}`,
-        `{N} é o tipo de pessoa que cresce no caos`,
+        `{N} segue sendo a maioral! 😍✨`,
+        `Ou {N} nasceu pra esse jogo ou eu não sei mais nada 😍🫶`,
+        `Toda rodada eu gosto mais de {N}, não tem jeito 😭❤️`,
+        `{N} tá confortável demais… parece dona da casa 👑`,
+        `Se fosse hoje, {N} levava fácil 😮‍💨👏`,
+        `{N} não faz esforço e mesmo assim brilha ✨😌`,
+        `{N} tá jogando bonito, viu 😍🔥`,
+        `Quem não gosta de {N} tá assistindo errado 🤷😅`,
+        `Eu queria ter metade da calma de {N} 😌🧘`,
+        `{N} é o tipo de pessoa que cresce no caos 😈✨`,
       ],
       rej_leader: [
-        `Tá ficando difícil defender {N}…`,
-        `Mais um dia e o nome de {N} aparece. Não é coincidência.`,
-        `{N} tá se queimando aos poucos e ninguém quer ver`,
-        `Eu sinto que {N} tá com data marcada 😬`,
-        `A casa tá pegando ranço de {N}, é isso?`,
-        `{N} vive no alvo. Desgasta demais.`,
-        `Se cair de novo, não sei se segura`,
-        `{N} tá colecionando problema`,
-        `Hoje foi mais um aviso pra {N}`,
-        `Não sei como {N} ainda não percebeu o tamanho do risco`,
+        `Tá ficando difícil defender {N}… 😬`,
+        `Mais um dia e o nome de {N} aparece. Não é coincidência 👀`,
+        `{N} tá se queimando aos poucos e ninguém quer ver 🧯`,
+        `Eu sinto que {N} tá com data marcada 😬🗓️`,
+        `A casa tá pegando ranço de {N}, é isso? 🥴`,
+        `{N} vive no alvo. Desgasta demais 🎯`,
+        `Se cair de novo, não sei se segura 😵‍💫`,
+        `{N} tá colecionando problema 🧨`,
+        `Hoje foi mais um aviso pra {N} ⚠️`,
+        `Não vejo a hora de {N} sair 😩🧹`,
       ],
       up: [
-        `{N} cresceu na hora certa. Boa.`,
-        `Do nada {N} em alta. O jogo é rápido demais.`,
-        `{N} finalmente apareceu. Era questão de tempo.`,
-        `Hoje foi dia de {N} ganhar moral.`,
-        `{N} entendeu o timing e subiu.`,
-        `A semana começou a sorrir pra {N}.`,
-        `{N} tava quiet{X} e agora tá gigante.`,
-        `Eu disse… {N} ia reagir.`,
-        `{N} virou assunto sem nem fazer alarde.`,
-        `A casa vai ter que respeitar {N} agora.`,
+        `{N} cresceu na hora certa. Boa 😮‍💨👏`,
+        `Do nada {N} em alta. O jogo é rápido demais 🚀`,
+        `{N} finalmente apareceu. Era questão de tempo ⏳✨`,
+        `Hoje foi dia de {N} ganhar moral 😌📈`,
+        `{N} entendeu o timing e subiu 🎯🔥`,
+        `A semana começou a sorrir pra {N} 😁🍀`,
+        `{N} tava quiet{X} e agora tá gigante 👀💥`,
+        `Eu disse… {N} ia reagir 😏`,
+        `{N} virou assunto sem nem fazer alarde 👑`,
+        `A casa vai ter que respeitar {N} agora 🗣️💪`,
       ],
       down: [
-        `{N} saiu menor hoje. Dá pra sentir.`,
-        `Não foi um dia bom pra {N}.`,
-        `{N} tá perdendo chão aos poucos.`,
-        `O jogo apertou e {N} sentiu.`,
-        `Mais um tombo pra {N}…`,
-        `{N} tá acumulando desgaste e isso cobra.`,
-        `Essa semana não tá conversando com {N}.`,
-        `{N} tá ficando com cara de alvo fixo.`,
-        `{N} escapou de um jeito estranho… mas caiu na narrativa.`,
-        `O clima virou contra {N}.`,
+        `{N} saiu menor hoje. Dá pra sentir 😬`,
+        `Não foi um dia bom pra {N} 😕`,
+        `{N} tá perdendo chão aos poucos 🫠`,
+        `O jogo apertou e {N} sentiu 😵`,
+        `Mais um tombo pra {N}… 🧱`,
+        `{N} tá acumulando desgaste e isso cobra 📉`,
+        `Essa semana não tá conversando com {N} 🥶`,
+        `{N} tá ficando com cara de alvo fixo 🎯`,
+        `{N} escapou de um jeito estranho… mas caiu na narrativa 🤔`,
+        `O clima virou contra {N} 🌪️`,
       ],
       invis: [
-        `Alguém lembra que {N} tá na casa? 👀`,
-        `{N} segue fora do radar… isso nunca é à toa.`,
-        `Enquanto brigam, {N} passa liso.`,
-        `Silêncio estratégico ou planta? {N} me intriga.`,
-        `{N} tá invisível demais e isso é perigoso.`,
-        `Quando perceberem {N}, já foi.`,
-        `Ninguém cita {N}. Eu ficaria com medo.`,
-        `{N} tá fazendo o jogo perfeito do silêncio.`,
-        `Discret{X} até demais: {N}.`,
-        `{N} tá confortável nesse sumiço.`,
+        `Alguém lembra que {N} tá na casa? 👀😂`,
+        `{N} segue fora do radar… isso nunca é à toa 🕵️‍♂️`,
+        `Enquanto brigam, {N} passa liso 🫥`,
+        `Silêncio estratégico ou planta? {N} me intriga 🪴🤔`,
+        `{N} tá invisível demais e isso é perigoso 😶‍🌫️`,
+        `Quando perceberem {N}, já foi 😬`,
+        `Ninguém cita {N}. Eu ficaria com medo 😳`,
+        `{N} tá fazendo o jogo perfeito do silêncio 🤫✨`,
+        `Discret{X} até demais: {N} 👀`,
+        `{N} tá confortável nesse sumiço 😌`,
+      ],
+      fight_hype: [
+        `🔥🔥 TRETA! {A} x {B} FOI TUDO 😂🍿`,
+        `Gente, eu vivo por uma briga assim 🤯🔥`,
+        `Finalmente movimento! Essa treta entregou TUDO 🧨🍿`,
+        `Eu assistiria essa briga em looping 😂🔥`,
+        `A produção nem precisou editar: foi cinema 🎬🔥`,
+      ],
+      fight_tired: [
+        `Aff… briga por nada, preguiça 😒`,
+        `Eu odeio treta. Que clima pesado 🥴`,
+        `Vergonha alheia total… pra quê isso? 😩`,
+        `Isso aí é baixaria, zero paciência 🙄`,
+        `Queria só uma convivência em paz hoje 🕊️😮‍💨`,
+      ],
+      fight_teamA: [
+        `Tô fechado com {A}! {A} falou o que tinha que falar 💅🔥`,
+        `{A} AMASSOU. {B} que lute 😌👏`,
+        `{A} foi certeir{X}. Eu aplaudi daqui 👏🔥`,
+        `{A} não baixou a cabeça e eu respeito 💪✨`,
+      ],
+      fight_teamB: [
+        `Não encosta em {B}! {B} tá cert{X} demais 😤🔥`,
+        `{B} segurou a bronca e ainda saiu por cima 😮‍💨👏`,
+        `{B} respondeu na lata. Adorei 😌🔥`,
+        `{B} foi gigante nessa. Respeito 💪✨`,
       ],
       analyst: [
         `Não é só prova, é posicionamento.`,
@@ -6088,6 +6127,25 @@ function buildDailyComment(meta) {
       tweets.push(tweet(pickOne(TEMPLATES.analyst)));
     }
 
+    // 1.5) Se teve Big Fight hoje, injeta comentários de treta
+    if (ws.bigFight && ws.bigFight.aggressorId && ws.bigFight.targetId) {
+      const A = state.players.find(x => x.id === ws.bigFight.aggressorId);
+      const B = state.players.find(x => x.id === ws.bigFight.targetId);
+      if (A && B) {
+        const aName = fmtName(A);
+        const bName = fmtName(B);
+        // hype ou ranço (mistura)
+        tweets.push(tweet(fill(pickOne(Math.random() < 0.65 ? TEMPLATES.fight_hype : TEMPLATES.fight_tired), { A: aName, B: bName })));
+        // torcida (um dos lados)
+        const team = Math.random() < 0.5 ? 'A' : 'B';
+        if (team === 'A') {
+          tweets.push(tweet(fill(pickOne(TEMPLATES.fight_teamA), { A: aName, B: bName, X: suf(A) })));
+        } else {
+          tweets.push(tweet(fill(pickOne(TEMPLATES.fight_teamB), { A: aName, B: bName, X: suf(B) })));
+        }
+      }
+    }
+
     // 2) Top pop vs top rejeição
     const topPop = topPopRow?.p || null;
     const topRej = topRejRow?.p || null;
@@ -6100,15 +6158,15 @@ function buildDailyComment(meta) {
 
     // 3) Em alta / Em baixa (momentum)
     if (up?.p && up.d.pop > 0.25 && up.p.id !== topPop?.id) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.up), { N: fmtName(up.p), X: (up.p.gender === 'F' ? 'a' : 'o') })));
+      tweets.push(tweet(fill(pickOne(TEMPLATES.up), { N: fmtName(up.p), X: suf(up.p) })));
     }
     if (down?.p && down.d.pop < -0.25 && down.p.id !== topRej?.id) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.down), { N: fmtName(down.p), X: (down.p.gender === 'F' ? 'a' : 'o') })));
+      tweets.push(tweet(fill(pickOne(TEMPLATES.down), { N: fmtName(down.p), X: suf(down.p) })));
     }
 
     // 4) Fora do radar
     if (invis?.p && (invis.p.status?.narr?.invisDays ?? 0) >= 3) {
-      tweets.push(tweet(fill(pickOne(TEMPLATES.invis), { N: fmtName(invis.p), X: (invis.p.gender === 'F' ? 'a' : 'o') })));
+      tweets.push(tweet(fill(pickOne(TEMPLATES.invis), { N: fmtName(invis.p), X: suf(invis.p) })));
     }
 
     // 5) Ajusta quantidade (3 a 6) sem repetição demais
@@ -7170,7 +7228,9 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
     if (cbox) {
       const k = narrativeKey({ ctx: ctx, week: state.week });
       const entry = state.narrative?.daily?.[k] || null;
-      cbox.innerHTML = entry?.html || `<span class="muted">Sem comentário ainda para hoje.</span>`;
+      const header = `<div class="twHeader">🦜 Xuitter</div>`;
+      const body = entry?.html || `<span class="muted">Sem comentários ainda para hoje.</span>`;
+      cbox.innerHTML = header + body;
     }
 
     // todayBlock (filtrado por semana + dia atuais)
