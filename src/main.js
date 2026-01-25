@@ -6020,6 +6020,52 @@ function buildDailyComment(meta) {
         `Já imagino a bomba vindo… 💣📞`,
         `Se isso não render, eu vou reclamar 😤📞`,
       ],
+      party_headline: [
+        `Hoje é dia de FESTA! 🎉🍾 Quero ver quem vai entregar caos e fofoca 👀`,
+        `Festa na casa hoje 😍✨ E eu só quero entretenimento!`,
+        `Dia de festa: bebida, música e climão 🤭🍹`,
+      ],
+      party_theme_love: [
+        `A produção acertou MUITO nesse tema 😍🎨`,
+        `Que festa linda, tô obcecad{X} 😭✨`,
+        `Finalmente um tema decente! 👏🎉`,
+      ],
+      party_theme_hate: [
+        `Gente… que tema nada a ver 😒`,
+        `Essa decoração parece improvisada 🥴`,
+        `A produção já fez melhor, viu 😬`,
+      ],
+      party_show_love: [
+        `QUE SHOW foi esse??? 🔥🎤`,
+        `Eu queria estar aí AGORA 😭🎶`,
+        `A atração entregou tudo, sem defeitos 😍`,
+      ],
+      party_show_hate: [
+        `Show fraquinho… tô com sono 😴`,
+        `Ninguém animou com essa atração 🫠`,
+        `Podia ter sido melhor, né 😬`,
+      ],
+      party_dance_love: [
+        `{N} nasceu pra pista 😂💃`,
+        `Eu não consigo parar de ver {N} dançando 😍🕺`,
+        `{N} tá com energia de finalista hoje 🔥💃`,
+      ],
+      party_dance_cringe: [
+        `Alguém tira {N} da pista 🥴💃`,
+        `{N} dançando me dá vergonha alheia 😭`,
+        `Eu amo que {N} nem liga e dança assim mesmo 😂`,
+      ],
+      party_gossip: [
+        `A conversa no cantinho entre {A} e {B} 👀👀`,
+        `Tem fofoca pesada sendo cozinhada nessa festa 🤭🍿`,
+        `Depois dessa festa, nada vai ficar igual… 😬`,
+      ],
+      party_romance: [
+        `{SHIP} ganhou força na festa 😍🍷`,
+        `Eu vi o clima entre {A} e {B} e fiquei MALUCA 😭💘 {SHIP}`,
+        `Festa é isso: ship nasce do nada 🤭💞 {SHIP}`,
+      ],
+
       crush_unrec: [
         `Gente… {A} tá com crush em {B} né? 👀💭`,
         `Eu vi a carinha de {A} olhando {B}… shippei 😭💘`,
@@ -6319,7 +6365,48 @@ function buildDailyComment(meta) {
       }
     }
 
-    // 1.7) Shippagem: casal formado (crush recíproco) e crush unilateral
+    
+    // 1.65) Festa (Quarta): comentários sobre tema, show, dança e fofoca
+    if (!state.gameOver && ctx.key === 'qua') {
+      // headline de festa sempre "fixo" pra não sumir
+      addTweet(tweet(fill(pickOne(TEMPLATES.party_headline), { X: 'o' })), true);
+
+      // mistura de opiniões (tema e show)
+      addTweet(tweet(fill(pickOne(Math.random() < 0.6 ? TEMPLATES.party_theme_love : TEMPLATES.party_theme_hate), { X: 'o' })));
+      if (Math.random() < 0.75) {
+        addTweet(tweet(fill(pickOne(Math.random() < 0.6 ? TEMPLATES.party_show_love : TEMPLATES.party_show_hate), { X: 'o' })));
+      }
+
+      // destaque aleatório: dança (elogio ou cringe)
+      const aliveP = alivePlayers();
+      if (aliveP.length) {
+        const dancer = aliveP[rndInt(0, aliveP.length - 1)];
+        addTweet(tweet(fill(pickOne(Math.random() < 0.6 ? TEMPLATES.party_dance_love : TEMPLATES.party_dance_cringe), { N: fmtName(dancer) })));
+      }
+
+      // fofoca: dois nomes aleatórios
+      if (Math.random() < 0.85) {
+        const aliveP2 = alivePlayers();
+        if (aliveP2.length >= 2) {
+          const a = aliveP2[rndInt(0, aliveP2.length - 1)];
+          let b = aliveP2[rndInt(0, aliveP2.length - 1)];
+          if (b.id === a.id && aliveP2.length >= 2) b = aliveP2[(aliveP2.indexOf(a) + 1) % aliveP2.length];
+          addTweet(tweet(fill(pickOne(TEMPLATES.party_gossip), { A: fmtName(a), B: fmtName(b) })));
+        } else {
+          addTweet(tweet(pickOne(TEMPLATES.party_gossip)));
+        }
+      }
+
+      // romance na festa se tiver casal ativo (crush recíproco)
+      const couplesNow = mutualCrushPairs();
+      if (couplesNow.length && Math.random() < 0.55) {
+        const [A,B] = couplesNow[rndInt(0, couplesNow.length - 1)];
+        const tag = shipTag(A,B);
+        addTweet(tweet(fill(pickOne(TEMPLATES.party_romance), { A: fmtName(A), B: fmtName(B), SHIP: tag })));
+      }
+    }
+
+// 1.7) Shippagem: casal formado (crush recíproco) e crush unilateral
     // Só comenta casal novo quando ele aparece pela primeira vez
     const couples = mutualCrushPairs();
     const snap = state.narrative?.prevSnap || {};
