@@ -1401,7 +1401,7 @@ if (d.strikes !== undefined) {
   /* ===== Logging ===== */
   function dayCtx() {
     const d = WEEK_DAYS[state.dayIndex] || WEEK_DAYS[0];
-    const festa = /festa/i.test(String(d.notes || "")) || (d.key === "qua" && state.week > 1);
+    const festa = (state.week > 1) && (/festa/i.test(String(d.notes || "")) || (d.key === "qua"));
     const tension = d.key === "seg" || d.key === "ter";
     return { ...d, festa, tension };
   }
@@ -5929,7 +5929,7 @@ bump(b, { pop: impact, rejeicao: rejDelta });
   }
 
   
-const XUITTER_NARRATIVE_VERSION = 17;
+const XUITTER_NARRATIVE_VERSION = 18;
 
 function buildDailyComment(meta) {
     const key = narrativeKey(meta);
