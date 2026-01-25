@@ -546,6 +546,14 @@ dayAdd(
     const key = (p && p.gender) ? p.gender : 'O';
     return forms[key] ?? forms.O ?? '';
   }
+
+  // pronome sujeito para citar participantes no formato (He/She/They)
+  function pronounTag(p) {
+    const key = (p && p.gender) ? p.gender : 'O';
+    const pr = key === 'M' ? 'He' : (key === 'F' ? 'She' : 'They');
+    return `()`;
+  }
+
 function statusLabel(p) {
   if (!p || !p.status || p.status.alive) return "";
 
@@ -5908,7 +5916,8 @@ bump(b, { pop: impact, rejeicao: rejDelta });
     return label;
   }
 
-  function buildDailyComment(meta) {
+  
+function buildDailyComment(meta) {
     const key = narrativeKey(meta);
     const prev = state.narrative?.prevSnap || {};
     const alive = alivePlayers();
@@ -5927,57 +5936,198 @@ bump(b, { pop: impact, rejeicao: rejDelta });
     const byDown = rows.slice().sort((a,b)=> (a.d.pop - b.d.pop));
     const byInvis = rows.slice().sort((a,b)=> ((b.p.status?.narr?.invisDays ?? 0) - (a.p.status?.narr?.invisDays ?? 0)));
 
-    const topPop = byPop[0]?.p || null;
-    const topRej = byRej[0]?.p || null;
+    const topPopRow = byPop[0] || null;
+    const topRejRow = byRej[0] || null;
     const up = byUp[0] || null;
     const down = byDown[0] || null;
     const invis = byInvis[0] || null;
 
-    // Headline por evento fixo do calendário
     const ctx = meta?.ctx || dayCtx();
     const ws = state.weekState || {};
-    const lines = [];
 
-    if (ctx.key === "ter" && ws.eliminadoId) {
+    // ===== "Xuitter" helpers =====
+    function userHandle() {
+      const pools = [];
+      try { pools.push(...(Object.values(FIRST_NAMES || {}).flat())); } catch(e) {}
+      try { pools.push(...(SURNAMES || [])); } catch(e) {}
+      try { pools.push(...(FREE_NICKNAMES || [])); } catch(e) {}
+      if (!pools.length) pools.push('User');
+
+      const pick = () => String(pools[rndInt(0, pools.length - 1)] || 'User').replace(/\s+/g, '');
+      const base = pick();
+      const addSecond = Math.random() < 0.18 ? pick() : '';
+      const sep = Math.random() < 0.35 ? '_' : '';
+      const num = String(rndInt(10, 999));
+      const name = addSecond ? (base + sep + addSecond) : base;
+      return `${name}${num}`;
+    }
+
+    const fmtName = (p) => `${escapeHtml(displayName(p))} <span class="twPron">${escapeHtml(pronounTag(p))}</span>`;
+
+    const TEMPLATES = {
+      headline_elim: [
+        `Hoje foi dia de eliminação e eu tô em choque 😳 {OUT} saiu!`,
+        `Eliminação mexeu com a casa toda. {OUT} já era.`,
+        `Tchau tchau {OUT}. O jogo virou agora.`,
+      ],
+      headline_paredao: [
+        `Paredão montado: {A}, {B} e {C}. Quero ver o caos 😬`,
+        `Esse paredão tem ENREDO: {A}, {B} e {C}.`,
+        `Eu não tava preparado pra esse paredão: {A}, {B} e {C}.`,
+      ],
+      headline_lider: [
+        `{L} virou líder e agora o povo vai tremer 😌`,
+        `Liderança de {L}. Hoje a casa se ajeita na marra.`,
+        `Quem diria… {L} no comando. Quero ver as consequências.`,
+      ],
+      headline_anjo: [
+        `{A} é anjo. Isso muda mais do que parece.`,
+        `Anjo de {A}. Pequeno poder, grande efeito.`,
+        `{A} ganhou anjo e tá com o jogo na mão por um instante.`,
+      ],
+      pop_leader: [
+        `{N} segue sendo a maioral! 😍`,
+        `Ou {N} nasceu pra esse jogo ou eu não sei mais nada 😍`,
+        `Toda rodada eu gosto mais de {N}, não tem jeito`,
+        `{N} tá confortável demais… parece dona da casa`,
+        `Se a votação fosse hoje, {N} levava fácil`,
+        `{N} não faz esforço e mesmo assim brilha`,
+        `{N} tá jogando bonito, viu`,
+        `Quem não gosta de {N} tá assistindo errado`,
+        `Eu queria ter metade da calma de {N}`,
+        `{N} é o tipo de pessoa que cresce no caos`,
+      ],
+      rej_leader: [
+        `Tá ficando difícil defender {N}…`,
+        `Mais um dia e o nome de {N} aparece. Não é coincidência.`,
+        `{N} tá se queimando aos poucos e ninguém quer ver`,
+        `Eu sinto que {N} tá com data marcada 😬`,
+        `A casa tá pegando ranço de {N}, é isso?`,
+        `{N} vive no alvo. Desgasta demais.`,
+        `Se cair de novo, não sei se segura`,
+        `{N} tá colecionando problema`,
+        `Hoje foi mais um aviso pra {N}`,
+        `Não sei como {N} ainda não percebeu o tamanho do risco`,
+      ],
+      up: [
+        `{N} cresceu na hora certa. Boa.`,
+        `Do nada {N} em alta. O jogo é rápido demais.`,
+        `{N} finalmente apareceu. Era questão de tempo.`,
+        `Hoje foi dia de {N} ganhar moral.`,
+        `{N} entendeu o timing e subiu.`,
+        `A semana começou a sorrir pra {N}.`,
+        `{N} tava quiet{X} e agora tá gigante.`,
+        `Eu disse… {N} ia reagir.`,
+        `{N} virou assunto sem nem fazer alarde.`,
+        `A casa vai ter que respeitar {N} agora.`,
+      ],
+      down: [
+        `{N} saiu menor hoje. Dá pra sentir.`,
+        `Não foi um dia bom pra {N}.`,
+        `{N} tá perdendo chão aos poucos.`,
+        `O jogo apertou e {N} sentiu.`,
+        `Mais um tombo pra {N}…`,
+        `{N} tá acumulando desgaste e isso cobra.`,
+        `Essa semana não tá conversando com {N}.`,
+        `{N} tá ficando com cara de alvo fixo.`,
+        `{N} escapou de um jeito estranho… mas caiu na narrativa.`,
+        `O clima virou contra {N}.`,
+      ],
+      invis: [
+        `Alguém lembra que {N} tá na casa? 👀`,
+        `{N} segue fora do radar… isso nunca é à toa.`,
+        `Enquanto brigam, {N} passa liso.`,
+        `Silêncio estratégico ou planta? {N} me intriga.`,
+        `{N} tá invisível demais e isso é perigoso.`,
+        `Quando perceberem {N}, já foi.`,
+        `Ninguém cita {N}. Eu ficaria com medo.`,
+        `{N} tá fazendo o jogo perfeito do silêncio.`,
+        `Discret{X} até demais: {N}.`,
+        `{N} tá confortável nesse sumiço.`,
+      ],
+      analyst: [
+        `Não é só prova, é posicionamento.`,
+        `O jogo tá se desenhando e tem gente que não percebe.`,
+        `Reparem quem some quando a casa pega fogo.`,
+        `Quem tá confortável agora pode pagar depois.`,
+        `O meio da casa é o lugar mais perigoso.`,
+        `Tem arco se formando e eu tô vendo tudo.`,
+      ]
+    };
+
+    const fill = (tpl, vars) =>
+      String(tpl)
+        .replaceAll('{N}', vars.N ?? '')
+        .replaceAll('{X}', vars.X ?? 'o')
+        .replaceAll('{L}', vars.L ?? '')
+        .replaceAll('{A}', vars.A ?? '')
+        .replaceAll('{B}', vars.B ?? '')
+        .replaceAll('{C}', vars.C ?? '')
+        .replaceAll('{OUT}', vars.OUT ?? '');
+
+    function tweet(text) {
+      return { u: userHandle(), t: text };
+    }
+
+    const tweets = [];
+
+    // 1) Headline do dia
+    if (ctx.key === 'ter' && ws.eliminadoId) {
       const out = state.players.find(x=>x.id===ws.eliminadoId);
-      if (out) lines.push(`<span class="line"><strong>Dia de eliminação</strong>: <strong>${escapeHtml(displayName(out))}</strong> deixa a casa e mexe no jogo.</span>`);
-    } else if (ctx.key === "dom" && (ws.paredaoIds || []).length === 3) {
-      const names = (ws.paredaoIds||[]).map(id => state.players.find(x=>x.id===id)).filter(Boolean).map(p=>`<strong>${escapeHtml(displayName(p))}</strong>`).join(", ");
-      lines.push(`<span class="line"><strong>Paredão formado</strong>: ${names}.</span>`);
-    } else if (ctx.key === "qui" && ws.leaderId) {
+      if (out) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })));
+    } else if (ctx.key === 'dom' && (ws.paredaoIds || []).length === 3) {
+      const ps = (ws.paredaoIds||[]).map(id => state.players.find(x=>x.id===id)).filter(Boolean);
+      if (ps.length === 3) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_paredao), { A: fmtName(ps[0]), B: fmtName(ps[1]), C: fmtName(ps[2]) })));
+    } else if (ctx.key === 'qui' && ws.leaderId) {
       const l = state.players.find(x=>x.id===ws.leaderId);
-      if (l) lines.push(`<span class="line"><strong>Liderança</strong>: <strong>${escapeHtml(displayName(l))}</strong> assume o poder hoje.</span>`);
-    } else if (ctx.key === "sex" && ws.anjoId) {
+      if (l) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_lider), { L: fmtName(l) })));
+    } else if (ctx.key === 'sex' && ws.anjoId) {
       const a = state.players.find(x=>x.id===ws.anjoId);
-      if (a) lines.push(`<span class="line"><strong>Anjo</strong>: <strong>${escapeHtml(displayName(a))}</strong> ganha espaço e influência.</span>`);
+      if (a) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_anjo), { A: fmtName(a) })));
     } else {
-      lines.push(`<span class="line"><strong>Resumo do dia</strong>: ajustes finos e leitura de jogo em andamento.</span>`);
+      tweets.push(tweet(pickOne(TEMPLATES.analyst)));
     }
 
-    if (up && up.d.pop > 0.25) {
-      lines.push(`<span class="line">📈 Em alta: <strong>${escapeHtml(displayName(up.p))}</strong> (${fmtSigned(up.d.pop)} pop).</span>`);
-    }
-    if (down && down.d.pop < -0.25) {
-      lines.push(`<span class="line">📉 Em baixa: <strong>${escapeHtml(displayName(down.p))}</strong> (${fmtSigned(down.d.pop)} pop).</span>`);
-    }
+    // 2) Top pop vs top rejeição
+    const topPop = topPopRow?.p || null;
+    const topRej = topRejRow?.p || null;
 
     if (topRej && Number(topRej.attrs?.rejeicao ?? 0) >= 6.0) {
-      lines.push(`<span class="line">🤮 Mais rejeição agora: <strong>${escapeHtml(displayName(topRej))}</strong> (Rej ${fmt2(topRej.attrs.rejeicao)}).</span>`);
+      tweets.push(tweet(fill(pickOne(TEMPLATES.rej_leader), { N: fmtName(topRej) })));
     } else if (topPop) {
-      lines.push(`<span class="line">😍 Popularidade do momento: <strong>${escapeHtml(displayName(topPop))}</strong> (Pop ${fmt2(topPop.status.pop)}).</span>`);
+      tweets.push(tweet(fill(pickOne(TEMPLATES.pop_leader), { N: fmtName(topPop) })));
     }
 
-    if (invis && (invis.p.status?.narr?.invisDays ?? 0) >= 3) {
-      lines.push(`<span class="line">🕳️ Fora do radar: <strong>${escapeHtml(displayName(invis.p))}</strong> segue sem foco (${invis.p.status.narr.invisDays} dias).</span>`);
+    // 3) Em alta / Em baixa (momentum)
+    if (up?.p && up.d.pop > 0.25 && up.p.id !== topPop?.id) {
+      tweets.push(tweet(fill(pickOne(TEMPLATES.up), { N: fmtName(up.p), X: (up.p.gender === 'F' ? 'a' : 'o') })));
+    }
+    if (down?.p && down.d.pop < -0.25 && down.p.id !== topRej?.id) {
+      tweets.push(tweet(fill(pickOne(TEMPLATES.down), { N: fmtName(down.p), X: (down.p.gender === 'F' ? 'a' : 'o') })));
     }
 
-    // fallback
-    if (lines.length === 0) lines.push(`<span class="line"><span class="muted">Sem comentário ainda.</span></span>`);
+    // 4) Fora do radar
+    if (invis?.p && (invis.p.status?.narr?.invisDays ?? 0) >= 3) {
+      tweets.push(tweet(fill(pickOne(TEMPLATES.invis), { N: fmtName(invis.p), X: (invis.p.gender === 'F' ? 'a' : 'o') })));
+    }
 
-    const html = lines.join("");
+    // 5) Ajusta quantidade (3 a 6) sem repetição demais
+    const maxT = rndInt(3, 6);
+    while (tweets.length > maxT) {
+      tweets.splice(rndInt(1, tweets.length - 1), 1); // mantém o headline
+    }
+
+    const html = tweets.map((x) => `
+      <div class="tweet">
+        <div class="twUser">${escapeHtml(x.u)}</div>
+        <div class="twText">${x.t}</div>
+      </div>
+    `).join('');
+
     state.narrative = state.narrative || { daily: {}, prevSnap: {} };
     state.narrative.daily[key] = { html, ts: Date.now() };
   }
+
 
   function updatePlantStateEndOfWeek(p) {
     ensurePlantStatus(p);
