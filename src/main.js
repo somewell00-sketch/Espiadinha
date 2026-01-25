@@ -6348,9 +6348,11 @@ function buildDailyComment(meta) {
     const aliveNowN = aliveNow.length;
 
     if (state.gameOver) {
-      const winner = aliveNow[0] || null;
-      const lastElimId = (state.elimOrder && state.elimOrder.length) ? state.elimOrder[state.elimOrder.length - 1] : null;
-      const runner = state.players.find(x => x.id === lastElimId) || null;
+      // Final: usa os IDs calculados no resultado final (não depende da ordem do array de vivos)
+      const winnerId = state.final?.winnerId ?? null;
+      const runnerId = state.final?.secondId ?? null;
+      const winner = winnerId ? (state.players.find(x => x.id === winnerId) || null) : null;
+      const runner = runnerId ? (state.players.find(x => x.id === runnerId) || null) : null;
 
       if (winner) {
         addTweet(tweet(fill(pickOne(TEMPLATES.final_win), { WIN: fmtName(winner) })), true);
