@@ -6126,6 +6126,53 @@ function buildDailyComment(meta) {
         `{B} respondeu na lata. Adorei 😌🔥`,
         `{B} foi gigante nessa. Respeito 💪✨`,
       ],
+
+      ],
+      endgame_hype: [
+        `Reta final chegando e eu tô tremendo 😭🔥`,
+        `Top 5 é quando o jogo fica REAL de verdade 😬🍿`,
+        `Agora não tem mais espaço pra erro… reta final é cruel 😮‍💨`,
+        `Se o seu fav não acordar AGORA, já era 😭⚠️`,
+        `Chegou na reta final? Então merece respeito 💪✨`,
+        `Meu coração não aguenta mais uma eliminação 😭`,
+      ],
+      top3_favorites: [
+        `Top 3 formado e eu já escolhi meu campeão: {FAV} 🏆😍`,
+        `Se {FAV} não ganhar eu vou surtar 😭🏆`,
+        `Meu fav no top 3… eu mereci essa alegria 😭✨ {FAV}`,
+        `Top 3 perfeito? Pra mim sim 😌🔥 (time {FAV})`,
+        `A edição pode acabar hoje que eu já tô em luto 😭 (time {FAV})`,
+      ],
+      final_win: [
+        `ACABOUUUU 😭🏆 {WIN} CAMPEÃ(O)!`,
+        `{WIN} mereceu DEMAIS! 🏆🔥`,
+        `EU GRITEI AQUI 😭 {WIN} campeão do povo!!! 🏆✨`,
+        `Parabéns {WIN}! Que trajetória 😮‍💨👏🏆`,
+      ],
+      final_robbed: [
+        `Desculpa, mas {RUN} jogou mais… 🫠`,
+        `Foi legal, mas eu achava que {RUN} merecia 😭`,
+        `Nada contra {WIN}, mas {RUN} era meu campeão 😤`,
+        `Injustiça! {RUN} carregou essa edição 😡`,
+      ],
+      final_farewell: [
+        `Vou sentir saudade dessa edição 😭✨`,
+        `Até ano que vem… já tô com abstinência 😭`,
+        `Foi uma montanha-russa. Obrigado BBB simulado 😭🫶`,
+        `Agora é esperar a próxima edição… saudades já 🥹`,
+      ],
+      elim_celebrate: [
+        `FINALMENTE {OUT} SAIU!!! 😍🎉`,
+        `TCHAU {OUT}!!! era pra ter saído faz tempo 😭👋`,
+        `{OUT} fora! agora sim dá pra respirar 😮‍💨✨`,
+        `O bem venceu hoje 😌✨ {OUT} saiu!`,
+      ],
+      elim_rage: [
+        `NÃO ACREDITO que {OUT} saiu 😭💔`,
+        `ROUBADO! {OUT} não merecia sair 😡`,
+        `Depois dessa eu nunca mais assisto (mentira) 😤 {OUT} saiu!`,
+        `Que ódio 😭 {OUT} merecia ficar muito mais!`,
+      ],
       analyst: [
         `Não é só prova, é posicionamento.`,
         `O jogo tá se desenhando e tem gente que não percebe.`,
@@ -6134,7 +6181,9 @@ function buildDailyComment(meta) {
         `O meio da casa é o lugar mais perigoso.`,
         `Tem arco se formando e eu tô vendo tudo.`,
       ]
+
     };
+
 
     const fill = (tpl, vars) =>
       String(tpl)
@@ -6145,6 +6194,9 @@ function buildDailyComment(meta) {
         .replaceAll('{B}', vars.B ?? '')
         .replaceAll('{C}', vars.C ?? '')
         .replaceAll('{OUT}', vars.OUT ?? '')
+        .replaceAll('{WIN}', vars.WIN ?? '')
+        .replaceAll('{RUN}', vars.RUN ?? '')
+        .replaceAll('{FAV}', vars.FAV ?? '')
         .replaceAll('{SHIP}', vars.SHIP ?? '');
 
 
@@ -6196,7 +6248,12 @@ function buildDailyComment(meta) {
       tweets.push(tweet(fill(pickOne(TEMPLATES.first_day), { X: 'o' })));
     } else if (ctx.key === 'ter' && ws.eliminadoId) {
       const out = state.players.find(x=>x.id===ws.eliminadoId);
-      if (out) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })));
+      if (out) {
+        tweets.push(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })));
+        // Reação do público na eliminação: metade comemora, metade chora
+        tweets.push(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_celebrate : TEMPLATES.elim_rage), { OUT: fmtName(out) })));
+        if (Math.random() < 0.65) tweets.push(tweet(fill(pickOne(Math.random() < 0.5 ? TEMPLATES.elim_rage : TEMPLATES.elim_celebrate), { OUT: fmtName(out) })));
+      }
     } else if (ctx.key === 'dom' && (ws.paredaoIds || []).length === 3) {
       const ps = (ws.paredaoIds||[]).map(id => state.players.find(x=>x.id===id)).filter(Boolean);
       if (ps.length === 3) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_paredao), { A: fmtName(ps[0]), B: fmtName(ps[1]), C: fmtName(ps[2]) })));
@@ -6263,6 +6320,33 @@ function buildDailyComment(meta) {
     }
     state.narrative = state.narrative || { daily: {}, prevSnap: {} };
     state.narrative.prevSnap = snap;
+    // 1.8) Reta final / Top 3 / Final
+    const aliveNow = alivePlayers();
+    const aliveNowN = aliveNow.length;
+
+    if (state.gameOver) {
+      const winner = aliveNow[0] || null;
+      const lastElimId = (state.elimOrder && state.elimOrder.length) ? state.elimOrder[state.elimOrder.length - 1] : null;
+      const runner = state.players.find(x => x.id === lastElimId) || null;
+
+      if (winner) {
+        tweets.push(tweet(fill(pickOne(TEMPLATES.final_win), { WIN: fmtName(winner) })));
+      }
+      if (winner && runner && Math.random() < 0.6) {
+        tweets.push(tweet(fill(pickOne(TEMPLATES.final_robbed), { WIN: fmtName(winner), RUN: fmtName(runner) })));
+      }
+      // despedida sempre aparece
+      tweets.push(tweet(pickOne(TEMPLATES.final_farewell)));
+    } else {
+      if (aliveNowN <= 5) {
+        tweets.push(tweet(pickOne(TEMPLATES.endgame_hype)));
+      }
+      if (aliveNowN === 3) {
+        const fav = aliveNow[rndInt(0, aliveNow.length - 1)];
+        if (fav) tweets.push(tweet(fill(pickOne(TEMPLATES.top3_favorites), { FAV: fmtName(fav) })));
+      }
+    }
+
 
     // 2) Top pop vs top rejeição
     const topPop = topPopRow?.p || null;
