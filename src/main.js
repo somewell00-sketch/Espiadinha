@@ -5975,7 +5975,7 @@ function buildDailyComment(meta) {
     }
 
     const suf = (p) => (p?.gender === 'F' ? 'a' : (p?.gender === 'M' ? 'o' : 'e'));
-const fmtName = (p) => escapeHtml(displayName(p));
+    const fmtName = (p) => `${escapeHtml(displayName(p))}`;
 
     const TEMPLATES = {
       headline_elim: [
@@ -5997,6 +5997,48 @@ const fmtName = (p) => escapeHtml(displayName(p));
         `{A} é anjo. Isso muda mais do que parece.`,
         `Anjo de {A}. Pequeno poder, grande efeito.`,
         `{A} ganhou anjo e tá com o jogo na mão por um instante.`,
+      ],
+
+      first_day: [
+        `COMEÇOU! 😭🔥 Já quero edição icônica. Bora ver quem entrega!`,
+        `Primeiro dia e eu já tô viciad{X} 😍🍿 Quem vai virar lenda?`,
+        `Elenco novo, caos novo 😈✨ Quero TRETAS, provas e alianças!`,
+        `Hoje é dia de julgar todo mundo em 10 segundos 😌👀`,
+        `Que a edição seja histórica e o entretenimento venha 🙏🎬🔥`,
+      ],
+      bigfone: [
+        `ATENDERAM O BIG FONEEEEE 😱📞`,
+        `📞📞📞 BIG FONE ATENDIDO! Agora eu quero só ver... 😬🍿`,
+        `MEU DEUS o Big Fone tocou e alguém atendeu 😭📞`,
+        `Big Fone nunca é coisa boa… 😳📞`,
+        `Isso aqui é o motivo de eu assistir BBB: BIG FONE! 😈📞`,
+      ],
+      bigfone_react: [
+        `Coragem de atender, viu 😮‍💨📞`,
+        `Atender Big Fone é 50% coragem e 50% caos 😭📞`,
+        `Eu teria deixado tocar até cansar 😅📞`,
+        `Já imagino a bomba vindo… 💣📞`,
+        `Se isso não render, eu vou reclamar 😤📞`,
+      ],
+      crush_unrec: [
+        `Gente… {A} tá com crush em {B} né? 👀💭`,
+        `Eu vi a carinha de {A} olhando {B}… shippei 😭💘`,
+        `{A} iludid{X} com {B}? ai ai 😬💭`,
+        `Isso tá muito novela: {A} x {B} 👀📺`,
+        `Se {B} corresponder eu surt0 😭💘`,
+      ],
+      couple: [
+        `EU SABIAAAAAA 😍💘 {A} e {B}! {SHIP} nasceu!`,
+        `Gente o casal veio aí 😭💞 {A} + {B} = {SHIP}`,
+        `Não aguento, tô 100% {SHIP} 😍✨`,
+        `{SHIP} é real e eu não tô bem 😭💘`,
+        `Finalmente um casal pra eu passar pano sem culpa 😌💞 {SHIP}`,
+      ],
+      couple_anti: [
+        `Aff, casal já? 😒💤`,
+        `Casal no BBB sempre dá ruim… só observando 👀😬`,
+        `Não shippo. Desculpa {SHIP} 😶`,
+        `Isso vai atrapalhar o jogo, tenho certeza 😩`,
       ],
       pop_leader: [
         `{N} segue sendo a maioral! 😍✨`,
@@ -6102,7 +6144,9 @@ const fmtName = (p) => escapeHtml(displayName(p));
         .replaceAll('{A}', vars.A ?? '')
         .replaceAll('{B}', vars.B ?? '')
         .replaceAll('{C}', vars.C ?? '')
-        .replaceAll('{OUT}', vars.OUT ?? '');
+        .replaceAll('{OUT}', vars.OUT ?? '')
+        .replaceAll('{SHIP}', vars.SHIP ?? '');
+
 
     function tweet(text) {
       return { u: userHandle(), t: text };
@@ -6110,8 +6154,47 @@ const fmtName = (p) => escapeHtml(displayName(p));
 
     const tweets = [];
 
+    const shipTag = (p1, p2) => {
+      const a = String(displayName(p1) || '').trim().replace(/\s+/g,'');
+      const b = String(displayName(p2) || '').trim().replace(/\s+/g,'');
+      const a3 = a.slice(0,3) || 'AAA';
+      const b3 = b.slice(0,3) || 'BBB';
+      return `#${a3}${b3}`;
+    };
+
+    const mutualCrushPairs = () => {
+      const alive = alivePlayers();
+      const pairs = [];
+      for (let i=0;i<alive.length;i++){
+        for (let j=i+1;j<alive.length;j++){
+          const A = alive[i], B = alive[j];
+          const ab = classifyRelationScore(relGet(A.id,B.id));
+          const ba = classifyRelationScore(relGet(B.id,A.id));
+          if (ab === 'crush' && ba === 'crush') pairs.push([A,B]);
+        }
+      }
+      return pairs;
+    };
+
+    const unilateralCrushPairs = () => {
+      const alive = alivePlayers();
+      const pairs = [];
+      for (let i=0;i<alive.length;i++){
+        for (let j=0;j<alive.length;j++){
+          if (i===j) continue;
+          const A = alive[i], B = alive[j];
+          const ab = classifyRelationScore(relGet(A.id,B.id));
+          const ba = classifyRelationScore(relGet(B.id,A.id));
+          if (ab === 'crush' && ba !== 'crush') pairs.push([A,B]);
+        }
+      }
+      return pairs;
+    };
+
     // 1) Headline do dia
-    if (ctx.key === 'ter' && ws.eliminadoId) {
+    if (state.week === 1 && state.dayIndex === 0) {
+      tweets.push(tweet(fill(pickOne(TEMPLATES.first_day), { X: 'o' })));
+    } else if (ctx.key === 'ter' && ws.eliminadoId) {
       const out = state.players.find(x=>x.id===ws.eliminadoId);
       if (out) tweets.push(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })));
     } else if (ctx.key === 'dom' && (ws.paredaoIds || []).length === 3) {
@@ -6145,6 +6228,41 @@ const fmtName = (p) => escapeHtml(displayName(p));
         }
       }
     }
+
+    
+    // 1.6) Se teve Big Fone e alguém atendeu, comentários específicos
+    if (ws.bigFone?.triggered && ws.bigFone?.answeredById) {
+      const bfP = state.players.find(x => x.id === ws.bigFone.answeredById);
+      if (bfP) {
+        tweets.push(tweet(pickOne(TEMPLATES.bigfone)));
+        tweets.push(tweet(pickOne(TEMPLATES.bigfone_react)));
+      }
+    }
+
+    // 1.7) Shippagem: casal formado (crush recíproco) e crush unilateral
+    // Só comenta casal novo quando ele aparece pela primeira vez
+    const couples = mutualCrushPairs();
+    const snap = state.narrative?.prevSnap || {};
+    const coupleKey = couples.map(p=>[p[0].id,p[1].id].sort().join('-')).sort().join('|');
+    const prevCoupleKey = snap.coupleKey || '';
+    if (couples.length && coupleKey !== prevCoupleKey) {
+      const [A,B] = couples[rndInt(0, couples.length-1)];
+      const tag = shipTag(A,B);
+      tweets.push(tweet(fill(pickOne(TEMPLATES.couple), { A: fmtName(A), B: fmtName(B), SHIP: tag })));
+      if (Math.random() < 0.35) {
+        tweets.push(tweet(fill(pickOne(TEMPLATES.couple_anti), { SHIP: tag })));
+      }
+      snap.coupleKey = coupleKey;
+    } else {
+      // crush unilateral: aparece de vez em quando pra não encher
+      const unis = unilateralCrushPairs();
+      if (unis.length && Math.random() < 0.22) {
+        const [A,B] = unis[rndInt(0, unis.length-1)];
+        tweets.push(tweet(fill(pickOne(TEMPLATES.crush_unrec), { A: fmtName(A), B: fmtName(B), X: suf(A) })));
+      }
+    }
+    state.narrative = state.narrative || { daily: {}, prevSnap: {} };
+    state.narrative.prevSnap = snap;
 
     // 2) Top pop vs top rejeição
     const topPop = topPopRow?.p || null;
