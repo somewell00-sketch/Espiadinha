@@ -3573,7 +3573,7 @@ function doAnjo() {
     "pastor de calcinha",
     "sister hong",
     "et de varginha",
-    "loureiro josé",
+    "louro josé",
     "canário pistola",
     "churrasqueira a controle remoto",
     "boneco de posto",
@@ -6332,36 +6332,59 @@ function buildDailyComment(meta) {
     // 1) Headline do dia
     
 // Se uma eliminação acabou de acontecer, mostra reação mesmo que o jogo já tenha avançado o dia/semana.
+// IMPORTANTE: só marca shown=true se realmente conseguiu postar.
 if (state.lastEvent && state.lastEvent.type === "elimination" && !state.lastEvent.shown) {
   const le = state.lastEvent;
-  const out = state.players.find(x => x.id === le.eliminatedId);
+
+  // normaliza IDs (evita mismatch 12 vs "12")
+  const elimId = String(le.eliminatedId ?? "");
+  const out = state.players.find(x => String(x.id) === elimId);
+
+  let posted = false;
+
   if (out) {
     addTweet(tweet(fill(pickOne(TEMPLATES.headline_elim), { OUT: fmtName(out) })), true);
+    posted = true;
 
-    // métrica do paredão: maior porcentagem do eliminado (aprox)
-    const outPerc = (le.publicoPerc && le.publicoPerc[out.id]) ? le.publicoPerc[out.id] : null;
+    // porcentagem do eliminado: tenta pegar por chave string
+    const percMap = le.publicoPerc || {};
+    const outKey = String(out.id);
+    const outPercRaw = (percMap[outKey] != null) ? percMap[outKey] : percMap[out.id];
+    const outPerc = (typeof outPercRaw === "number") ? outPercRaw : (outPercRaw != null ? Number(outPercRaw) : null);
 
-    // heurísticas (sem depender de estruturas externas)
+    // heurísticas
     const hadStar = !!out?.status?.star || !!out?.status?.favPublic;
-    const highRej = (out?.attrs?.rejeicao ?? out?.status?.alvo ?? 0) >= 7 || (out?.status?.paredaoCount ?? 0) >= 2;
+    const highRej =
+      (out?.attrs?.rejeicao ?? out?.status?.alvo ?? 0) >= 7 ||
+      (out?.status?.paredaoCount ?? 0) >= 2;
 
-    // eliminação apertada: diferença < 3pp entre maior e segunda maior
+    // eliminação apertada: diferença < 3pp entre maior e segunda maior (do map inteiro do paredão)
     let close = false;
     try {
-      const vals = Object.values(le.publicoPerc || {}).map(Number).filter(v => !Number.isNaN(v)).sort((a,b)=>b-a);
-      if (vals.length >= 2 && (vals[0] - vals[1]) < 3) close = true;
-    } catch(e) {}
+      const vals = Object.values(percMap)
+        .map(Number)
+        .filter(v => Number.isFinite(v))
+        .sort((a, b) => b - a);
 
-    // rejeição alta: > 70%
+      if (vals.length >= 2 && (vals[0] - vals[1]) < 3) close = true;
+    } catch (e) {}
+
+    // rejeição alta / recorde: >= 70%
     const record = (typeof outPerc === "number") && outPerc >= 70;
 
     if (highRej) addTweet(tweet(pickOne(TEMPLATES.elim_foitarde)), true);
     if (hadStar) addTweet(tweet(pickOne(TEMPLATES.elim_robbed)), true);
     if (close) addTweet(tweet(pickOne(TEMPLATES.elim_close)), true);
     if (record) addTweet(tweet(pickOne(TEMPLATES.elim_record)), true);
-    if (!highRej && !hadStar && !record) addTweet(tweet(pickOne(TEMPLATES.elim_saudade)), true);
+
+    if (!highRej && !hadStar && !record) {
+      addTweet(tweet(pickOne(TEMPLATES.elim_saudade)), true);
+    }
   }
-  state.lastEvent.shown = true;
+
+  // Só marca como mostrado se realmente postou algo.
+  if (posted) state.lastEvent.shown = true;
+
 }
 
 if (state.week === 1 && state.dayIndex === 0) {
