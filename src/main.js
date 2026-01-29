@@ -1062,7 +1062,7 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
     "fernanda": ["Fê", "Nanda", "Nandinha", "Fofão"],
     "gabriela": ["Gabi", "Bela", "Gabs", "Gabizinha"],
     "larissa": ["Lari", "Lá", "Laris"],
-    "renata": ["Rê", "Nata", "Renatinha", "Renatin"),
+    "renata": ["Rê", "Nata", "Renatinha", "Renatin],
     "patricia": ["Paty", "Pati", "Patricinha", "Pa"],
     "daniela": ["Dani", "Dany", "Danizinha"],
     "carolina": ["Carol", "Cacau", "Lina", "Carolzinha"],
