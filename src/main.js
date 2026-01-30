@@ -38,6 +38,30 @@ const POP_VOTE = {
   const rnd = (a, b) => a + Math.random() * (b - a);
   const rndInt = (a, b) => Math.floor(rnd(a, b + 1));
 
+  /* ===== Idades ===== */
+  // Regra do elenco:
+  // - ~80% entre 18 e 40
+  // - ~20% com idades variadas (até 75)
+  function generateAge() {
+    if (Math.random() < 0.80) return rndInt(18, 40);
+
+    // "variadas": puxa mais para acima de 40, mas ainda permite alguns 18..40
+    if (Math.random() < 0.65) return rndInt(41, 75);
+    return rndInt(18, 40);
+  }
+
+  function normalizeAge(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    return clamp(Math.round(n), 18, 75);
+  }
+
+  function ensurePlayerAge(p) {
+    if (!p) return;
+    const a = normalizeAge(p.age);
+    p.age = (a == null) ? generateAge() : a;
+  }
+
   // compat: util simples usado por algumas dinâmicas (ex.: Sincerão)
   function randomPick(arr) {
     if (!Array.isArray(arr) || arr.length === 0) return null;
@@ -624,8 +648,8 @@ function statusLabel(p) {
     return clamp(v, 0, 10);
   }
 
-  // 0..1: quao permitido e virar crush/romance com esse alvo, do ponto de vista do source
-  function attraction01(source, target) {
+  // 0..1: compatibilidade de atração considerando sexualidade
+  function sexuality01(source, target) {
     if (!source || !target) return 1;
     const sg = source.gender;
     const tg = target.gender;
@@ -639,8 +663,29 @@ function statusLabel(p) {
     return same ? gay : (1 - gay);
   }
 
+  // 0..1: afinidade por idade (quanto mais distante, mais difícil virar crush)
+  function ageAffinity01(source, target) {
+    const a = normalizeAge(source?.age);
+    const b = normalizeAge(target?.age);
+    if (a == null || b == null) return 1;
+    const d = Math.abs(a - b);
+    // degraus simples e previsíveis (sem bloquear totalmente)
+    if (d <= 3) return 1.00;
+    if (d <= 8) return 0.85;
+    if (d <= 15) return 0.60;
+    if (d <= 25) return 0.35;
+    return 0.20;
+  }
+
+  // 0..1: atração total (sexualidade x idade)
+  function attraction01(source, target) {
+    return clamp(sexuality01(source, target) * ageAffinity01(source, target), 0, 1);
+  }
+
+  // Regra de permissão: baseada apenas na sexualidade.
+  // (A idade entra como dificuldade, não como bloqueio.)
   function crushAllowed(source, target) {
-    return attraction01(source, target) > 0.02;
+    return sexuality01(source, target) > 0.02;
   }
 
   function sexualityEmoji(p) {
@@ -859,6 +904,8 @@ parsed.weekState.xepaIds = Array.isArray(parsed.weekState.xepaIds) ? parsed.week
         if (p.firstName === undefined || p.firstName === null) p.firstName = "Sem";
         if (p.lastName === undefined || p.lastName === null) p.lastName = "";
         if (!p.gender) p.gender = "O"; // M, F, O
+        // idade (novo): backfill para saves antigos
+        ensurePlayerAge(p);
         if (p.nickname === undefined || p.nickname === null) p.nickname = "";
         if (p._autoNick === undefined || p._autoNick === null) p._autoNick = "";
         if (p.baseName === undefined || p.baseName === null) p.baseName = "";
@@ -956,11 +1003,12 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
   }
 
   function makePlayer(firstName = "Jogador", lastName = "", gender = "O") {
-    return {
+    const p = {
       id: (window.crypto?.randomUUID?.() ?? ("id_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16))),
       firstName,
       lastName,
       gender, // "M" | "F" | "O"
+      age: generateAge(),
       nickname: "", // apelido manual (opcional)
       _autoNick: "", // apelido gerado (estável)
       attrs: {
@@ -976,6 +1024,8 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
       status: { alive: true, pop: 5.0, alvo: 0.0, strikes: 0, leaderCount: 0, anjoCount: 0, paredaoCount: 0, popWeek: {}, favPublic: false, room: null, weeksSinceWin: 0, weeksSinceParedao: 0, weeksSinceEvent: 0, popPrev: 5.0, popStableStreak: 0, decisionStreak: 0, didSomethingThisWeek: false, madeDecisionThisWeek: false, wonSomethingThisWeek: false, planta: false, plantStreak: 0, excluido: false, excluidoStreak: 0, narr: { invisDays: 0, pressureDays: 0, lastLabel: "" } },
       secret: { gayScore: (gender === 'M' || gender === 'F') ? sampleGayScore() : null }
     };
+    ensurePlayerAge(p);
+    return p;
   }
 
   const FIRST_NAMES = {
@@ -5211,6 +5261,8 @@ async function loadPresetJson(path) {
     if (typeof out.status.alive !== "boolean") out.status.alive = true;
     if (!out.attrs || typeof out.attrs !== "object") out.attrs = {};
     if (!out.firstName && !out.name) out.name = out.name || "Participante";
+    // Idade (novo): backfill para imports/presets antigos
+    ensurePlayerAge(out);
     return out;
   });
 
@@ -6939,6 +6991,7 @@ const html = tweets.map((x) => `
     // Backfill gayScore (atributo oculto)
     for (const p of (state.players || [])) {
       if (!p) continue;
+      ensurePlayerAge(p);
       if (!p.secret) p.secret = {};
       if ((p.gender === 'M' || p.gender === 'F') && !Number.isFinite(p.secret.gayScore)) {
         p.secret.gayScore = sampleGayScore();
@@ -7542,6 +7595,16 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
     gender.value = p.gender || "O";
     gender.disabled = !p.status.alive || state.gameOver;
 
+    const age = document.createElement("input");
+    age.className = "age";
+    age.type = "number";
+    age.min = "18";
+    age.max = "75";
+    age.step = "1";
+    age.placeholder = "Idade";
+    age.value = String(normalizeAge(p.age) ?? "");
+    age.disabled = !p.status.alive || state.gameOver;
+
     // salvar sem render a cada tecla
     first.addEventListener("input", () => {
       p.firstName = first.value.trim() || "Sem";
@@ -7557,6 +7620,19 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
       render();
     });
 
+    age.addEventListener("input", () => {
+      const v = normalizeAge(age.value);
+      if (v == null) return;
+      p.age = v;
+      save();
+    });
+    age.addEventListener("blur", () => {
+      ensurePlayerAge(p);
+      age.value = String(normalizeAge(p.age) ?? "");
+      render();
+    });
+    age.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); age.blur(); }});
+
     // render quando termina
     first.addEventListener("blur", () => { if (!String(p.nickname ?? "").trim()) p._autoNick = ""; render(); });
     nick.addEventListener("blur", () => render());
@@ -7569,6 +7645,7 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
     nameWrap.appendChild(nick);
     nameWrap.appendChild(last);
     nameWrap.appendChild(gender);
+    nameWrap.appendChild(age);
 
     const badgeWrap = document.createElement("div");
     badgeWrap.className = "badges";
