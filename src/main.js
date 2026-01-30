@@ -78,6 +78,9 @@ const POP_VOTE = {
       v: NARRATIVE_SCHEMA_VERSION,
       createdAtRound: round,
       timeline: [],
+      // histórico por semana (pra diferenciar favorito relâmpago vs constante etc.)
+      starHistory: [],
+      plantHistory: [],
       relations: {},
       reputation: {
         strategist: 0,
@@ -99,7 +102,9 @@ const POP_VOTE = {
         votesReceived: 0,
         betrayalsDone: 0,
         betrayalsSuffered: 0,
-        biggestMoveRound: null
+        biggestMoveRound: null,
+        rejectionPeak: null,
+        rejectionRound: null
       }
     };
   }
@@ -279,7 +284,18 @@ const POP_VOTE = {
     if (type === 'vote_received') st.votesReceived += 1;
     if (type === 'betrayal') st.betrayalsDone += 1;
     if (type === 'eliminated') {
-      // nada adicional aqui; elim já existe no status
+      // guarda pico de rejeição (% no paredão) se disponível
+      try {
+        const perc = (meta?.refs?.publicoPerc && typeof meta.refs.publicoPerc === 'object') ? meta.refs.publicoPerc : null;
+        const v = perc ? Number(perc[String(A.id)] ?? 0) : NaN;
+        if (Number.isFinite(v)) {
+          const cur = Number(A.narrative.stats.rejectionPeak ?? -1);
+          if (!Number.isFinite(cur) || v > cur) {
+            A.narrative.stats.rejectionPeak = v;
+            A.narrative.stats.rejectionRound = R;
+          }
+        }
+      } catch { /* ignora */ }
     }
 
     // rep + momentum + themes
@@ -358,6 +374,55 @@ const POP_VOTE = {
       "O Bom de Conversa",
       "Costurando Alianças"
     ],
+
+    // ⭐ Torcida (favorito é sobre fandom, não só popularidade)
+    fav_long: [
+      "Queridinho do Público",
+      "Fandom Blindado",
+      "Favoritão da Temporada",
+      "Intocável",
+      "O Nome da Torcida"
+    ],
+    fav_flash: [
+      "Febre Relâmpago",
+      "Hype do Dia",
+      "Assunto do Twitter",
+      "Brilho Passageiro"
+    ],
+    fav_late: [
+      "Virada Popular",
+      "Cresceu na Hora Certa",
+      "Caminho de Campeão",
+      "Explodiu no Fim"
+    ],
+    fav_fallen: [
+      "Perdeu a Torcida",
+      "Do Céu ao Paredão",
+      "Caiu em Desgraça",
+      "Fandom Virou"
+    ],
+    fav_mixed: [
+      "Fandom Intermitente",
+      "Amado e Odiado",
+      "Divide Torcidas",
+      "Efeito Montanha-Russa"
+    ],
+
+    plant: [
+      "Planta Decorativa",
+      "Turista da Casa",
+      "Sempre Fora do Foco",
+      "Passou em Branco",
+      "Vivo(a) no Modo Avião"
+    ],
+
+    rejected: [
+      "Rejeição Pesada",
+      "O Alvo do Brasil",
+      "Cancelado(a)",
+      "Saiu Rejeitado(a)",
+      "O Nome Que a Casa Queria Fora"
+    ],
     chaos: [
       "Imprevisível",
       "Bomba-Relógio",
@@ -398,10 +463,21 @@ const POP_VOTE = {
     const stats = n.stats || {};
     const id = String(p?.id ?? '');
 
+    // sinais fortes fora de reputação: ⭐ torcida, planta e rejeição
+    const favKind = (typeof favoriteKindFromHistory === 'function') ? favoriteKindFromHistory(p, totalRounds) : null;
+    const isPlant = !!(p?.status?.planta && Number(p?.status?.plantStreak ?? 0) >= 2);
+    const rejectionPct = Number(stats?.rejectionPeak ?? NaN);
+
     const score = (k) => Number(rep?.[k] ?? 0);
 
     // Eixos (prioridade pelo impacto narrativo)
     const axes = [];
+
+    // (0) arcos mais "especiais" (aparecem pouco, mas quando aparecem definem tudo)
+    if (Number.isFinite(rejectionPct) && rejectionPct >= 55) axes.push('rejected');
+    if (favKind) axes.push(favKind);
+    if (isPlant) axes.push('plant');
+
     if (score('underdog') >= 7 || Number(themes?.survivor?.score ?? 0) >= 2 || Number(n?.streaks?.danger ?? 0) >= 2) axes.push('survivor');
     if (score('social') >= 7) axes.push('social');
     if (score('compBeast') >= 7 || Number(n?.streaks?.win ?? 0) >= 2) axes.push('comp');
@@ -2510,6 +2586,63 @@ function currentFavorites() {
     }
   }
 
+  // Registra ⭐ por semana no schema narrativo (para títulos/arc mais inteligentes)
+  function recordStarHistory(p, round, on) {
+    if (!p) return;
+    const R = Number(round ?? state.week ?? 1);
+    initNarrativeForPlayer(p, R);
+    p.narrative.starHistory = Array.isArray(p.narrative.starHistory) ? p.narrative.starHistory : [];
+    const prev = p.narrative.starHistory[p.narrative.starHistory.length - 1];
+    if (prev && Number(prev.round) === R && !!prev.on === !!on) return;
+    p.narrative.starHistory.push({ round: R, on: !!on });
+    if (p.narrative.starHistory.length > 120) p.narrative.starHistory = p.narrative.starHistory.slice(-120);
+
+    // timeline leve (não precisa sempre, mas ajuda no arco final)
+    if (on) {
+      pushTimelineEvent(p, { round: R, type: 'fav_on', text: `${simpleName(p)} ganhou torcida e virou favorito do público.`, refs: {}, weight: 2 });
+      tagTheme(p, 'public_favorite', 2, R, p.narrative.timeline.length - 1);
+      adjustReputation(p, { social: 1 });
+    } else {
+      pushTimelineEvent(p, { round: R, type: 'fav_off', text: `${simpleName(p)} perdeu força de torcida e deixou de ser favorito.`, refs: {}, weight: 1 });
+      tagTheme(p, 'public_favorite', -1, R, p.narrative.timeline.length - 1);
+    }
+  }
+
+  // Classifica padrão de ⭐ (relâmpago/constante/no fim/caiu/intermitente)
+  function favoriteKindFromHistory(p, totalRounds) {
+    const n = p?.narrative;
+    const hist = Array.isArray(n?.starHistory) ? n.starHistory : [];
+    if (!hist.length) return null;
+
+    const total = Math.max(1, Number(totalRounds ?? state.week ?? 1));
+    const onSet = new Set(hist.filter(x => x && x.on).map(x => Number(x.round)));
+    const rounds = [];
+    for (let r = 1; r <= total; r++) rounds.push(r);
+
+    const hasStar = (r) => onSet.has(r);
+    const starCount = rounds.filter(hasStar).length;
+    if (!starCount) return null;
+
+    const maxStreak = (() => {
+      let best = 0, cur = 0;
+      for (const r of rounds) {
+        if (hasStar(r)) { cur++; best = Math.max(best, cur); } else cur = 0;
+      }
+      return best;
+    })();
+
+    const earlyW = Math.min(3, total);
+    const endW = Math.min(3, total);
+    const starEarly = rounds.slice(0, earlyW).filter(hasStar).length;
+    const starEnd = rounds.slice(-endW).filter(hasStar).length;
+
+    if (maxStreak >= 3) return 'fav_long';
+    if (starEnd >= 2 && starEarly === 0) return 'fav_late';
+    if (starEarly >= 2 && starEnd === 0) return 'fav_fallen';
+    if (starCount === 1) return 'fav_flash';
+    return 'fav_mixed';
+  }
+
   function clearPublicFavorites() {
     state.publicFavoriteIds = [];
     syncFavFlags();
@@ -2520,6 +2653,8 @@ function currentFavorites() {
     state.publicFavoriteIds = Array.isArray(state.publicFavoriteIds) ? state.publicFavoriteIds : [];
     if (!state.publicFavoriteIds.includes(p.id)) state.publicFavoriteIds.push(p.id);
     syncFavFlags();
+    // registra ⭐ (torcida) no histórico narrativo
+    try { recordStarHistory(p, state.week, true); } catch { /* ignora */ }
   }
 
   function removePublicFavorite(pOrId) {
@@ -2528,6 +2663,11 @@ function currentFavorites() {
     state.publicFavoriteIds = Array.isArray(state.publicFavoriteIds) ? state.publicFavoriteIds : [];
     state.publicFavoriteIds = state.publicFavoriteIds.filter((x) => x !== id);
     syncFavFlags();
+    // registra perda de ⭐ no histórico narrativo
+    try {
+      const p = state.players.find(x => x.id === id);
+      if (p) recordStarHistory(p, state.week, false);
+    } catch { /* ignora */ }
   }
 
   function isPublicFavorite(p) {
@@ -7982,6 +8122,24 @@ const html = tweets.map((x) => `
     // reseta flags semanais
     p.status.didSomethingThisWeek = false;
     p.status.madeDecisionThisWeek = false;
+
+    // narrativa: registrar mudança de status de planta
+    try {
+      const R = Number(state.week ?? 1);
+      initNarrativeForPlayer(p, R);
+      p.narrative.plantHistory = Array.isArray(p.narrative.plantHistory) ? p.narrative.plantHistory : [];
+      p.narrative.plantHistory.push({ round: R, on: !!p.status.planta });
+      if (p.narrative.plantHistory.length > 120) p.narrative.plantHistory = p.narrative.plantHistory.slice(-120);
+
+      if (changed && !prev && p.status.planta) {
+        pushTimelineEvent(p, { round: R, type: 'plant_on', text: `${simpleName(p)} virou planta e passou despercebid${g(p,{M:'o',F:'a',O:'e'})}.`, refs: {}, weight: 2 });
+        tagTheme(p, 'planta', 2, R, p.narrative.timeline.length - 1);
+      }
+      if (changed && prev && !p.status.planta) {
+        pushTimelineEvent(p, { round: R, type: 'plant_off', text: `${simpleName(p)} deixou de ser planta e voltou pro jogo.`, refs: {}, weight: 2 });
+        tagTheme(p, 'phoenix', 1, R, p.narrative.timeline.length - 1);
+      }
+    } catch { /* ignora */ }
 
     return { changed, prev, now: !!p.status.planta };
   }
