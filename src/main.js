@@ -514,20 +514,9 @@ const POP_VOTE = {
     const themePairs = Object.entries(p.narrative.themes || {}).map(([id, v]) => ({ id, score: Number(v?.score ?? 0) }));
     themePairs.sort((a,b)=>b.score-a.score);
 
-    const pillars = [
-      { id: 'strategist', v: Number(rep.strategist ?? 0), label: 'Estrategista' },
-      { id: 'underdog', v: Number(rep.underdog ?? 0), label: 'Sobrevivente' },
-      { id: 'compBeast', v: Number(rep.compBeast ?? 0), label: 'Competidor' },
-      { id: 'villain', v: Number(rep.villain ?? 0), label: 'Vilão' },
-      { id: 'loyal', v: Number(rep.loyal ?? 0), label: 'Leal' },
-      { id: 'social', v: Number(rep.social ?? 0), label: 'Social' }
-    ].sort((a,b)=>b.v-a.v);
-
-    const titleBits = [];
-    if (pillars[0]?.v > 0) titleBits.push(pillars[0].label);
-    if (pillars[1]?.v > 0 && pillars[1].label !== titleBits[0]) titleBits.push(pillars[1].label);
-    if (!titleBits.length) titleBits.push('Figura imprevisível');
-    const title = titleBits.slice(0,2).join(' e ');
+    const arcTitle = buildArcTitleFromNarrative(p.narrative, p.id);
+    const title = arcTitle.title;
+    const subtitle = arcTitle.subtitle;
 
     // relacionamentos (a partir do schema novo; fallback: relGet)
     const rels = state.players
