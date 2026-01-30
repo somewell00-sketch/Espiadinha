@@ -168,6 +168,17 @@ const POP_VOTE = {
     return p.narrative.timeline.length - 1;
   }
 
+  function setTimelineEventWeight(p, idx, weight) {
+    if (!p || !p.narrative || !Array.isArray(p.narrative.timeline)) return;
+    const i = Number(idx);
+    if (!Number.isFinite(i) || i < 0 || i >= p.narrative.timeline.length) return;
+    p.narrative.timeline[i].weight = clamp(Number(weight ?? p.narrative.timeline[i].weight ?? 1), 1, 3);
+    if (p.narrative.timeline[i].weight >= 3) {
+      const R = Number(p.narrative.timeline[i].round ?? state?.week ?? 1);
+      if (p.narrative?.stats?.biggestMoveRound == null) p.narrative.stats.biggestMoveRound = R;
+    }
+  }
+
   function adjustReputation(p, deltas = {}) {
     if (!p) return;
     initNarrativeForPlayer(p, state?.week ?? 1);
@@ -210,14 +221,19 @@ const POP_VOTE = {
 
     const A = actor;
     const B = target;
-    const aName = displayName(A);
-    const bName = B ? displayName(B) : '';
+    // Para textos narrativos, evita emojis de status (★/👹/🪴 etc.)
+    const aName = simpleName(A);
+    const bName = B ? simpleName(B) : '';
 
     const makeText = () => {
       switch (type) {
         case 'win_hoh': return `${aName} virou Líder na semana ${R}.`;
         case 'win_veto': return `${aName} ganhou a Prova do Anjo na semana ${R}.`;
         case 'nomination': return B ? `${aName} colocou ${bName} no Paredão.` : `${aName} indicou alguém ao Paredão.`;
+        case 'house_target': return `${aName} virou alvo da casa e recebeu muitos votos.`;
+        case 'close_call': return `${aName} se salvou no detalhe no Paredão.`;
+        case 'pop_surge': return `${aName} subiu de popularidade e ganhou destaque.`;
+        case 'pop_drop': return `${aName} perdeu popularidade e virou pauta.`;
         case 'danger': return `${aName} ficou em risco no Paredão.`;
         case 'save': return B ? `${aName} salvou ${bName} do Paredão.` : `${aName} escapou do Paredão.`;
         case 'vote_cast': return B ? `${aName} votou em ${bName}.` : `${aName} votou.`;
@@ -294,6 +310,8 @@ const POP_VOTE = {
       const cur = A.narrative.stats.biggestMoveRound;
       if (cur == null) A.narrative.stats.biggestMoveRound = R;
     }
+
+    return idxA;
   }
 
   function buildPlayerArc(playerId, totalRounds) {
@@ -302,20 +320,61 @@ const POP_VOTE = {
     const total = Math.max(1, Number(totalRounds || state.week || 1));
     const tline = (p.narrative.timeline || []).slice();
 
-    const phases = [
-      { id: 'Early', a: 1, b: Math.ceil(total * 0.25) },
-      { id: 'Mid', a: Math.ceil(total * 0.25) + 1, b: Math.ceil(total * 0.50) },
-      { id: 'Late', a: Math.ceil(total * 0.50) + 1, b: Math.ceil(total * 0.75) },
-      { id: 'Endgame', a: Math.ceil(total * 0.75) + 1, b: total }
+        const phases = [
+      { id: 'Início', a: 1, b: Math.ceil(total * 0.25) },
+      { id: 'Meio', a: Math.ceil(total * 0.25) + 1, b: Math.ceil(total * 0.50) },
+      { id: 'Fim', a: Math.ceil(total * 0.50) + 1, b: Math.ceil(total * 0.75) },
+      { id: 'Reta final', a: Math.ceil(total * 0.75) + 1, b: total }
     ];
+
+    const escapeRegExp = (x) => String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const stripSelfName = (txt) => {
+      const name = simpleName(p);
+      const re = new RegExp('^' + escapeRegExp(name) + '\\s+', 'i');
+      return String(txt || '').replace(re, '').trim();
+    };
+
+    const listUniqueTargets = (evs) => {
+      const ids = [];
+      for (const e of evs) {
+        const tid = e?.refs?.targetId;
+        if (tid && !ids.includes(tid)) ids.push(tid);
+        if (ids.length >= 2) break;
+      }
+      return ids.map((id) => {
+        const q = state.players.find(x => x.id === id);
+        return q ? simpleName(q) : 'alguém';
+      });
+    };
 
     const pickPhaseLine = (ph) => {
       const evs = tline.filter(e => e.round >= ph.a && e.round <= ph.b);
-      if (!evs.length) return `Sem grandes destaques na fase ${ph.id}.`;
-      // prioriza weight
-      evs.sort((a,b) => (b.weight - a.weight));
-      const top = evs[0];
-      return top.text;
+      if (!evs.length) return `Na fase ${ph.id}, sem grandes viradas.`;
+
+      const types = {};
+      for (const e of evs) types[e.type] = (types[e.type] || 0) + 1;
+
+      const parts = [];
+      if (types.win_hoh) parts.push('conquistou a Liderança');
+      if (types.win_veto) parts.push('levou o Anjo');
+      if (types.nomination) {
+        const tgs = listUniqueTargets(evs.filter(e => e.type === 'nomination'));
+        if (tgs.length) parts.push(`mirou ${tgs.join(' e ')} no Paredão`);
+        else parts.push('fez uma indicação ao Paredão');
+      }
+      if (types.conflict) parts.push('se envolveu em treta');
+      if (types.betrayal) parts.push('quebrou confiança no voto');
+      if (types.danger) parts.push('ficou em risco');
+      if (types.eviction_survived) parts.push('sobreviveu ao Paredão');
+
+      // Se tudo ficou genérico, usa o evento mais pesado e remove o nome do próprio jogador.
+      const top = evs.slice().sort((a,b) => (b.weight - a.weight) || (b.round - a.round))[0];
+      if (!parts.length) return stripSelfName(top?.text || '');
+
+      // Monta uma frase coerente (sem repetir o nome do jogador)
+      if (parts.length === 1) return `Nesta fase, ${parts[0]}.`;
+      if (parts.length === 2) return `Nesta fase, ${parts[0]} e ${parts[1]}.`;
+      return `Nesta fase, ${parts.slice(0,2).join(', ')} e ${parts[2]}.`;
     };
 
     const rep = p.narrative.reputation || {};
@@ -335,7 +394,7 @@ const POP_VOTE = {
     if (pillars[0]?.v > 0) titleBits.push(pillars[0].label);
     if (pillars[1]?.v > 0 && pillars[1].label !== titleBits[0]) titleBits.push(pillars[1].label);
     if (!titleBits.length) titleBits.push('Figura imprevisível');
-    const title = titleBits.slice(0,2).join(' ');
+    const title = titleBits.slice(0,2).join(' e ');
 
     // relacionamentos (a partir do schema novo; fallback: relGet)
     const rels = state.players
@@ -351,19 +410,59 @@ const POP_VOTE = {
     const closestAlly = rels.slice().sort((a,b)=>b.bond-a.bond)[0] || null;
     const biggestRival = rels.slice().sort((a,b)=>b.rivalry-a.rivalry)[0] || null;
 
-    const definingMoments = tline
+        // Momentos marcantes: evita repetição e tenta variar tipo (prova, treta, risco, movimento)
+    const sorted = tline
       .slice()
-      .sort((a,b)=> (b.weight - a.weight) || (b.round - a.round))
-      .slice(0, 6);
+      .sort((a,b)=> (b.weight - a.weight) || (b.round - a.round));
 
-    const logline = (() => {
-      const avgBond = rels.length ? (rels.reduce((s,x)=>s+x.bond,0) / rels.length) : 0;
+    const typeBucket = (t) => {
+      if (t === 'win_hoh' || t === 'win_veto') return 'win';
+      if (t === 'conflict' || t === 'betrayal') return 'heat';
+      if (t === 'eviction_survived' || t === 'danger') return 'risk';
+      if (t === 'nomination') return 'move';
+      return 'other';
+    };
+
+    const definingMoments = [];
+    const seen = new Set();
+    const usedBuckets = new Set();
+
+    for (const e of sorted) {
+      const key = `${e.type}|${String(e.refs?.targetId ?? '')}|${e.round}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const bucket = typeBucket(e.type);
+      // primeiro passe: prioriza buckets ainda não usados
+      if (!usedBuckets.has(bucket) || definingMoments.length < 3) {
+        definingMoments.push(Object.assign({}, e, { text: stripSelfName(e.text) }));
+        usedBuckets.add(bucket);
+      } else if (definingMoments.length < 6) {
+        definingMoments.push(Object.assign({}, e, { text: stripSelfName(e.text) }));
+      }
+
+      if (definingMoments.length >= 6) break;
+    }
+
+        const logline = (() => {
+      const avgBond = rels.length ? (rels.reduce((sum,x)=>sum+x.bond,0) / rels.length) : 0;
       const socialStatus = avgBond >= 65 ? 'muito bem conectad' : (avgBond >= 52 ? 'bem conectad' : 'mais isolad');
-      const mainConflict = (rep.underdog ?? 0) > 6 ? 'pressão constante' : ((rep.villain ?? 0) > 6 ? 'muitas rivalidades' : 'um jogo instável');
-      const keyMoment = definingMoments[0]?.text ? definingMoments[0].text : `um momento forte na semana ${p.narrative.stats.biggestMoveRound ?? '—'}`;
-      return `Começou ${socialStatus}o, encarou ${mainConflict} e se definiu por ${keyMoment.toLowerCase()}`;
-    })();
 
+      // Ajuste simples de gênero (o/a/e) para palavras que terminam em "ad"
+      const sufG = g(p, { M: 'o', F: 'a', O: 'e' });
+      const socialTxt = socialStatus + sufG;
+
+      const mainConflict = (rep.underdog ?? 0) > 6
+        ? 'muita pressão'
+        : ((rep.villain ?? 0) > 6 ? 'muitos atritos' : 'um jogo instável');
+
+      const identity = title.toLowerCase();
+
+      const key = definingMoments[0]?.text ? String(definingMoments[0].text) : null;
+      const keyMoment = key ? key.replace(/\.$/, '') : `um momento forte na semana ${p.narrative.stats.biggestMoveRound ?? '—'}`;
+
+      return `Começou ${socialTxt}, enfrentou ${mainConflict} e se consolidou como ${identity}, com destaque para ${keyMoment.toLowerCase()}.`;
+    })();
     return {
       playerId: p.id,
       title,
@@ -391,17 +490,36 @@ const POP_VOTE = {
     // vitórias
     if (!prevWS.leaderId && ws.leaderId) applyNarrativeEvent({ type: 'win_hoh', actorId: ws.leaderId, round });
     if (!prevWS.anjoId && ws.anjoId) applyNarrativeEvent({ type: 'win_veto', actorId: ws.anjoId, round });
+    // indicações (com pesos dinâmicos)
+    ws._narrNomIdx = ws._narrNomIdx || {};
+    const repeatCount = (actor, targetId) => {
+      try {
+        const tl = actor?.narrative?.timeline || [];
+        const R = round;
+        return tl.filter(e => e?.type === 'nomination' && String(e?.refs?.targetId) === String(targetId) && (R - Number(e.round || R)) <= 6).length;
+      } catch { return 0; }
+    };
 
-    // indicações
     if (!prevWS.indicadoLiderId && ws.indicadoLiderId && ws.leaderId) {
-      applyNarrativeEvent({ type: 'nomination', actorId: ws.leaderId, targetId: ws.indicadoLiderId, round, meta: { weight: 2 } });
+      const actor = state.players.find(p => p.id === ws.leaderId);
+      const rep = actor ? repeatCount(actor, ws.indicadoLiderId) : 0;
+      const w = rep >= 1 ? 1 : 2;
+      const idx = applyNarrativeEvent({ type: 'nomination', actorId: ws.leaderId, targetId: ws.indicadoLiderId, round, meta: { weight: w, refs: { nominationKind: 'lider', repeat: rep } } });
+      if (idx != null) ws._narrNomIdx[String(ws.indicadoLiderId)] = { actorId: ws.leaderId, idx, kind: 'lider' };
     }
+
     if (!prevWS.contragolpeId && ws.contragolpeId) {
-      // se houver contragolpe, a autoria narrativa é de quem foi indicado pelo líder (quando existir)
-      const actor = ws.indicadoLiderId || ws.leaderId;
-      if (actor) applyNarrativeEvent({ type: 'nomination', actorId: actor, targetId: ws.contragolpeId, round, meta: { weight: 1 } });
+      const actorId = ws.indicadoLiderId || ws.leaderId;
+      if (actorId) {
+        const actor = state.players.find(p => p.id === actorId);
+        const rep = actor ? repeatCount(actor, ws.contragolpeId) : 0;
+        const w = rep >= 1 ? 1 : 2;
+        const idx = applyNarrativeEvent({ type: 'nomination', actorId, targetId: ws.contragolpeId, round, meta: { weight: w, refs: { nominationKind: 'contragolpe', repeat: rep } } });
+        if (idx != null) ws._narrNomIdx[String(ws.contragolpeId)] = { actorId, idx, kind: 'contragolpe' };
+      }
     }
-    // votos da casa: conta como "receber voto" + "votar"
+
+    // votos da casa: conta como "receber voto" + "votar" e detecta traição/rompimento
     const prevVotes = Array.isArray(prevWS.houseVotes) ? prevWS.houseVotes : [];
     const nowVotes = Array.isArray(ws.houseVotes) ? ws.houseVotes : [];
     if (nowVotes.length > prevVotes.length) {
@@ -409,11 +527,51 @@ const POP_VOTE = {
       for (const v of added) {
         if (!v) continue;
         if (v.voterId && v.targetId) {
-          applyNarrativeEvent({ type: 'vote_cast', actorId: v.voterId, targetId: v.targetId, round });
-          applyNarrativeEvent({ type: 'vote_received', actorId: v.targetId, targetId: v.voterId, round });
+          applyNarrativeEvent({ type: 'vote_cast', actorId: v.voterId, targetId: v.targetId, round, meta: { weight: 1 } });
+          applyNarrativeEvent({ type: 'vote_received', actorId: v.targetId, targetId: v.voterId, round, meta: { weight: 1 } });
+
+          // rompeu com aliado: voto contra alguém com laço forte
+          try {
+            const voter = state.players.find(p => p.id === v.voterId);
+            const target = state.players.find(p => p.id === v.targetId);
+            if (voter && target) {
+              const r = voter.narrative?.relations?.[target.id] || getRelationObj(voter, target.id);
+              const bond = Number(r?.bond ?? 50);
+              const trust = Number(r?.trust ?? 50);
+              const key = `${voter.id}->${target.id}`;
+              ws._narrBreaks = ws._narrBreaks || {};
+              if (!ws._narrBreaks[key] && bond >= 72 && trust >= 60) {
+                ws._narrBreaks[key] = true;
+                applyNarrativeEvent({ type: 'betrayal', actorId: voter.id, targetId: target.id, round, meta: { weight: 2, refs: { why: 'voto_contra_aliado' } } });
+              }
+            }
+          } catch { /* ignora */ }
         }
       }
+
+      // "virou alvo da casa" (quando alguém concentra muitos votos)
+      try {
+        ws._narrTargeted = Array.isArray(ws._narrTargeted) ? ws._narrTargeted : [];
+        const tally = {};
+        for (const v of nowVotes) {
+          const tid = String(v?.targetId || '');
+          if (!tid) continue;
+          tally[tid] = (tally[tid] || 0) + 1;
+        }
+        const aliveN = alivePlayers().length;
+        const threshold = Math.max(2, Math.ceil(aliveN * 0.25));
+        let max = 0, maxId = null;
+        for (const [id, n] of Object.entries(tally)) {
+          if (n > max) { max = n; maxId = id; }
+        }
+        if (maxId && max >= threshold && !ws._narrTargeted.includes(maxId)) {
+          ws._narrTargeted.push(maxId);
+          applyNarrativeEvent({ type: 'house_target', actorId: maxId, round, meta: { weight: 2, refs: { votes: max } } });
+        }
+      } catch { /* ignora */ }
     }
+
+    // paredão (risco)
 
     // paredão (risco)
     const prevP = new Set((prevWS.paredaoIds || []).map(String));
@@ -426,49 +584,313 @@ const POP_VOTE = {
     if (!prevWS.bigFight && ws.bigFight && ws.bigFight.aggressorId && ws.bigFight.targetId) {
       applyNarrativeEvent({ type: 'conflict', actorId: ws.bigFight.aggressorId, targetId: ws.bigFight.targetId, round, meta: { weight: 2 } });
     }
-
     // eliminação
     if (!prevWS.eliminadoId && ws.eliminadoId) {
       const outId = ws.eliminadoId;
+
+      // (A) Indicação que elimina: sobe peso pra 3 e marca como maior movimento
+      try {
+        const key = String(outId);
+        const info = ws._narrNomIdx?.[key] || null;
+        if (info && info.actorId) {
+          const actor = state.players.find(p => p.id === info.actorId);
+          if (actor && Number.isFinite(info.idx)) {
+            setTimelineEventWeight(actor, info.idx, 3);
+            adjustReputation(actor, { strategist: 2 });
+            bumpMomentum(actor, 1);
+            tagTheme(actor, 'mastermind', 2, round, info.idx);
+          }
+        }
+      } catch { /* ignora */ }
+
       applyNarrativeEvent({ type: 'eliminated', actorId: outId, round, meta: { weight: 3, refs: { publicoPerc: ws.publicoPerc || {} } } });
-      // quem estava no paredão e não saiu, sobreviveu
+
+      // quem estava no paredão e não saiu, sobreviveu (e pode ter "se salvado no detalhe")
+      const perc = (ws.publicoPerc && typeof ws.publicoPerc === 'object') ? ws.publicoPerc : {};
       for (const id of (ws.paredaoIds || [])) {
-        if (String(id) !== String(outId)) applyNarrativeEvent({ type: 'eviction_survived', actorId: id, round, meta: { weight: 2 } });
+        if (String(id) === String(outId)) continue;
+
+        const survId = String(id);
+        applyNarrativeEvent({ type: 'eviction_survived', actorId: survId, round, meta: { weight: 2 } });
+
+        const pRej = Number(perc[survId] ?? 0);
+        if (pRej >= 35) {
+          applyNarrativeEvent({ type: 'close_call', actorId: survId, round, meta: { weight: 2, refs: { rej: pRej } } });
+        }
       }
+
+      // (B) Popularidade: detecta quem subiu/quem caiu mais na semana
+      try {
+        const popStart = (ws.popStart && typeof ws.popStart === 'object') ? ws.popStart : {};
+        const alive = alivePlayers();
+        const deltas = alive.map(p => ({ p, d: Number(p.status?.pop ?? 5) - Number(popStart[p.id] ?? p.status?.popPrev ?? 5) }));
+        deltas.sort((a,b)=>b.d-a.d);
+        const top = deltas[0];
+        const bot = deltas[deltas.length - 1];
+        if (top && top.d >= 1.2) applyNarrativeEvent({ type: 'pop_surge', actorId: top.p.id, round, meta: { weight: 2, refs: { delta: Number(top.d.toFixed(2)) } } });
+        if (bot && bot.d <= -1.2) applyNarrativeEvent({ type: 'pop_drop', actorId: bot.p.id, round, meta: { weight: 2, refs: { delta: Number(bot.d.toFixed(2)) } } });
+      } catch { /* ignora */ }
     }
+
   }
 
-  function pickNarrativeTweetCandidates({ max = 3 } = {}) {
+  function generateNarrativeTweets({ max = 2 } = {}) {
     const alive = alivePlayers();
-    const cands = [];
+    state.narrative = state.narrative || {};
+    const meta = state.narrative.tweetMeta || (state.narrative.tweetMeta = { recentTones: [], recentTopics: [], lastByPlayer: {} });
 
+    const pushHistory = (topic, tone, playerId) => {
+      meta.recentTones.push(tone);
+      meta.recentTopics.push(topic);
+      if (meta.recentTones.length > 24) meta.recentTones = meta.recentTones.slice(-24);
+      if (meta.recentTopics.length > 24) meta.recentTopics = meta.recentTopics.slice(-24);
+      if (playerId) meta.lastByPlayer[playerId] = state.week;
+    };
+
+    const tonePenalty = (tone) => meta.recentTones.slice(-8).includes(tone) ? 2 : 0;
+    const topicPenalty = (topic) => meta.recentTopics.slice(-6).includes(topic) ? 1 : 0;
+    const render = (tpl, facts) => String(tpl).replace(/\{(\w+)\}/g, (_, k) => (facts[k] ?? ''));
+
+    const TONES = ['fofoca','debochado','narrador','analitico','torcida','dramatico','cansado','conspiracao'];
+
+    const templates = {
+      target: {
+        fofoca: [
+          "Vocês viram? {actor} botou {target} no Paredão{again}. Climinha 👀",
+          "{actor} mirou em {target}{again}. Isso aí já virou ranço."
+        ],
+        debochado: [
+          "{actor}: 'não é pessoal'. Também {actor}: {target} no Paredão{again} 😬",
+          "Paz na casa? {actor} disse não e mandou {target} pro Paredão{again}."
+        ],
+        narrador: [
+          "Na semana {round}, {actor} desenhou o Paredão mirando {target}{again}.",
+          "E assim {actor} escolheu o confronto direto com {target}{again}."
+        ],
+        analitico: [
+          "Movimento objetivo: {actor} mira {target} pra reduzir ameaça no jogo{detail}.",
+          "Indicação com lógica: {target} vinha crescendo e virou alvo natural{detail}."
+        ],
+        torcida: [
+          "{actor} teve coragem e foi pra cima de {target}{again}. Vamo ver se sustenta!",
+          "Se era pra mexer no jogo, {actor} mexeu: {target} no Paredão{again}."
+        ],
+        conspiracao: [
+          "Tem coisa aí: {actor} bateu o martelo em {target}{again} muito rápido… 👀",
+          "Do nada {actor} mirou {target}{again}. Alguém soprou isso?"
+        ]
+      },
+      escape: {
+        fofoca: [
+          "Gente… {actor} escapou de novo. Já é a {count}ª vez no aperto 👀",
+          "{actor} ficou! A casa jura que vai, mas {actor} segue voltando."
+        ],
+        narrador: [
+          "Quando parecia o fim, {actor} virou a página e ficou.",
+          "O Paredão veio forte, mas {actor} atravessou mais uma vez."
+        ],
+        analitico: [
+          "Sobrevivência importante: {actor} ganha fôlego e reposiciona o jogo.",
+          "{actor} sobreviver fortalece a narrativa de resistência no programa."
+        ],
+        debochado: [
+          "Falaram que {actor} ia sair… e {actor} ficou. De novo. 😌",
+          "{actor} já tá morando no Paredão e não paga aluguel."
+        ],
+        dramatico: [
+          "O jogo tentou engolir {actor}. Mas hoje não.",
+          "{actor} ficou por pouco… e isso muda tudo."
+        ],
+        torcida: [
+          "ISSO! {actor} ficou! Agora é virar o jogo! 🙌",
+          "O Brasil não largou {actor}! Bora crescer!"
+        ]
+      },
+      house_target: {
+        fofoca: [
+          "{actor} virou o alvo do dia: {votes} votos! A casa fechou questão? 👀",
+          "Do nada, {actor} recebeu {votes} votos… alguém explica essa combinação?"
+        ],
+        analitico: [
+          "{actor} concentrou votos ({votes}). Sinal de que a casa tenta unificar alvo.",
+          "Quando a casa junta {votes} votos em alguém, costuma ser recado claro: {actor} virou pauta."
+        ],
+        narrador: [
+          "A casa falou alto: {actor} recebeu {votes} votos e entrou no radar.",
+          "Com {votes} votos, {actor} passou de coadjuvante a foco."
+        ],
+        conspiracao: [
+          "{votes} votos em {actor}… isso tem cara de acordo feito no escuro.",
+          "Quando aparece {votes} votos assim, eu só penso: quem combinou?"
+        ]
+      },
+      betrayal: {
+        fofoca: [
+          "{actor} votou em {target} e o ranço ficou explícito. Era aliado, hein 👀",
+          "Traição no voto: {actor} largou {target} na hora H."
+        ],
+        analitico: [
+          "Rompimento claro: {actor} quebra laço com {target} pra reposicionar alianças.",
+          "{actor} sinaliza jogo próprio ao votar em {target}."
+        ],
+        debochado: [
+          "Lealdade? {actor} não conhece. Votou em {target} e seguiu a vida 😬",
+          "Acordo com {actor} dura até a próxima conversa. Pergunta pro {target}."
+        ],
+        narrador: [
+          "Uma linha foi cruzada: {actor} votou em {target} e mudou a dinâmica.",
+          "No momento decisivo, {actor} escolheu cortar {target}."
+        ]
+      },
+      pop_surge: {
+        fofoca: [
+          "{actor} tá subindo lá fora! Popularidade +{delta}. O público acordou? 👀",
+          "Atenção: {actor} cresceu +{delta} de popularidade na semana."
+        ],
+        analitico: [
+          "Tendência de alta: {actor} ganhou +{delta} de popularidade e pode influenciar votos.",
+          "{actor} cresce +{delta} e vira peça mais perigosa no jogo."
+        ],
+        torcida: [
+          "É SOBRE ISSO: {actor} subiu +{delta}! O público tá vendo!",
+          "{actor} em alta +{delta}. Vamo manter!"
+        ]
+      },
+      pop_drop: {
+        fofoca: [
+          "{actor} despencou lá fora ({delta}). O ranço pegou? 😬",
+          "O povo virou? {actor} caiu {delta} de popularidade…"
+        ],
+        analitico: [
+          "Queda de imagem: {actor} perde {delta} e entra em zona de risco social.",
+          "A perda ({delta}) indica que {actor} pode virar alvo fácil."
+        ],
+        debochado: [
+          "{actor} achou que tava arrasando… {delta} de popularidade depois 😭",
+          "A internet: 'não'. {actor}: {delta}."
+        ]
+      },
+      close_call: {
+        fofoca: [
+          "{actor} se salvou no detalhe! Quase saiu e ficou por pouco 👀",
+          "Foi por um triz: {actor} escapou e agora deve vir com sangue nos olhos."
+        ],
+        dramatico: [
+          "{actor} encarou o abismo… e voltou. Isso é arco de campeão.",
+          "Um detalhe separou {actor} da eliminação. Agora o jogo muda."
+        ],
+        analitico: [
+          "Ficou por pouco: {actor} deve ganhar força de reação após um susto desses.",
+          "Sobrevivência apertada costuma reorganizar alianças. {actor} tem janela pra virar o jogo."
+        ]
+      }
+    };
+
+    const candidates = [];
     for (const p of alive) {
       initNarrativeForPlayer(p, state.week);
-      const n = p.narrative;
-      const rep = n.reputation || {};
-      const t = n.themes || {};
-      const danger = Number(n.streaks?.danger || 0);
-      const win = Number(n.streaks?.win || 0);
+      const tl = p.narrative.timeline || [];
+      const recent = tl.slice().reverse().find(e => (state.week - Number(e.round || state.week)) <= 1 && Number(e.weight || 1) >= 2);
+      if (recent) candidates.push({ p, recent, base: Number(recent.weight || 1) });
 
-      if ((rep.underdog || 0) >= 4 && danger >= 2) cands.push({ kind: 'underdog', p, score: (rep.underdog || 0) + danger });
-      if ((rep.villain || 0) >= 4 && (t.betrayer?.score || 0) >= 2) cands.push({ kind: 'betrayer', p, score: (rep.villain || 0) + (t.betrayer?.score || 0) });
-      if ((rep.compBeast || 0) >= 4 && win >= 2) cands.push({ kind: 'comp_run', p, score: (rep.compBeast || 0) + win });
-      if ((rep.social || 0) >= 5 && (rep.strategist || 0) >= 2) cands.push({ kind: 'social_master', p, score: (rep.social || 0) + (rep.strategist || 0) });
+      const danger = Number(p.narrative.streaks?.danger || 0);
+      const survCount = tl.filter(e => e.type === 'eviction_survived').length;
+      if (danger >= 2 && survCount >= 1) candidates.push({ p, recent: null, kind: 'escape', base: 2 });
     }
 
-    cands.sort((a,b)=>b.score-a.score);
+    const topicMap = (t) => {
+      if (t === 'nomination') return 'target';
+      if (t === 'eviction_survived') return 'escape';
+      if (t === 'danger' || t === 'close_call') return 'close_call';
+      if (t === 'house_target') return 'house_target';
+      if (t === 'betrayal') return 'betrayal';
+      if (t === 'pop_surge') return 'pop_surge';
+      if (t === 'pop_drop') return 'pop_drop';
+      return null;
+    };
+
+    const pickTone = (topic) => {
+      const options = [];
+      for (const tone of TONES) {
+        const pool = templates[topic]?.[tone];
+        if (!pool || !pool.length) continue;
+        let s = 10;
+        s -= tonePenalty(tone);
+        s -= topicPenalty(topic);
+        if (meta.recentTones.slice(-2).includes(tone)) s -= 2;
+        options.push({ tone, s });
+      }
+      options.sort((a,b)=>b.s-a.s);
+      return options[0]?.tone || 'narrador';
+    };
+
+    const buildFacts = (p, recent, topic) => {
+      const actor = fmtName(p);
+      const facts = { actor, round: String(state.week), again: '', detail: '' };
+      const tl = p.narrative.timeline || [];
+
+      if (topic === 'target') {
+        const tid = recent?.refs?.targetId;
+        const t = tid ? state.players.find(x => x.id === tid) : null;
+        facts.target = t ? fmtName(t) : 'alguém';
+        const rep = Number(recent?.refs?.repeat ?? 0);
+        facts.again = rep >= 1 ? ' de novo' : '';
+        facts.detail = rep >= 2 ? ' (já virou padrão)' : '';
+      }
+
+      if (topic === 'escape') {
+        const surv = tl.filter(e => e.type === 'eviction_survived').length;
+        facts.count = String(Math.max(1, surv));
+      }
+
+      if (topic === 'house_target') facts.votes = String(recent?.refs?.votes ?? 'muitos');
+
+      if (topic === 'betrayal') {
+        const tid = recent?.refs?.targetId;
+        const t = tid ? state.players.find(x => x.id === tid) : null;
+        facts.target = t ? fmtName(t) : 'alguém';
+      }
+
+      if (topic === 'pop_surge' || topic === 'pop_drop') {
+        const d = recent?.refs?.delta;
+        facts.delta = (d != null) ? String(d) : '';
+      }
+
+      return facts;
+    };
+
+    const norm = candidates.map(c => {
+      const topic = c.kind ? c.kind : topicMap(c.recent?.type);
+      return topic ? { ...c, topic } : null;
+    }).filter(Boolean);
+
+    norm.sort((a,b)=>b.base-a.base);
     const picked = [];
-    const seen = new Set();
-    for (const c of cands) {
+    const usedPlayers = new Set();
+
+    for (const c of norm) {
       if (picked.length >= max) break;
-      if (seen.has(c.p.id)) continue;
-      seen.add(c.p.id);
-      picked.push(c);
+      if (usedPlayers.has(c.p.id)) continue;
+      const last = meta.lastByPlayer?.[c.p.id];
+      if (last != null && (state.week - last) <= 0) continue;
+
+      const tone = pickTone(c.topic);
+      const pool = templates[c.topic]?.[tone] || [];
+      if (!pool.length) continue;
+      const tpl = pickOne(pool);
+      const facts = buildFacts(c.p, c.recent, c.topic);
+      const txt = render(tpl, facts).trim();
+      if (!txt) continue;
+
+      picked.push({ text: txt, topic: c.topic, tone, playerId: c.p.id });
+      usedPlayers.add(c.p.id);
+      pushHistory(c.topic, tone, c.p.id);
     }
-    return picked;
+
+    return picked.map(x => x.text);
   }
 
-  // compat: util simples usado por algumas dinâmicas (ex.: Sincerão)
+// compat: util simples usado por algumas dinâmicas (ex.: Sincerão)
   function randomPick(arr) {
     if (!Array.isArray(arr) || arr.length === 0) return null;
     return arr[rndInt(0, arr.length - 1)];
@@ -1404,7 +1826,10 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
       eliminadoId: null,
       fandomCoalition: null,
       vipIds: [],
-      xepaIds: []
+      xepaIds: [],
+      popStart: Object.fromEntries((state.players||[]).map(p=>[p.id, Number(p.status?.pop ?? 5.0)])),
+      _narrNomIdx: {},
+      _narrTargeted: []
     };
   }
 
@@ -7088,35 +7513,10 @@ if (state.week === 1 && state.dayIndex === 0) {
       addTweet(tweet(fill(pickOne(TEMPLATES.invis), { N: fmtName(invis.p), X: suf(invis.p) })));
     }
 
-    // 4.5) Tweets de arco narrativo (continuidade)
+    // 4.5) Tweets narrativos (variedade de tons + detalhe de timeline)
     try {
-      const cands = pickNarrativeTweetCandidates({ max: 2 });
-      const TT = {
-        underdog: [
-          `Ninguém botava fé, mas {N} segue escapando. Respeita a trajetória 👏`,
-          `Mais uma semana de risco e {N} continua no jogo. Teimos{X}? Talvez. Eficiente? Com certeza.`
-        ],
-        betrayer: [
-          `{N} prometeu lealdade… e entregou voto. Jogo é jogo 😬`,
-          `Quem confia em {N} hoje em dia? Toda semana muda tudo.`
-        ],
-        comp_run: [
-          `{N} tá em modo turbo nas provas. Segura esse comp-run 😤`,
-          `Quando {N} entra numa sequência, a casa inteira treme.`
-        ],
-        social_master: [
-          `{N} sabe conversar com todo mundo e isso tá ficando perigoso 👀`,
-          `Tem gente que vence prova. E tem {N}, que vence conversa.`
-        ]
-      };
-
-      cands.forEach((c) => {
-        const p = c.p;
-        const n = fmtName(p);
-        const x = suf(p);
-        const pool = TT[c.kind] || [];
-        if (pool.length) addTweet(tweet(fill(pickOne(pool), { N: n, X: x })));
-      });
+      const texts = generateNarrativeTweets({ max: 2 });
+      for (const t of texts) addTweet(tweet(t));
     } catch (e) { /* ignora */ }
 
     // 5) Ajusta quantidade (3 a 6) sem repetição demais
