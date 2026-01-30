@@ -8205,7 +8205,19 @@ const html = tweets.map((x) => `
                 </div>
               </div>
             `;
-          } catch (e) { return ''; }
+          } catch (e) {
+            try { console.error('[Arco narrativo] erro ao gerar arco', e); } catch {}
+            const msg = (e && (e.message || e.toString)) ? (e.message || String(e)) : 'erro desconhecido';
+            return `
+              <div class="drawerCard" style="margin-top:10px;">
+                <div class="t">Arco narrativo</div>
+                <div class="c">
+                  <div class="small" style="opacity:.9;">Falha ao gerar o arco narrativo. Abra o console para ver detalhes.</div>
+                  <div class="small" style="margin-top:6px; opacity:.7;">${escapeHtml(msg)}</div>
+                </div>
+              </div>
+            `;
+          }
         })()}
 
         <div class="drawerCard" style="margin-top:10px;">
