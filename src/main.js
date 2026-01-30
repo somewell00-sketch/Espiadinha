@@ -514,9 +514,11 @@ const POP_VOTE = {
     const themePairs = Object.entries(p.narrative.themes || {}).map(([id, v]) => ({ id, score: Number(v?.score ?? 0) }));
     themePairs.sort((a,b)=>b.score-a.score);
 
-    const arcTitle = buildArcTitleFromNarrative(p.narrative, p.id);
-    const title = arcTitle.title;
-    const subtitle = arcTitle.subtitle;
+    // Título/subtítulo do arco: usa o seletor determinístico baseado em reputação/themes
+    // (evita ReferenceError caso um wrapper não exista)
+    const arcTitle = pickArcTitle(p, total);
+    const title = arcTitle?.title;
+    const subtitle = arcTitle?.subtitle;
 
     // relacionamentos (a partir do schema novo; fallback: relGet)
     const rels = state.players
