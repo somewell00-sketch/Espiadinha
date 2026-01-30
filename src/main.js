@@ -5248,42 +5248,52 @@ function pickMonstroPunishment() {
     - protectFriend
     + noise;
 }
+function doIndica() {
+  const alive = alivePlayers();
+  const leader = state.players.find((p) => p.id === state.weekState.leaderId);
+  if (!leader) return;
 
+  const bf = state.weekState?.bigFone || {};
+  const imuneId = state.weekState.imuneId;
+  const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
 
-  function doIndica() {
-    const alive = alivePlayers();
-    const leader = state.players.find((p) => p.id === state.weekState.leaderId);
-    if (!leader) return;
+  let candidates = alive.filter((p) =>
+    p.id !== leader.id &&
+    p.id !== imuneId &&
+    p.id !== bf.noVoteId &&
+    p.id !== bf.extraParedaoId &&
+    !bfImm.includes(p.id)
+  );
+  if (!candidates.length) return;
 
-    const bf = state.weekState?.bigFone || {};
-    const imuneId = state.weekState.imuneId;
-    const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
+  // --- BLOQUEIO SOFT DE ALIADOS (evita indicar aliado forte se houver opção) ---
+  const FRIEND_T = 3.0; // ajuste: 2.5 (mais permissivo) a 3.5 (mais protetor)
 
-    const candidates = alive.filter((p) =>
-      p.id !== leader.id &&
-      p.id !== imuneId &&
-      p.id !== bf.noVoteId &&
-      p.id !== bf.extraParedaoId &&
-      !bfImm.includes(p.id)
-    );
-    if (!candidates.length) return;
+  const nonClose = candidates.filter((p) => relGet(leader.id, p.id) < FRIEND_T);
 
-    candidates.sort((a, b) => leaderTargetScore(leader, b) - leaderTargetScore(leader, a));
-    const indicado = candidates[0];
-
-    state.weekState.indicadoLiderId = indicado.id;
-    leader.status.madeDecisionThisWeek = true;
-    leader.status.didSomethingThisWeek = true;
-    bump(indicado, { pop: -0.28, alvo: +1.0 });
-
-    // indicado tende a ficar ressentido com o líder: corta o carinho pela metade
-    state.relations[indicado.id] = state.relations[indicado.id] || {};
-    const r0 = relGet(indicado.id, leader.id);
-    state.relations[indicado.id][leader.id] = clamp(r0 * 0.5, -5, 5);
-
-
-    gameLine(`${leader.name} indica ${indicado.name}`, "indicação do líder coloca o nome no paredão", "a tensão sobe", "a casa recalcula votos", "misto", "paredao");
+  // Só aplica se ainda sobra alguém pra indicar.
+  // Isso evita o caso "todo mundo é aliado" ou elenco pequeno.
+  if (nonClose.length > 0) {
+    candidates = nonClose;
   }
+  // --- fim do bloqueio soft ---
+
+  candidates.sort((a, b) => leaderTargetScore(leader, b) - leaderTargetScore(leader, a));
+  const indicado = candidates[0];
+
+  state.weekState.indicadoLiderId = indicado.id;
+  leader.status.madeDecisionThisWeek = true;
+  leader.status.didSomethingThisWeek = true;
+  bump(indicado, { pop: -0.28, alvo: +1.0 });
+
+  // indicado tende a ficar ressentido com o líder: corta o carinho pela metade
+  state.relations[indicado.id] = state.relations[indicado.id] || {};
+  const r0 = relGet(indicado.id, leader.id);
+  state.relations[indicado.id][leader.id] = clamp(r0 * 0.5, -5, 5);
+
+  gameLine(`${leader.name} indica ${indicado.name}`, "indicação do líder coloca o nome no paredão", "a tensão sobe", "a casa recalcula votos", "misto", "paredao");
+}
+
 
 
   function contragolpeTargetScore(indicado, p) {
