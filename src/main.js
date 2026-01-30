@@ -62,6 +62,412 @@ const POP_VOTE = {
     p.age = (a == null) ? generateAge() : a;
   }
 
+  /* ===== Narrativa (schema + helpers) ===== */
+  const NARRATIVE_SCHEMA_VERSION = 1;
+
+  const simpleName = (p) => {
+    const nick = String(p?.baseName ?? p?.nickname ?? '').trim();
+    const first = String(p?.firstName ?? p?.name ?? '').trim();
+    const last = String(p?.lastName ?? '').trim();
+    const full = (first + (last ? ` ${last}` : '')).trim();
+    return nick || full || 'Jogador';
+  };
+
+  function emptyNarrative(round = 1) {
+    return {
+      v: NARRATIVE_SCHEMA_VERSION,
+      createdAtRound: round,
+      timeline: [],
+      relations: {},
+      reputation: {
+        strategist: 0,
+        loyal: 0,
+        villain: 0,
+        underdog: 0,
+        compBeast: 0,
+        social: 0
+      },
+      momentum: 0,
+      streaks: { win: 0, danger: 0 },
+      themes: {},
+      stats: {
+        hohWins: 0,
+        vetoWins: 0,
+        nominations: 0,
+        timesSaved: 0,
+        votesCast: 0,
+        votesReceived: 0,
+        betrayalsDone: 0,
+        betrayalsSuffered: 0,
+        biggestMoveRound: null
+      }
+    };
+  }
+
+  function initNarrativeForPlayer(p, round = 1) {
+    if (!p) return;
+    if (!p.narrative || typeof p.narrative !== 'object' || !Array.isArray(p.narrative.timeline)) {
+      p.narrative = emptyNarrative(round);
+      // intro mínimo
+      pushTimelineEvent(p, {
+        round,
+        type: 'intro',
+        text: `${simpleName(p)} entrou na casa com ${normalizeAge(p.age) ?? '—'} anos.`,
+        refs: {},
+        weight: 1
+      });
+    }
+  }
+
+  function getRelationObj(p, otherId) {
+    if (!p) return null;
+    initNarrativeForPlayer(p, 1);
+    if (!p.narrative.relations) p.narrative.relations = {};
+    if (!p.narrative.relations[otherId]) {
+      p.narrative.relations[otherId] = {
+        bond: 50,
+        rivalry: 0,
+        trust: 50,
+        lastEventRound: null,
+        tags: []
+      };
+    }
+    return p.narrative.relations[otherId];
+  }
+
+  function clamp01to100(n) { return clamp(Number(n || 0), 0, 100); }
+
+  function adjustRelation(pA, pB, { bondDelta = 0, rivalryDelta = 0, trustDelta = 0, round = 1, tag = null } = {}) {
+    if (!pA || !pB) return;
+    const r = getRelationObj(pA, pB.id);
+    if (!r) return;
+    r.bond = clamp01to100((r.bond ?? 50) + bondDelta);
+    r.rivalry = clamp01to100((r.rivalry ?? 0) + rivalryDelta);
+    r.trust = clamp01to100((r.trust ?? 50) + trustDelta);
+    r.lastEventRound = round;
+    if (tag) {
+      r.tags = Array.isArray(r.tags) ? r.tags : [];
+      if (!r.tags.includes(tag)) r.tags.push(tag);
+      if (r.tags.length > 12) r.tags = r.tags.slice(-12);
+    }
+  }
+
+  function pushTimelineEvent(p, event) {
+    if (!p) return;
+    initNarrativeForPlayer(p, event?.round ?? (state?.week ?? 1));
+    const ev = {
+      round: Number(event?.round ?? (state?.week ?? 1)),
+      type: String(event?.type || 'misc'),
+      text: String(event?.text || '').trim() || '—',
+      refs: (event?.refs && typeof event.refs === 'object') ? event.refs : {},
+      weight: clamp(Number(event?.weight ?? 1), 1, 3)
+    };
+    p.narrative.timeline.push(ev);
+    // evita crescer infinito
+    if (p.narrative.timeline.length > 250) p.narrative.timeline.splice(0, p.narrative.timeline.length - 250);
+    return p.narrative.timeline.length - 1;
+  }
+
+  function adjustReputation(p, deltas = {}) {
+    if (!p) return;
+    initNarrativeForPlayer(p, state?.week ?? 1);
+    const rep = p.narrative.reputation;
+    for (const k of Object.keys(rep || {})) {
+      if (Object.prototype.hasOwnProperty.call(deltas, k)) rep[k] = clamp(Number(rep[k] ?? 0) + Number(deltas[k] ?? 0), -50, 50);
+    }
+  }
+
+  function bumpMomentum(p, delta = 0) {
+    if (!p) return;
+    initNarrativeForPlayer(p, state?.week ?? 1);
+    p.narrative.momentum = clamp(Number(p.narrative.momentum ?? 0) + Number(delta || 0), -5, 5);
+  }
+
+  function tagTheme(p, themeId, scoreDelta = 1, round = 1, timelineIndex = null) {
+    if (!p) return;
+    initNarrativeForPlayer(p, round);
+    const t = p.narrative.themes || (p.narrative.themes = {});
+    const id = String(themeId || '').trim();
+    if (!id) return;
+    if (!t[id]) t[id] = { score: 0, firstRound: round, lastRound: round, examples: [] };
+    t[id].score = clamp(Number(t[id].score ?? 0) + Number(scoreDelta || 0), 0, 999);
+    t[id].lastRound = round;
+    if (timelineIndex != null) {
+      t[id].examples = Array.isArray(t[id].examples) ? t[id].examples : [];
+      if (!t[id].examples.includes(timelineIndex)) t[id].examples.push(timelineIndex);
+      if (t[id].examples.length > 12) t[id].examples = t[id].examples.slice(-12);
+    }
+  }
+
+  function applyNarrativeEvent({ type, actorId, targetId = null, round, meta = {} } = {}) {
+    const actor = state.players.find(x => x.id === actorId);
+    if (!actor) return;
+    const target = targetId ? state.players.find(x => x.id === targetId) : null;
+    const R = Number(round ?? state.week ?? 1);
+
+    initNarrativeForPlayer(actor, R);
+    if (target) initNarrativeForPlayer(target, R);
+
+    const A = actor;
+    const B = target;
+    const aName = displayName(A);
+    const bName = B ? displayName(B) : '';
+
+    const makeText = () => {
+      switch (type) {
+        case 'win_hoh': return `${aName} virou Líder na semana ${R}.`;
+        case 'win_veto': return `${aName} ganhou a Prova do Anjo na semana ${R}.`;
+        case 'nomination': return B ? `${aName} colocou ${bName} no Paredão.` : `${aName} indicou alguém ao Paredão.`;
+        case 'danger': return `${aName} ficou em risco no Paredão.`;
+        case 'save': return B ? `${aName} salvou ${bName} do Paredão.` : `${aName} escapou do Paredão.`;
+        case 'vote_cast': return B ? `${aName} votou em ${bName}.` : `${aName} votou.`;
+        case 'vote_received': return B ? `${aName} recebeu voto de ${bName}.` : `${aName} recebeu voto.`;
+        case 'betrayal': return B ? `${aName} traiu ${bName} no voto.` : `${aName} fez uma traição.`;
+        case 'conflict': return B ? `${aName} teve uma treta com ${bName}.` : `${aName} se envolveu em treta.`;
+        case 'reconciliation': return B ? `${aName} fez as pazes com ${bName}.` : `${aName} fez as pazes com alguém.`;
+        case 'eviction_survived': return `${aName} sobreviveu ao Paredão.`;
+        case 'eliminated': return `${aName} foi eliminad${g(A,{M:'o',F:'a',O:'e'})} na semana ${R}.`;
+        default: return meta?.text ? String(meta.text) : `${aName} viveu um momento importante no jogo.`;
+      }
+    };
+
+    const weight = clamp(Number(meta?.weight ?? 1), 1, 3);
+    const refs = Object.assign({}, meta?.refs || {});
+    if (B) refs.targetId = B.id;
+
+    const idxA = pushTimelineEvent(A, { round: R, type, text: makeText(), refs, weight });
+
+    // relations + rep + themes + momentum
+    if (B) {
+      if (type === 'bond' || type === 'alliance_form' || type === 'save' || type === 'reconciliation') {
+        adjustRelation(A, B, { bondDelta: 8, trustDelta: 6, rivalryDelta: -4, round: R, tag: type });
+        adjustRelation(B, A, { bondDelta: 6, trustDelta: 5, rivalryDelta: -3, round: R, tag: type });
+      }
+      if (type === 'conflict' || type === 'nomination') {
+        adjustRelation(A, B, { rivalryDelta: 12, trustDelta: -6, bondDelta: -4, round: R, tag: type });
+        adjustRelation(B, A, { rivalryDelta: 10, trustDelta: -5, bondDelta: -3, round: R, tag: type });
+      }
+      if (type === 'betrayal') {
+        adjustRelation(A, B, { rivalryDelta: 10, trustDelta: -16, bondDelta: -8, round: R, tag: type });
+        adjustRelation(B, A, { rivalryDelta: 12, trustDelta: -20, bondDelta: -10, round: R, tag: type });
+      }
+    }
+
+    // stats
+    const st = A.narrative.stats;
+    if (type === 'win_hoh') st.hohWins += 1;
+    if (type === 'win_veto') st.vetoWins += 1;
+    if (type === 'nomination') st.nominations += 1;
+    if (type === 'save') st.timesSaved += 1;
+    if (type === 'vote_cast') st.votesCast += 1;
+    if (type === 'vote_received') st.votesReceived += 1;
+    if (type === 'betrayal') st.betrayalsDone += 1;
+    if (type === 'eliminated') {
+      // nada adicional aqui; elim já existe no status
+    }
+
+    // rep + momentum + themes
+    if (type === 'win_hoh') { adjustReputation(A, { compBeast: 2, strategist: 1 }); bumpMomentum(A, 1); A.narrative.streaks.win = (A.narrative.streaks.win || 0) + 1; }
+    if (type === 'win_veto') { adjustReputation(A, { compBeast: 1, social: 1 }); bumpMomentum(A, 1); A.narrative.streaks.win = (A.narrative.streaks.win || 0) + 1; }
+
+    if (type === 'danger') { adjustReputation(A, { underdog: 1 }); bumpMomentum(A, -1); A.narrative.streaks.danger = (A.narrative.streaks.danger || 0) + 1; tagTheme(A, 'survivor', 1, R, idxA); }
+    if (type === 'eviction_survived') { adjustReputation(A, { underdog: 2 }); bumpMomentum(A, 1); tagTheme(A, 'survivor', 2, R, idxA); }
+
+    if (type === 'betrayal') {
+      adjustReputation(A, { villain: 2, strategist: 1, loyal: -2 });
+      bumpMomentum(A, 1);
+      tagTheme(A, 'betrayer', 2, R, idxA);
+      if (B) {
+        adjustReputation(B, { underdog: 1 });
+        bumpMomentum(B, -1);
+        B.narrative.stats.betrayalsSuffered = (B.narrative.stats.betrayalsSuffered || 0) + 1;
+      }
+    }
+
+    if (type === 'conflict') { adjustReputation(A, { villain: 1 }); bumpMomentum(A, 0); tagTheme(A, 'rivalry', 1, R, idxA); }
+    if (type === 'reconciliation') { adjustReputation(A, { social: 1, loyal: 1 }); bumpMomentum(A, 1); }
+    if (type === 'nomination') { adjustReputation(A, { strategist: 1 }); bumpMomentum(A, 0); }
+    if (type === 'eliminated') { bumpMomentum(A, -3); }
+
+    // biggestMoveRound: movimentos weight 3
+    if (weight >= 3) {
+      const cur = A.narrative.stats.biggestMoveRound;
+      if (cur == null) A.narrative.stats.biggestMoveRound = R;
+    }
+  }
+
+  function buildPlayerArc(playerId, totalRounds) {
+    const p = state.players.find(x => x.id === playerId);
+    if (!p || !p.narrative) return null;
+    const total = Math.max(1, Number(totalRounds || state.week || 1));
+    const tline = (p.narrative.timeline || []).slice();
+
+    const phases = [
+      { id: 'Early', a: 1, b: Math.ceil(total * 0.25) },
+      { id: 'Mid', a: Math.ceil(total * 0.25) + 1, b: Math.ceil(total * 0.50) },
+      { id: 'Late', a: Math.ceil(total * 0.50) + 1, b: Math.ceil(total * 0.75) },
+      { id: 'Endgame', a: Math.ceil(total * 0.75) + 1, b: total }
+    ];
+
+    const pickPhaseLine = (ph) => {
+      const evs = tline.filter(e => e.round >= ph.a && e.round <= ph.b);
+      if (!evs.length) return `Sem grandes destaques na fase ${ph.id}.`;
+      // prioriza weight
+      evs.sort((a,b) => (b.weight - a.weight));
+      const top = evs[0];
+      return top.text;
+    };
+
+    const rep = p.narrative.reputation || {};
+    const themePairs = Object.entries(p.narrative.themes || {}).map(([id, v]) => ({ id, score: Number(v?.score ?? 0) }));
+    themePairs.sort((a,b)=>b.score-a.score);
+
+    const pillars = [
+      { id: 'strategist', v: Number(rep.strategist ?? 0), label: 'Estrategista' },
+      { id: 'underdog', v: Number(rep.underdog ?? 0), label: 'Sobrevivente' },
+      { id: 'compBeast', v: Number(rep.compBeast ?? 0), label: 'Competidor' },
+      { id: 'villain', v: Number(rep.villain ?? 0), label: 'Vilão' },
+      { id: 'loyal', v: Number(rep.loyal ?? 0), label: 'Leal' },
+      { id: 'social', v: Number(rep.social ?? 0), label: 'Social' }
+    ].sort((a,b)=>b.v-a.v);
+
+    const titleBits = [];
+    if (pillars[0]?.v > 0) titleBits.push(pillars[0].label);
+    if (pillars[1]?.v > 0 && pillars[1].label !== titleBits[0]) titleBits.push(pillars[1].label);
+    if (!titleBits.length) titleBits.push('Figura imprevisível');
+    const title = titleBits.slice(0,2).join(' ');
+
+    // relacionamentos (a partir do schema novo; fallback: relGet)
+    const rels = state.players
+      .filter(o => o.id !== p.id)
+      .map(o => {
+        const r = p.narrative.relations?.[o.id];
+        const bond = (r && Number.isFinite(r.bond)) ? r.bond : clamp((relGet(p.id, o.id) + 5) * 10, 0, 100);
+        const rivalry = (r && Number.isFinite(r.rivalry)) ? r.rivalry : clamp(((-relGet(p.id, o.id)) + 5) * 10, 0, 100);
+        const trust = (r && Number.isFinite(r.trust)) ? r.trust : 50;
+        return { o, bond, rivalry, trust };
+      });
+
+    const closestAlly = rels.slice().sort((a,b)=>b.bond-a.bond)[0] || null;
+    const biggestRival = rels.slice().sort((a,b)=>b.rivalry-a.rivalry)[0] || null;
+
+    const definingMoments = tline
+      .slice()
+      .sort((a,b)=> (b.weight - a.weight) || (b.round - a.round))
+      .slice(0, 6);
+
+    const logline = (() => {
+      const avgBond = rels.length ? (rels.reduce((s,x)=>s+x.bond,0) / rels.length) : 0;
+      const socialStatus = avgBond >= 65 ? 'muito bem conectad' : (avgBond >= 52 ? 'bem conectad' : 'mais isolad');
+      const mainConflict = (rep.underdog ?? 0) > 6 ? 'pressão constante' : ((rep.villain ?? 0) > 6 ? 'muitas rivalidades' : 'um jogo instável');
+      const keyMoment = definingMoments[0]?.text ? definingMoments[0].text : `um momento forte na semana ${p.narrative.stats.biggestMoveRound ?? '—'}`;
+      return `Começou ${socialStatus}o, encarou ${mainConflict} e se definiu por ${keyMoment.toLowerCase()}`;
+    })();
+
+    return {
+      playerId: p.id,
+      title,
+      logline,
+      arcBeats: phases.map(ph => ({ phase: ph.id, text: pickPhaseLine(ph) })),
+      definingMoments,
+      relationships: {
+        closestAlly: closestAlly ? { id: closestAlly.o.id, name: displayName(closestAlly.o), bond: Math.round(closestAlly.bond) } : null,
+        biggestRival: biggestRival ? { id: biggestRival.o.id, name: displayName(biggestRival.o), rivalry: Math.round(biggestRival.rivalry) } : null
+      },
+      statsSummary: Object.assign({}, p.narrative.stats),
+      themeSummary: themePairs.slice(0, 6).map(t => ({ themeId: t.id, score: t.score }))
+    };
+  }
+
+  function buildSeasonArcs(totalRounds) {
+    const total = Number(totalRounds || state.week || 1);
+    return state.players.map(p => buildPlayerArc(p.id, total)).filter(Boolean);
+  }
+
+  function applyNarrativeFromWeekStateDiff(prevWS, ws, meta) {
+    if (!prevWS || !ws) return;
+    const round = Number(meta?.week ?? state.week ?? 1);
+
+    // vitórias
+    if (!prevWS.leaderId && ws.leaderId) applyNarrativeEvent({ type: 'win_hoh', actorId: ws.leaderId, round });
+    if (!prevWS.anjoId && ws.anjoId) applyNarrativeEvent({ type: 'win_veto', actorId: ws.anjoId, round });
+
+    // indicações
+    if (!prevWS.indicadoLiderId && ws.indicadoLiderId && ws.leaderId) {
+      applyNarrativeEvent({ type: 'nomination', actorId: ws.leaderId, targetId: ws.indicadoLiderId, round, meta: { weight: 2 } });
+    }
+    if (!prevWS.contragolpeId && ws.contragolpeId) {
+      // se houver contragolpe, a autoria narrativa é de quem foi indicado pelo líder (quando existir)
+      const actor = ws.indicadoLiderId || ws.leaderId;
+      if (actor) applyNarrativeEvent({ type: 'nomination', actorId: actor, targetId: ws.contragolpeId, round, meta: { weight: 1 } });
+    }
+    // votos da casa: conta como "receber voto" + "votar"
+    const prevVotes = Array.isArray(prevWS.houseVotes) ? prevWS.houseVotes : [];
+    const nowVotes = Array.isArray(ws.houseVotes) ? ws.houseVotes : [];
+    if (nowVotes.length > prevVotes.length) {
+      const added = nowVotes.slice(prevVotes.length);
+      for (const v of added) {
+        if (!v) continue;
+        if (v.voterId && v.targetId) {
+          applyNarrativeEvent({ type: 'vote_cast', actorId: v.voterId, targetId: v.targetId, round });
+          applyNarrativeEvent({ type: 'vote_received', actorId: v.targetId, targetId: v.voterId, round });
+        }
+      }
+    }
+
+    // paredão (risco)
+    const prevP = new Set((prevWS.paredaoIds || []).map(String));
+    const nowP = (ws.paredaoIds || []).map(String);
+    for (const id of nowP) {
+      if (!prevP.has(id)) applyNarrativeEvent({ type: 'danger', actorId: id, round });
+    }
+
+    // treta do dia
+    if (!prevWS.bigFight && ws.bigFight && ws.bigFight.aggressorId && ws.bigFight.targetId) {
+      applyNarrativeEvent({ type: 'conflict', actorId: ws.bigFight.aggressorId, targetId: ws.bigFight.targetId, round, meta: { weight: 2 } });
+    }
+
+    // eliminação
+    if (!prevWS.eliminadoId && ws.eliminadoId) {
+      const outId = ws.eliminadoId;
+      applyNarrativeEvent({ type: 'eliminated', actorId: outId, round, meta: { weight: 3, refs: { publicoPerc: ws.publicoPerc || {} } } });
+      // quem estava no paredão e não saiu, sobreviveu
+      for (const id of (ws.paredaoIds || [])) {
+        if (String(id) !== String(outId)) applyNarrativeEvent({ type: 'eviction_survived', actorId: id, round, meta: { weight: 2 } });
+      }
+    }
+  }
+
+  function pickNarrativeTweetCandidates({ max = 3 } = {}) {
+    const alive = alivePlayers();
+    const cands = [];
+
+    for (const p of alive) {
+      initNarrativeForPlayer(p, state.week);
+      const n = p.narrative;
+      const rep = n.reputation || {};
+      const t = n.themes || {};
+      const danger = Number(n.streaks?.danger || 0);
+      const win = Number(n.streaks?.win || 0);
+
+      if ((rep.underdog || 0) >= 4 && danger >= 2) cands.push({ kind: 'underdog', p, score: (rep.underdog || 0) + danger });
+      if ((rep.villain || 0) >= 4 && (t.betrayer?.score || 0) >= 2) cands.push({ kind: 'betrayer', p, score: (rep.villain || 0) + (t.betrayer?.score || 0) });
+      if ((rep.compBeast || 0) >= 4 && win >= 2) cands.push({ kind: 'comp_run', p, score: (rep.compBeast || 0) + win });
+      if ((rep.social || 0) >= 5 && (rep.strategist || 0) >= 2) cands.push({ kind: 'social_master', p, score: (rep.social || 0) + (rep.strategist || 0) });
+    }
+
+    cands.sort((a,b)=>b.score-a.score);
+    const picked = [];
+    const seen = new Set();
+    for (const c of cands) {
+      if (picked.length >= max) break;
+      if (seen.has(c.p.id)) continue;
+      seen.add(c.p.id);
+      picked.push(c);
+    }
+    return picked;
+  }
+
   // compat: util simples usado por algumas dinâmicas (ex.: Sincerão)
   function randomPick(arr) {
     if (!Array.isArray(arr) || arr.length === 0) return null;
@@ -5367,6 +5773,9 @@ function bootStart() {
     state.narrative = state.narrative || { daily: {}, prevSnap: {} };
     state.narrative.prevSnap = captureNarrativeSnapshot();
 
+    // snapshot do weekState para atualizar narrativa por diffs
+    const prevWeekState = JSON.parse(JSON.stringify(state.weekState || {}));
+
     ensureRoomsState();
     applyRoomCssVars();
     maybeRebalanceRooms(meta);
@@ -5513,6 +5922,12 @@ if (ctxFrozen.key === "seg") {
 `);
       }
     }
+
+    // Atualiza o estado narrativo (timeline/reputação/temas)
+    try { applyNarrativeFromWeekStateDiff(prevWeekState, state.weekState, meta); } catch (e) { console.error(e); }
+
+    // Atualiza narrativa (timeline/reputação/temas) a partir do que aconteceu hoje
+    try { applyNarrativeFromWeekStateDiff(prevWeekState, state.weekState, meta); } catch (e) { /* silencioso */ }
 
     flushDayBlocks(meta);
 
@@ -6673,6 +7088,37 @@ if (state.week === 1 && state.dayIndex === 0) {
       addTweet(tweet(fill(pickOne(TEMPLATES.invis), { N: fmtName(invis.p), X: suf(invis.p) })));
     }
 
+    // 4.5) Tweets de arco narrativo (continuidade)
+    try {
+      const cands = pickNarrativeTweetCandidates({ max: 2 });
+      const TT = {
+        underdog: [
+          `Ninguém botava fé, mas {N} segue escapando. Respeita a trajetória 👏`,
+          `Mais uma semana de risco e {N} continua no jogo. Teimos{X}? Talvez. Eficiente? Com certeza.`
+        ],
+        betrayer: [
+          `{N} prometeu lealdade… e entregou voto. Jogo é jogo 😬`,
+          `Quem confia em {N} hoje em dia? Toda semana muda tudo.`
+        ],
+        comp_run: [
+          `{N} tá em modo turbo nas provas. Segura esse comp-run 😤`,
+          `Quando {N} entra numa sequência, a casa inteira treme.`
+        ],
+        social_master: [
+          `{N} sabe conversar com todo mundo e isso tá ficando perigoso 👀`,
+          `Tem gente que vence prova. E tem {N}, que vence conversa.`
+        ]
+      };
+
+      cands.forEach((c) => {
+        const p = c.p;
+        const n = fmtName(p);
+        const x = suf(p);
+        const pool = TT[c.kind] || [];
+        if (pool.length) addTweet(tweet(fill(pickOne(pool), { N: n, X: x })));
+      });
+    } catch (e) { /* ignora */ }
+
     // 5) Ajusta quantidade (3 a 6) sem repetição demais
     let maxT = rndInt(3, 6);
 // Em dias grandes, deixa o feed mais cheio (sem cortar os pins)
@@ -6904,6 +7350,27 @@ const html = tweets.map((x) => `
           </div>
         </div>
 
+        ${(() => {
+          try {
+            initNarrativeForPlayer(p, state.week);
+            const arc = buildPlayerArc(p.id, state.week);
+            if (!arc) return '';
+            const beats = (arc.arcBeats || []).map(b => `<div class="small" style="margin-top:6px;"><strong>${escapeHtml(b.phase)}:</strong> ${escapeHtml(b.text)}</div>`).join('');
+            const moments = (arc.definingMoments || []).slice(0,4).map(e => `<li>${escapeHtml(e.text)}</li>`).join('');
+            return `
+              <div class="drawerCard" style="margin-top:10px;">
+                <div class="t">Arco narrativo</div>
+                <div class="c">
+                  <div style="font-weight:900;">${escapeHtml(arc.title)}</div>
+                  <div class="small" style="margin-top:4px; opacity:.92;">${escapeHtml(arc.logline)}</div>
+                  ${beats ? `<div style="margin-top:8px;">${beats}</div>` : ''}
+                  ${moments ? `<div style="margin-top:10px;"><div class="small" style="font-weight:900;">Momentos marcantes</div><ul class="small" style="margin:6px 0 0 18px;">${moments}</ul></div>` : ''}
+                </div>
+              </div>
+            `;
+          } catch (e) { return ''; }
+        })()}
+
         <div class="drawerCard" style="margin-top:10px;">
           <div class="t">Histórico (eventos em que apareceu)</div>
           <div class="c">${histHtml}</div>
@@ -6992,6 +7459,7 @@ const html = tweets.map((x) => `
     for (const p of (state.players || [])) {
       if (!p) continue;
       ensurePlayerAge(p);
+      initNarrativeForPlayer(p, 1);
       if (!p.secret) p.secret = {};
       if ((p.gender === 'M' || p.gender === 'F') && !Number.isFinite(p.secret.gayScore)) {
         p.secret.gayScore = sampleGayScore();
@@ -7038,6 +7506,8 @@ const html = tweets.map((x) => `
         excluido: false,
         excluidoStreak: 0
       };
+      // reinicia narrativa para uma temporada nova
+      np.narrative = emptyNarrative(1);
       // limpeza de marcações de eliminação antigas
       if (np.status) delete np.status.outWeek;
       return np;
@@ -7838,7 +8308,8 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
         const monstro = (p && p.status && Number(p.status.monstroDaysLeft ?? 0) > 0) ? " 👹" : "";
         const excl = (p && p.status && p.status.excluido) ? " 🥺" : "";
 
-        nameSpan.textContent = labelCore + fav + plant + monstro + excl;
+        const ageTxt = (normalizeAge(p.age) != null) ? ` • ${normalizeAge(p.age)} anos` : '';
+        nameSpan.textContent = labelCore + ageTxt + fav + plant + monstro + excl;
 
 const statusSpan = document.createElement("span");
         statusSpan.className = "tag";
