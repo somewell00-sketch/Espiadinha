@@ -577,7 +577,15 @@ const POP_VOTE = {
     const prevP = new Set((prevWS.paredaoIds || []).map(String));
     const nowP = (ws.paredaoIds || []).map(String);
     for (const id of nowP) {
-      if (!prevP.has(id)) applyNarrativeEvent({ type: 'danger', actorId: id, round });
+      if (!prevP.has(id)) {
+        // Inclui o paredão completo como contexto para UI/"Momentos marcantes".
+        applyNarrativeEvent({
+          type: 'danger',
+          actorId: id,
+          round,
+          meta: { weight: 2, refs: { paredaoIds: nowP.slice() } }
+        });
+      }
     }
 
     // treta do dia
@@ -611,11 +619,11 @@ const POP_VOTE = {
         if (String(id) === String(outId)) continue;
 
         const survId = String(id);
-        applyNarrativeEvent({ type: 'eviction_survived', actorId: survId, round, meta: { weight: 2 } });
+        applyNarrativeEvent({ type: 'eviction_survived', actorId: survId, round, meta: { weight: 2, refs: { paredaoIds: (ws.paredaoIds || []).slice() } } });
 
         const pRej = Number(perc[survId] ?? 0);
         if (pRej >= 35) {
-          applyNarrativeEvent({ type: 'close_call', actorId: survId, round, meta: { weight: 2, refs: { rej: pRej } } });
+          applyNarrativeEvent({ type: 'close_call', actorId: survId, round, meta: { weight: 2, refs: { rej: pRej, paredaoIds: (ws.paredaoIds || []).slice() } } });
         }
       }
 
@@ -649,7 +657,10 @@ const POP_VOTE = {
     // - tweets de eliminação fora do dia de eliminação
     // - tweets de paredão fora do dia de formação
     const dayKey = ctx?.key || null;
-    const hasElimToday = !!(dayKey === 'ter' && ws?.eliminadoId);
+    // Obs: ws.eliminadoId é resetado após a eliminação (resetWeekState),
+    // então também aceitamos o "lastEvent" como fonte de verdade.
+    const lastElimId = (state.lastEvent && state.lastEvent.type === 'elimination') ? state.lastEvent.eliminatedId : null;
+    const hasElimToday = !!(dayKey === 'ter' && (ws?.eliminadoId != null || lastElimId != null));
     const hasParedaoToday = !!(dayKey === 'dom' && (ws?.paredaoIds || []).length === 3);
 
     // allowedTopics = null significa "não filtra".
@@ -965,8 +976,9 @@ const POP_VOTE = {
     const candidates = [];
 
     // Candidato especial: eliminação do dia (mesmo que o eliminado não esteja vivo)
-    if (hasElimToday && ws?.eliminadoId != null) {
-      const out = state.players.find(x => String(x.id) === String(ws.eliminadoId));
+    if (hasElimToday) {
+      const outId = (ws?.eliminadoId != null) ? ws.eliminadoId : lastElimId;
+      const out = state.players.find(x => String(x.id) === String(outId));
       if (out) {
         candidates.push({ p: out, recent: { round: state.week, type: 'eliminated', weight: 3, refs: { outId: out.id } }, base: 3, kind: 'eliminated' });
       }
@@ -5841,6 +5853,14 @@ function snapshotPopForWeek(weekNumber) {
     ts: Date.now(),
     shown: false
   };
+
+  // Invalida cache do Xuitter imediatamente após uma eliminação.
+  // Motivo: o feed é cacheado por (semana+dia) e, se já tiver sido renderizado antes,
+  // a eliminação pode não aparecer até o usuário avançar o dia.
+  try {
+    state.narrative = state.narrative || {};
+    state.narrative.daily = {}; // simples e seguro
+  } catch { /* ignora */ }
   resetWeekState();
 
   if (opts.advanceWeek) {
@@ -8023,6 +8043,9 @@ const html = tweets.map((x) => `
               const tid = e?.refs?.targetId != null ? String(e.refs.targetId) : null;
               const target = tid ? playersById[tid] : null;
 
+              const isRisk = (e?.type === 'danger' || e?.type === 'eviction_survived' || e?.type === 'close_call');
+              const paredaoIds = Array.isArray(e?.refs?.paredaoIds) ? e.refs.paredaoIds.map(String) : null;
+
               let extra = '';
               if (target) {
                 const nm = simpleName(target);
@@ -8030,6 +8053,20 @@ const html = tweets.map((x) => `
                 // só adiciona se o nome não estiver já no texto
                 const has = base.toLowerCase().includes(nm.toLowerCase());
                 if (!has) extra = lab ? ` (${lab}: ${nm})` : ` (${nm})`;
+              } else if (isRisk && paredaoIds && paredaoIds.length >= 3) {
+                // Contexto do paredão: mostra com quem foi, e etiqueta só quando for relevante.
+                const selfId = String(arc?.playerId ?? p?.id ?? '');
+                const others = paredaoIds.filter(id => id && id !== selfId)
+                  .map(id => playersById[String(id)])
+                  .filter(Boolean);
+                if (others.length) {
+                  const parts = others.slice(0,2).map((q) => {
+                    const nm = simpleName(q);
+                    const lab = relLabel(q.id);
+                    return lab ? `${nm} (${lab})` : nm;
+                  });
+                  extra = ` (com ${parts.join(' e ')})`;
+                }
               }
               return `${weekLabel(round)}: ${base.replace(/\.$/, '')}${extra}.`;
             };
@@ -8929,6 +8966,11 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
     if (cbox) {
       const k = narrativeKey({ ctx: ctx, week: state.week });
       let entry = state.narrative?.daily?.[k] || null;
+      // Se existe um evento recente importante (ex: eliminação) ainda não exibido,
+      // força a reconstrução do feed para não ficar preso no cache.
+      if (state.lastEvent && state.lastEvent.type === 'elimination' && state.lastEvent.shown === false) {
+        entry = null;
+      }
       // Invalida cache quando a lógica muda (evita mostrar comentários antigos)
       if (!entry || entry.v !== XUITTER_NARRATIVE_VERSION) {
         try { buildDailyComment({ ctx: ctx, week: state.week, dayName: ctx.name }); } catch (e) { console.error(e); state.narrative = state.narrative || {}; state.narrative.lastXuitterError = String(e && e.message ? e.message : e); }
