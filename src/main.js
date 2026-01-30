@@ -835,6 +835,131 @@ const POP_VOTE = {
           "Sobrevivência apertada costuma reorganizar alianças. {actor} tem janela pra virar o jogo."
         ]
       }
+
+      ,
+      underdog: {
+        fofoca: [
+          "{actor} tá virando especialista em sobreviver. Já escapou {count} vez(es) 👀",
+          "Toda semana tentam… e {actor} continua. Esse arco tá ficando perigoso."
+        ],
+        narrador: [
+          "{actor} atravessa pressão atrás de pressão e segue no jogo. Isso constrói trajetória.",
+          "O enredo de {actor} é resistência: cai, levanta e continua."
+        ],
+        analitico: [
+          "Sobrevivência repetida fortalece {actor}: ameaça social cresce quando a casa falha em eliminar.",
+          "{actor} acumulou sustos ({count} sobrevivências) e agora pode capitalizar isso."
+        ],
+        torcida: [
+          "É isso! {actor} não desiste nunca. Vamo! 🙌",
+          "{actor} tá vivo(a) e isso é tudo. Bora virar!"
+        ],
+        debochado: [
+          "{actor} já devia ter cartão fidelidade do Paredão 😭",
+          "A casa: 'agora vai'. {actor}: 'kkkk fiquei' 😌"
+        ]
+      },
+      betrayer: {
+        fofoca: [
+          "Olha… {actor} largou {target} sem piscar. Isso foi recado 👀",
+          "A palavra 'lealdade' não mora com {actor}. Pergunta pro {target}."
+        ],
+        narrador: [
+          "Uma ponte caiu: {actor} deixou {target} pra trás e o jogo sentiu.",
+          "No voto, {actor} escolheu o próprio caminho e queimou {target}."
+        ],
+        analitico: [
+          "{actor} faz corte estratégico ao romper com {target}. Risco: virar alvo depois.",
+          "Quando {actor} vota contra {target}, manda sinal: alianças são descartáveis."
+        ],
+        debochado: [
+          "{actor} prometeu e… votou em {target}. Nem disfarçou 😬",
+          "Acordo com {actor} dura até acabar a conversa. {target} que o diga."
+        ]
+      },
+      comp_run: {
+        fofoca: [
+          "{actor} tá embalad{X} nas provas. Sequência de {streak} semana(s) em alta 😤",
+          "Quando {actor} começa a ganhar, a casa inteira fica nervosa."
+        ],
+        narrador: [
+          "{actor} encontrou ritmo nas provas e passou a ditar o tom da semana.",
+          "A temporada muda quando alguém engata vitórias. {actor} tá nesse caminho."
+        ],
+        analitico: [
+          "Vitórias dão poder e proteção: {actor} entra em zona de controle (streak {streak}).",
+          "Com desempenho alto em provas, {actor} reduz chances de ser alvo direto."
+        ],
+        torcida: [
+          "SEGURA! {actor} tá gigante nas provas! 🙌",
+          "{actor} no modo máquina. Vamo dominar!"
+        ],
+        debochado: [
+          "A casa querendo derrubar e {actor} só ganhando prova 😭",
+          "{actor} acordou e lembrou que prova existe."
+        ]
+      },
+      social_hub: {
+        fofoca: [
+          "{actor} tá bem com todo mundo… e isso sempre dá medo 👀",
+          "Se você não tá no papo de {actor}, você tá por fora do jogo."
+        ],
+        narrador: [
+          "{actor} costura relações e vira ponto de encontro da casa.",
+          "No silêncio, {actor} vai juntando peças e ganhando espaço."
+        ],
+        analitico: [
+          "Jogo social forte: {actor} cria amortecedor contra votos e ganha informação.",
+          "{actor} tende a influenciar decisões por estar no centro das conversas."
+        ],
+        debochado: [
+          "{actor} conversa, sorri… e decide o voto. Clássico 😬",
+          "Tem gente que vence prova. {actor} vence conversa."
+        ]
+      },
+      mastermind: {
+        narrador: [
+          "{actor} tá jogando xadrez enquanto a casa joga dominó.",
+          "O jogo de {actor} é de construção: peça por peça, semana por semana."
+        ],
+        analitico: [
+          "{actor} mostra leitura de jogo e timing. Se continuar assim, vira favorit{X} de estratégia.",
+          "Quando {actor} movimenta, a casa responde. Isso é influência real."
+        ],
+        fofoca: [
+          "Eu não duvido que {actor} esteja puxando muita coisa por trás 👀",
+          "Todo mundo acha que manda… mas olha quem tá sempre no centro: {actor}."
+        ]
+      },
+      growth: {
+        narrador: [
+          "{actor} cresceu no jogo. De coadjuvante pra nome falado.",
+          "A curva de {actor} é de ascensão: cada semana mais forte."
+        ],
+        analitico: [
+          "{actor} está em alta e isso muda como a casa enxerga suas chances.",
+          "Quando o momento vira, o jogo muda. {actor} tá aproveitando."
+        ],
+        torcida: [
+          "{actor} ACORDOU! Agora sim! 🙌",
+          "Era questão de tempo. {actor} tá crescendo!"
+        ]
+      },
+      collapse: {
+        narrador: [
+          "{actor} perdeu tração e agora precisa reagir rápido.",
+          "O jogo apertou e {actor} tá sentindo o peso."
+        ],
+        analitico: [
+          "{actor} entra em fase de queda: risco aumenta quando a casa percebe fraqueza.",
+          "Sequência ruim costuma virar bola de neve. {actor} precisa reposicionar."
+        ],
+        debochado: [
+          "{actor} começou a semana confiante e terminou derretid{X} 😭",
+          "A autoconfiança de {actor} foi morar no confessionário."
+        ]
+      }
+
     };
 
     const candidates = [];
@@ -856,6 +981,21 @@ const POP_VOTE = {
       const danger = Number(p.narrative.streaks?.danger || 0);
       const survCount = tl.filter(e => e.type === 'eviction_survived').length;
       if (danger >= 2 && survCount >= 1) candidates.push({ p, recent: null, kind: 'escape', base: 2 });
+
+// Candidatos "evergreen" de arco (não dependem do dia específico)
+const rep = p.narrative.reputation || {};
+const betrayalCount = tl.filter(e => e.type === 'betrayal').length;
+const winCount = Number(p.narrative.stats?.hohWins || 0) + Number(p.narrative.stats?.vetoWins || 0);
+const winStreak = Number(p.narrative.streaks?.win || 0);
+const mom = Number(p.narrative.momentum || 0);
+
+if ((rep.underdog || 0) >= 6 || (danger >= 2 && survCount >= 1)) candidates.push({ p, recent: null, kind: 'underdog', base: 2.2, evergreen: true });
+if (betrayalCount >= 2 || (rep.villain || 0) >= 6) candidates.push({ p, recent: null, kind: 'betrayer', base: 2.1, evergreen: true });
+if (winStreak >= 2 || winCount >= 3 || (rep.compBeast || 0) >= 6) candidates.push({ p, recent: null, kind: 'comp_run', base: 2.0, evergreen: true });
+if ((rep.social || 0) >= 6) candidates.push({ p, recent: null, kind: 'social_hub', base: 1.9, evergreen: true });
+if ((rep.strategist || 0) >= 7) candidates.push({ p, recent: null, kind: 'mastermind', base: 1.8, evergreen: true });
+if (mom >= 3) candidates.push({ p, recent: null, kind: 'growth', base: 1.7, evergreen: true });
+if (mom <= -3) candidates.push({ p, recent: null, kind: 'collapse', base: 1.7, evergreen: true });
     }
 
     const topicMap = (t) => {
@@ -922,6 +1062,27 @@ const POP_VOTE = {
         facts.delta = (d != null) ? String(d) : '';
       }
 
+      if (topic === 'underdog') {
+        const surv = tl.filter(e => e.type === 'eviction_survived').length;
+        facts.count = String(Math.max(1, surv));
+      }
+
+      if (topic === 'betrayer') {
+        const last = tl.slice().reverse().find(e => e.type === 'betrayal');
+        const tid = last?.refs?.targetId;
+        const t = tid ? state.players.find(x => x.id === tid) : null;
+        facts.target = t ? fmtName(t) : 'alguém';
+      }
+
+      if (topic === 'comp_run') {
+        facts.streak = String(Number(p.narrative.streaks?.win || 1));
+        facts.X = suf(p);
+      }
+
+      if (topic === 'social_hub' || topic === 'mastermind' || topic === 'growth' || topic === 'collapse') {
+        facts.X = suf(p);
+      }
+
       return facts;
     };
 
@@ -934,26 +1095,44 @@ const POP_VOTE = {
     const normFiltered = allowedTopics ? norm.filter(x => allowedTopics.has(x.topic)) : norm;
 
     normFiltered.sort((a,b)=>b.base-a.base);
+
     const picked = [];
     const usedPlayers = new Set();
 
-    for (const c of normFiltered) {
-      if (picked.length >= max) break;
-      if (usedPlayers.has(c.p.id)) continue;
+    const tryPick = (c) => {
+      if (!c) return false;
+      if (picked.length >= max) return false;
+      if (usedPlayers.has(c.p.id)) return false;
       const last = meta.lastByPlayer?.[c.p.id];
-      if (last != null && (state.week - last) <= 0) continue;
+      if (last != null && (state.week - last) <= 0) return false;
 
       const tone = pickTone(c.topic);
       const pool = templates[c.topic]?.[tone] || [];
-      if (!pool.length) continue;
+      if (!pool.length) return false;
+
       const tpl = pickOne(pool);
       const facts = buildFacts(c.p, c.recent, c.topic);
       const txt = render(tpl, facts).trim();
-      if (!txt) continue;
+      if (!txt) return false;
 
       picked.push({ text: txt, topic: c.topic, tone, playerId: c.p.id });
       usedPlayers.add(c.p.id);
       pushHistory(c.topic, tone, c.p.id);
+      return true;
+    };
+
+    // 1) Garante pelo menos 1 tweet "evergreen" de arco por dia, quando existir candidato.
+    const arcPool = normFiltered.filter(x => x.evergreen).slice().sort((a,b)=>b.base-a.base);
+    const eventPool = normFiltered.filter(x => !x.evergreen);
+
+    if (max >= 1) {
+      for (const c of arcPool) { if (tryPick(c)) break; }
+    }
+
+    // 2) Preenche o restante com os melhores (evento ou arco), respeitando diversidade.
+    for (const c of [...eventPool, ...arcPool]) {
+      if (picked.length >= max) break;
+      tryPick(c);
     }
 
     return picked.map(x => x.text);
@@ -7825,7 +8004,36 @@ const html = tweets.map((x) => `
             const arc = buildPlayerArc(p.id, state.week);
             if (!arc) return '';
             const beats = (arc.arcBeats || []).map(b => `<div class="small" style="margin-top:6px;"><strong>${escapeHtml(b.phase)}:</strong> ${escapeHtml(b.text)}</div>`).join('');
-            const moments = (arc.definingMoments || []).slice(0,4).map(e => `<li>${escapeHtml(e.text)}</li>`).join('');
+            const playersById = Object.fromEntries(state.players.map(pp => [String(pp.id), pp]));
+            const relLabel = (otherId) => {
+              const r = p?.narrative?.relations?.[otherId];
+              if (!r) return null;
+              const bond = Number(r.bond ?? 0);
+              const rivalry = Number(r.rivalry ?? 0);
+              const tags = Array.isArray(r.tags) ? r.tags : [];
+              if (tags.includes('crush') || tags.includes('peguete')) return 'Peguete';
+              if (rivalry >= 65) return 'Rival';
+              if (bond >= 65 && rivalry <= 35) return 'Aliado';
+              return null;
+            };
+            const weekLabel = (round) => `Semana ${round}`;
+            const fmtMoment = (e) => {
+              const base = String(e?.text || '').trim();
+              const round = Number(e?.round || state.week || 1);
+              const tid = e?.refs?.targetId != null ? String(e.refs.targetId) : null;
+              const target = tid ? playersById[tid] : null;
+
+              let extra = '';
+              if (target) {
+                const nm = simpleName(target);
+                const lab = relLabel(target.id);
+                // só adiciona se o nome não estiver já no texto
+                const has = base.toLowerCase().includes(nm.toLowerCase());
+                if (!has) extra = lab ? ` (${lab}: ${nm})` : ` (${nm})`;
+              }
+              return `${weekLabel(round)}: ${base.replace(/\.$/, '')}${extra}.`;
+            };
+            const moments = (arc.definingMoments || []).slice(0,4).map(e => `<li>${escapeHtml(fmtMoment(e))}</li>`).join('');
             return `
               <div class="drawerCard" style="margin-top:10px;">
                 <div class="t">Arco narrativo</div>
