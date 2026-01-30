@@ -5234,11 +5234,21 @@ function pickMonstroPunishment() {
   }
 
   function leaderTargetScore(leader, p) {
-    const threat = p.attrs.provas * 0.7 + p.attrs.estrategia * 0.6 + p.status.pop * 0.8;
-    const easyVote = p.attrs.rejeicao * 0.6 + p.attrs.conflito * 0.5 + p.status.alvo * 0.8;
-    const noise = rnd(-1.5, 1.5) - leader.attrs.estrategia * 0.25;
-    return threat * 0.65 + easyVote * 0.35 + noise;
-  }
+  const threat = p.attrs.provas * 0.7 + p.attrs.estrategia * 0.6 + p.status.pop * 0.8;
+  const easyVote = p.attrs.rejeicao * 0.6 + p.attrs.conflito * 0.5 + p.status.alvo * 0.8;
+
+  const rel = relGet(leader.id, p.id); // -5..+5 no seu jogo
+  const protectFriend = rel * 1.2;     // ↑ aumente pra proteger mais
+  const targetEnemy = (-rel) * 1.5;    // ↑ aumente pra mirar mais em rival
+
+  const noise = rnd(-1.5, 1.5) - leader.attrs.estrategia * 0.25;
+
+  return (threat * 0.65 + easyVote * 0.35)
+    + targetEnemy
+    - protectFriend
+    + noise;
+}
+
 
   function doIndica() {
     const alive = alivePlayers();
