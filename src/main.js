@@ -634,10 +634,35 @@ const POP_VOTE = {
 
   }
 
-  function generateNarrativeTweets({ max = 2 } = {}) {
+  function generateNarrativeTweets({ max = 2, ctx = null, ws = null } = {}) {
     const alive = alivePlayers();
     state.narrative = state.narrative || {};
     const meta = state.narrative.tweetMeta || (state.narrative.tweetMeta = { recentTones: [], recentTopics: [], lastByPlayer: {} });
+
+    // Guardrails contextuais:
+    // - Na final (gameOver), evitamos tweets genéricos de narrativa porque o bloco de final já injeta tweets próprios.
+    if (state.gameOver) return [];
+
+    // Mapeia "dia" para quais tópicos fazem sentido.
+    // Obs: o simulador trabalha por semana + chave de dia (ctx.key). Aqui queremos evitar:
+    // - tweets de prova fora do dia de prova
+    // - tweets de eliminação fora do dia de eliminação
+    // - tweets de paredão fora do dia de formação
+    const dayKey = ctx?.key || null;
+    const hasElimToday = !!(dayKey === 'ter' && ws?.eliminadoId);
+    const hasParedaoToday = !!(dayKey === 'dom' && (ws?.paredaoIds || []).length === 3);
+
+    // allowedTopics = null significa "não filtra".
+    let allowedTopics = null;
+    if (hasElimToday) {
+      allowedTopics = new Set(['eliminated','escape','close_call','pop_surge','pop_drop','betrayal','house_target']);
+    } else if (hasParedaoToday) {
+      allowedTopics = new Set(['target','house_target']);
+    } else {
+      // Em dias comuns, só deixa temas de "clima" (pop surge/drop) OU treta (betrayal) se tiverem acontecido,
+      // mas em volume menor.
+      allowedTopics = new Set(['pop_surge','pop_drop','betrayal','house_target']);
+    }
 
     const pushHistory = (topic, tone, playerId) => {
       meta.recentTones.push(tone);
@@ -654,6 +679,32 @@ const POP_VOTE = {
     const TONES = ['fofoca','debochado','narrador','analitico','torcida','dramatico','cansado','conspiracao'];
 
     const templates = {
+      eliminated: {
+        fofoca: [
+          "E foi isso: {out} saiu. A casa vai sentir? 👀",
+          "Acabou pra {out}. Agora quero ver como a casa reorganiza tudo."
+        ],
+        narrador: [
+          "Na semana {round}, {out} deixou a casa e o jogo virou página.",
+          "Com a saída de {out}, a temporada entra em outra fase."
+        ],
+        dramatico: [
+          "A porta fechou pra {out}. E a sensação é de que nada vai ser igual.",
+          "Um capítulo se encerra: {out} foi eliminado(a)."
+        ],
+        analitico: [
+          "A eliminação de {out} muda alianças e abre espaço pra novos protagonistas.",
+          "Saída importante: {out} era peça do tabuleiro e o jogo vai se redesenhar."
+        ],
+        torcida: [
+          "Foi isso, {out} saiu! Bora ver quem assume o protagonismo agora!",
+          "Tchau, {out}. Agora é foco na reta decisiva!"
+        ],
+        debochado: [
+          "Falaram tanto… e no fim quem saiu foi {out}. BBB é isso 😭",
+          "{out} saiu e o enredo ganhou um plot. Vamos."
+        ]
+      },
       target: {
         fofoca: [
           "Vocês viram? {actor} botou {target} no Paredão{again}. Climinha 👀",
@@ -787,6 +838,15 @@ const POP_VOTE = {
     };
 
     const candidates = [];
+
+    // Candidato especial: eliminação do dia (mesmo que o eliminado não esteja vivo)
+    if (hasElimToday && ws?.eliminadoId != null) {
+      const out = state.players.find(x => String(x.id) === String(ws.eliminadoId));
+      if (out) {
+        candidates.push({ p: out, recent: { round: state.week, type: 'eliminated', weight: 3, refs: { outId: out.id } }, base: 3, kind: 'eliminated' });
+      }
+    }
+
     for (const p of alive) {
       initNarrativeForPlayer(p, state.week);
       const tl = p.narrative.timeline || [];
@@ -806,6 +866,7 @@ const POP_VOTE = {
       if (t === 'betrayal') return 'betrayal';
       if (t === 'pop_surge') return 'pop_surge';
       if (t === 'pop_drop') return 'pop_drop';
+      if (t === 'eliminated') return 'eliminated';
       return null;
     };
 
@@ -828,6 +889,11 @@ const POP_VOTE = {
       const actor = fmtName(p);
       const facts = { actor, round: String(state.week), again: '', detail: '' };
       const tl = p.narrative.timeline || [];
+
+      if (topic === 'eliminated') {
+        // Aqui p é o eliminado (pode não estar vivo)
+        facts.out = actor;
+      }
 
       if (topic === 'target') {
         const tid = recent?.refs?.targetId;
@@ -864,11 +930,14 @@ const POP_VOTE = {
       return topic ? { ...c, topic } : null;
     }).filter(Boolean);
 
-    norm.sort((a,b)=>b.base-a.base);
+    // Filtro contextual por dia (prova/eliminação/paredão etc.)
+    const normFiltered = allowedTopics ? norm.filter(x => allowedTopics.has(x.topic)) : norm;
+
+    normFiltered.sort((a,b)=>b.base-a.base);
     const picked = [];
     const usedPlayers = new Set();
 
-    for (const c of norm) {
+    for (const c of normFiltered) {
       if (picked.length >= max) break;
       if (usedPlayers.has(c.p.id)) continue;
       const last = meta.lastByPlayer?.[c.p.id];
@@ -7515,7 +7584,7 @@ if (state.week === 1 && state.dayIndex === 0) {
 
     // 4.5) Tweets narrativos (variedade de tons + detalhe de timeline)
     try {
-      const texts = generateNarrativeTweets({ max: 2 });
+      const texts = generateNarrativeTweets({ max: 2, ctx, ws });
       for (const t of texts) addTweet(tweet(t));
     } catch (e) { /* ignora */ }
 
