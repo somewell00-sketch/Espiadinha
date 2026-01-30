@@ -314,6 +314,139 @@ const POP_VOTE = {
     return idxA;
   }
 
+
+  // Títulos de arco narrativo: pools em português + seleção determinística (variedade sem ficar aleatório a cada render)
+  const ARC_TITLE_POOLS = {
+    survivor: [
+      "O Resistente",
+      "Sempre por um Fio",
+      "A Fênix do Jogo",
+      "Escapista",
+      "Sobreviveu no Detalhe",
+      "O Indestrutível",
+      "O Que Nunca Cai"
+    ],
+    strategist: [
+      "O Articulador",
+      "Xadrezista",
+      "Jogando nas Sombras",
+      "Mente do Jogo",
+      "O Arquiteto do Jogo",
+      "O Que Puxa os Fios"
+    ],
+    villain: [
+      "O Vilão da Temporada",
+      "Figura Polêmica",
+      "Jogando com Fogo",
+      "O Queimado",
+      "Jogo Sujo",
+      "Sem Medo do Cancelamento"
+    ],
+    comp: [
+      "Trator",
+      "Imparável",
+      "Máquina de Vitórias",
+      "Dono das Provas",
+      "Competidor Nato",
+      "Sequência Perigosa"
+    ],
+    social: [
+      "Camaleão Social",
+      "Centro da Casa",
+      "Todo Mundo Gosta",
+      "Socialmente Blindado",
+      "O Bom de Conversa",
+      "Costurando Alianças"
+    ],
+    chaos: [
+      "Imprevisível",
+      "Bomba-Relógio",
+      "Sempre no Olho do Furacão",
+      "Uma Semana de Cada Vez"
+    ],
+    isolated: [
+      "Lobo Solitário",
+      "Sozinho no Jogo",
+      "Fora do Grupo",
+      "Jogo Solitário"
+    ],
+    neutral: [
+      "Figura Imprevisível",
+      "Jogador(a) em Construção",
+      "Peça Solta do Jogo"
+    ]
+  };
+
+  const hashStr = (str) => {
+    // hash simples e estável (djb2)
+    let h = 5381;
+    const s = String(str ?? '');
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h) + s.charCodeAt(i);
+    return h >>> 0;
+  };
+
+  const pickDet = (arr, seed, fallback='') => {
+    if (!Array.isArray(arr) || !arr.length) return fallback;
+    const idx = hashStr(seed) % arr.length;
+    return arr[idx];
+  };
+
+  const pickArcTitle = (p, totalRounds) => {
+    const n = p?.narrative || {};
+    const rep = n.reputation || {};
+    const themes = n.themes || {};
+    const stats = n.stats || {};
+    const id = String(p?.id ?? '');
+
+    const score = (k) => Number(rep?.[k] ?? 0);
+
+    // Eixos (prioridade pelo impacto narrativo)
+    const axes = [];
+    if (score('underdog') >= 7 || Number(themes?.survivor?.score ?? 0) >= 2 || Number(n?.streaks?.danger ?? 0) >= 2) axes.push('survivor');
+    if (score('social') >= 7) axes.push('social');
+    if (score('compBeast') >= 7 || Number(n?.streaks?.win ?? 0) >= 2) axes.push('comp');
+    if (score('strategist') >= 7) axes.push('strategist');
+    if (score('villain') >= 7 || Number(themes?.collapse?.score ?? 0) >= 2) axes.push('villain');
+    if (Number(themes?.lone_wolf?.score ?? 0) >= 2) axes.push('isolated');
+    if (Number(themes?.chaos?.score ?? 0) >= 2) axes.push('chaos');
+
+    // fallback: pilar mais alto (entre os 6 básicos)
+    if (!axes.length) {
+      const pillars = [
+        { id: 'strategist', v: score('strategist') },
+        { id: 'underdog', v: score('underdog') },
+        { id: 'compBeast', v: score('compBeast') },
+        { id: 'villain', v: score('villain') },
+        { id: 'loyal', v: score('loyal') },
+        { id: 'social', v: score('social') }
+      ].sort((a,b)=>b.v-a.v);
+      const top = pillars[0]?.id;
+      axes.push(top === 'compBeast' ? 'comp' : (top === 'underdog' ? 'survivor' : (top || 'neutral')));
+    }
+
+    const main = axes[0] || 'neutral';
+
+    // Modificadores (subtítulo) — só se acrescentar algo claro
+    const mods = [];
+    if (main !== 'comp' && (score('compBeast') >= 6 || Number(n?.streaks?.win ?? 0) >= 2)) mods.push('comp');
+    if (main !== 'survivor' && (score('underdog') >= 6 || Number(n?.streaks?.danger ?? 0) >= 2)) mods.push('survivor');
+    if (main !== 'villain' && (score('villain') >= 6 || Number(stats?.betrayalsDone ?? 0) >= 2)) mods.push('villain');
+    if (main !== 'strategist' && (score('strategist') >= 6)) mods.push('strategist');
+    if (main !== 'social' && (score('social') >= 6)) mods.push('social');
+    if (Number(themes?.lone_wolf?.score ?? 0) >= 2) mods.push('isolated');
+
+    // Escolhe um modificador "mais diferente" do eixo principal
+    const secondary = mods.find(m => m && m !== main) || null;
+
+    const title = pickDet(ARC_TITLE_POOLS[main] || ARC_TITLE_POOLS.neutral, `${id}|${main}|title`, "Figura Imprevisível");
+    const subtitle = secondary ? pickDet(ARC_TITLE_POOLS[secondary] || ARC_TITLE_POOLS.neutral, `${id}|${main}|${secondary}|sub`, '') : '';
+
+    // Evita título e subtítulo iguais
+    const sub = (subtitle && subtitle !== title) ? subtitle : '';
+
+    return { title, subtitle: sub || null, axis: main, secondary };
+  };
+
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
     if (!p || !p.narrative) return null;
@@ -466,6 +599,7 @@ const POP_VOTE = {
     return {
       playerId: p.id,
       title,
+      subtitle,
       logline,
       arcBeats: phases.map(ph => ({ phase: ph.id, text: pickPhaseLine(ph) })),
       definingMoments,
@@ -8075,7 +8209,7 @@ const html = tweets.map((x) => `
               <div class="drawerCard" style="margin-top:10px;">
                 <div class="t">Arco narrativo</div>
                 <div class="c">
-                  <div style="font-weight:900;">${escapeHtml(arc.title)}</div>
+                  <div style="font-weight:900;">${escapeHtml(arc.title)}</div>${arc.subtitle ? `<div class=\"small\" style=\"margin-top:2px; font-weight:800; opacity:.9;\">${escapeHtml(arc.subtitle)}</div>` : ''}
                   <div class="small" style="margin-top:4px; opacity:.92;">${escapeHtml(arc.logline)}</div>
                   ${beats ? `<div style="margin-top:8px;">${beats}</div>` : ''}
                   ${moments ? `<div style="margin-top:10px;"><div class="small" style="font-weight:900;">Momentos marcantes</div><ul class="small" style="margin:6px 0 0 18px;">${moments}</ul></div>` : ''}
