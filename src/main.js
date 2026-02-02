@@ -2056,8 +2056,8 @@ function statusLabel(p) {
   const WEEK_DAYS = [
     { key: "qua", name: "Quarta", notes: "Convivência + Festa (eventos de festa)" },
     { key: "qui", name: "Quinta", notes: "Convivência + Prova do Líder" },
-    { key: "sex", name: "Sexta", notes: "Convivência + Prova do Anjo" },
-    { key: "sab", name: "Sábado", notes: "Convivência" },
+    { key: "sex", name: "Sexta", notes: "Convivência + Big Fone" },
+    { key: "sab", name: "Sábado", notes: "Convivência + Prova do Anjo + Festa do Patrocinador" },
     { key: "dom", name: "Domingo", notes: "Convivência + Imunidade do Anjo + Indicação do Líder + Contragolpe + Votos da casa + Paredão" },
     { key: "seg", name: "Segunda", notes: "Convivência" },
     { key: "ter", name: "Terça", notes: "Convivência + Eliminação" }
@@ -2839,9 +2839,13 @@ if (d.strikes !== undefined) {
   /* ===== Logging ===== */
   function dayCtx() {
     const d = WEEK_DAYS[state.dayIndex] || WEEK_DAYS[0];
-    const festa = (state.week > 1) && (/festa/i.test(String(d.notes || "")) || (d.key === "qua"));
+    const notes = String(d.notes || "");
+    const isSponsorPartyDay = (d.key === "sab");
+    const festa = (/festa/i.test(notes) || (d.key === "qua") || isSponsorPartyDay);
+    const festaType = (d.key === "qua") ? "lider" : (isSponsorPartyDay ? "patrocinador" : null);
     const tension = d.key === "seg" || d.key === "ter";
-    return { ...d, festa, tension };
+    const sponsor = (festaType === "patrocinador") ? ensureSponsorPartyObj() : null;
+    return { ...d, festa, festaType, sponsor, tension };
   }
 
   function pushLog(who, msg, meta) {
@@ -3925,7 +3929,149 @@ const SHOWS_BBB = [
     "Horrores",
     "Manoel Gomes Caneta Azul"
 ];
-	
+
+// ===== FESTA DO PATROCINADOR (Sábado) =====
+// Patrocinadores fictícios/paródias. Cores inspiradas nas marcas originais.
+const SPONSOR_BRANDS = [
+  { name: "Cola-Cola", color: "#F40009", emoji: "🥤" },
+  { name: "Guaraná Antártica", color: "#007A3D", emoji: "🧉" },
+  { name: "PepsiColaço", color: "#004B93", emoji: "🥤" },
+  { name: "Red Touro", color: "#DB0A40", emoji: "🐂" },
+  { name: "Monsterzinho", color: "#00A651", emoji: "👾" },
+
+  { name: "McDonuts", color: "#FFC72C", emoji: "🍔" },
+  { name: "Burger Príncipe", color: "#D62300", emoji: "👑" },
+  { name: "SubJeito", color: "#009B3A", emoji: "🥪" },
+  { name: "KFC (Kilo de Frango Caseiro)", color: "#E4002B", emoji: "🍗" },
+  { name: "Habibis", color: "#E30613", emoji: "🥙" },
+
+  { name: "iComida", color: "#EA1D2C", emoji: "🍽️" },
+  { name: "iFome", color: "#EA1D2C", emoji: "🍽️" },
+  { name: "UberEatsNada", color: "#06C167", emoji: "🛵" },
+  { name: "99Fome", color: "#FFB100", emoji: "🛵" },
+  { name: "RappiDois", color: "#FF441F", emoji: "🛵" },
+
+  { name: "Amazoom", color: "#FF9900", emoji: "📦" },
+  { name: "Mercado Líder", color: "#FFE600", emoji: "🛒" },
+  { name: "Shopeepe", color: "#EE4D2D", emoji: "🛍️" },
+  { name: "AliExpresso", color: "#FF4747", emoji: "🛍️" },
+  { name: "Magaluja", color: "#0086FF", emoji: "🛒" },
+
+  { name: "Clarão", color: "#E60000", emoji: "📶" },
+  { name: "VivoMortinho", color: "#660099", emoji: "📶" },
+  { name: "MortoTIM", color: "#002E6D", emoji: "📶" },
+  { name: "OiSumido", color: "#D5007F", emoji: "📶" },
+  { name: "NetNada", color: "#E2001A", emoji: "📶" },
+
+  { name: "Banco do Brasel", color: "#F9D616", emoji: "🏦" },
+  { name: "Caixa Preta", color: "#005CA9", emoji: "🏦" },
+  { name: "Nubranquinho", color: "#8A05BE", emoji: "🏦" },
+  { name: "Itauzinho", color: "#EC7000", emoji: "🏦" },
+  { name: "PicPayzinho", color: "#11C76F", emoji: "🏦" },
+
+  { name: "NaturaSus", color: "#2E7D32", emoji: "🧴" },
+  { name: "O Boticário", color: "#006B3F", emoji: "🧴" },
+  { name: "Avonha", color: "#E71D73", emoji: "💄" },
+  { name: "Jequitiquê", color: "#C9A227", emoji: "✨" },
+  { name: "Quem Disse Berenice?", color: "#C6007E", emoji: "💄" },
+
+  { name: "RexNada", color: "#0072CE", emoji: "🧼" },
+  { name: "DoveNada", color: "#1A5DA8", emoji: "🧼" },
+  { name: "Colgato", color: "#D52B1E", emoji: "🪥" },
+  { name: "Sorriso Amarelo", color: "#F57C00", emoji: "😁" },
+  { name: "NeveNeve", color: "#2F80ED", emoji: "🧻" },
+
+  { name: "Netflixxx", color: "#E50914", emoji: "📺" },
+  { name: "Amazin Prime", color: "#00A8E1", emoji: "📺" },
+  { name: "Globoplayboy", color: "#FF0033", emoji: "📺" },
+  { name: "Disnhei+", color: "#113CCF", emoji: "✨" },
+  { name: "HBO GoEmbora", color: "#6F2DBD", emoji: "📺" },
+
+  { name: "OnlyFãs", color: "#00AFF0", emoji: "💙" },
+  { name: "OnlyCasa", color: "#00AFF0", emoji: "🏠" },
+  { name: "Privacyzada", color: "#111111", emoji: "🔒" },
+  { name: "FansSó", color: "#111111", emoji: "🔒" },
+  { name: "Close Friends Premium", color: "#00A651", emoji: "🟢" },
+
+  { name: "TikTeko", color: "#25F4EE", emoji: "🎵" },
+  { name: "InstaGrama", color: "#C13584", emoji: "📸" },
+  { name: "FaceBookado", color: "#1877F2", emoji: "👥" },
+  { name: "Xuiter", color: "#111111", emoji: "🗯️" },
+  { name: "ZapZap", color: "#25D366", emoji: "💬" },
+
+  { name: "Casas Bahiazinha", color: "#0033A0", emoji: "🛋️" },
+  { name: "Ponto Friozinho", color: "#00B0F0", emoji: "❄️" },
+  { name: "Lojas Americanas 2", color: "#E30613", emoji: "🏬" },
+  { name: "Pernambucanas", color: "#E2001A", emoji: "🏬" },
+  { name: "Havan’t", color: "#0033A0", emoji: "🏬" }
+];
+
+function hexToRgb(hex) {
+  const h = String(hex || "").replace("#", "").trim();
+  if (h.length !== 6) return { r: 255, g: 255, b: 255 };
+  const n = parseInt(h, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return { r, g, b };
+}
+
+function hexToRgba(hex, a) {
+  const { r, g, b } = hexToRgb(hex);
+  const alpha = clamp(Number(a ?? 1), 0, 1);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Patrocinador ÚNICO por semana (semana nova = patrocinador novo)
+function ensureSponsorPartyObj() {
+  state.weekState = state.weekState || {};
+
+  if (state.weekState.sponsorPartyWeek !== state.week) {
+    state.weekState.sponsorPartyWeek = state.week;
+    state.weekState.sponsorPartyObj = null;
+  }
+  if (state.weekState.sponsorPartyObj) return state.weekState.sponsorPartyObj;
+
+  state.usedSponsorParties = state.usedSponsorParties || {};
+
+  let candidates = (SPONSOR_BRANDS || []).filter(s => s && !state.usedSponsorParties[String(s.name)]);
+  if (!candidates.length) {
+    state.usedSponsorParties = {};
+    candidates = (SPONSOR_BRANDS || []).slice();
+  }
+
+  const chosen = pickOne(candidates);
+  state.weekState.sponsorPartyObj = chosen;
+  state.usedSponsorParties[String(chosen.name)] = true;
+
+  return chosen;
+}
+
+function sponsorPartyBannerHtml() {
+  const s = ensureSponsorPartyObj();
+  const sName = s?.name ? String(s.name) : "Patrocinador";
+  const sColor = s?.color || "#EEC052";
+  const sEmoji = s?.emoji || "🛍️";
+
+  const title = `${sEmoji} ${sEmoji} ${sEmoji} Festa do Patrocinador: ${sName} ${sEmoji} ${sEmoji} ${sEmoji}`;
+  const subtitle = "Tema: produtos do patrocinador (paródia)";
+
+  return `
+    <div class="dayCard party sponsorParty" style="
+      background: linear-gradient(135deg, ${hexToRgba(sColor, 0.28)}, rgba(255,255,255,0.06));
+      border: 1px solid ${hexToRgba(sColor, 0.30)};
+    ">
+      <span style="flex:1; min-width:0; font-size:22px; font-weight:900; line-height:1.2; text-align:center;">
+        ${escapeHtml(title)}
+        <div style="margin-top:4px; font-weight:600; font-size:11px; opacity:.9;">
+          ${escapeHtml(subtitle)}
+        </div>
+      </span>
+    </div>
+  `;
+}
+
+
 function getLeaderForParty() {
   const leaderId = state?.weekState?.leaderId ?? state?.weekState?.lastLeaderId ?? null;
   if (!leaderId) return null;
@@ -4431,7 +4577,8 @@ if (maybeExpulsionByHarassment(ctx)) return;
 if (maybeQuitEvent(ctx)) return;
 
    if (ctx.festa) {
-  dayAdd(partyBannerHtml());
+  if (ctx.festaType === "patrocinador") dayAdd(sponsorPartyBannerHtml());
+  else dayAdd(partyBannerHtml());
 }
 
     if (typeof maybeSpecialFightEvent === "function") {
@@ -4756,7 +4903,7 @@ const { winner: leader, ranked } = runProva("Líder", pool, "gameLeader");
   defineVipXepa(leader.id);
 }
 
-  /* ===== Big Fone (Sábado) ===== */
+  /* ===== Big Fone (Sexta) ===== */
   function bigFoneEnabled() {
     // só até restarem 7 jogadores no jogo
     return alivePlayers().length > 7;
@@ -5597,7 +5744,7 @@ return chosen;
     if (nom1) set.set(nom1.id, nom1);
     if (nom2) set.set(nom2.id, nom2);
 
-    // Big Fone pode adicionar um nome extra ao paredão (sábado)
+    // Big Fone pode adicionar um nome extra ao paredão (sexta)
     if (bf.extraParedaoId) {
       const extra = state.players.find((p) => p.id === bf.extraParedaoId);
       if (extra && extra.status.alive) set.set(extra.id, extra);
@@ -6827,19 +6974,19 @@ if (ctxFrozen.key === "seg") {
       }
     }
 
-    // SEXTA: anjo (não existe no Top6/Top4)
+    // SEXTA: Big Fone (30% de chance; até Top 7)
     if (ctxFrozen.key === "sex") {
-      if (!top6 && aliveN > 6) doAnjo();
+      doBigFone(meta);
     }
 
-    // SÁBADO: Big Fone (30% de chance; até Top 7)
+// SÁBADO: Anjo + Monstro + Festa do Patrocinador
     if (ctxFrozen.key === "sab") {
-      doBigFone(meta);
+      if (!top6 && aliveN > 6) doAnjo();
       // Sábado: Anjo coloca 2 pessoas no Monstro
       if (!top6 && aliveN > 6 && state.weekState.anjoId) doMonstro(meta);
     }
 
-    // DOMINGO:
+// DOMINGO:
     // - no Top4: eliminação do paredão dos 3 (forma Top3)
     // - fora do Top4: segue formação normal
     if (ctxFrozen.key === "dom") {
