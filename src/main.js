@@ -2211,9 +2211,10 @@ parsed.weekState.xepaIds = Array.isArray(parsed.weekState.xepaIds) ? parsed.week
 p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, conflito: 5, rejeicao: 0, excentricidade: 0, serenidade: 5 };
         if (p.attrs.excentricidade === undefined || p.attrs.excentricidade === null) p.attrs.excentricidade = 0;
         if (p.attrs.serenidade === undefined || p.attrs.serenidade === null) p.attrs.serenidade = 5;
-        p.status = p.status || { alive: true, pop: 5, alvo: 0, strikes: 0, leaderCount: 0, anjoCount: 0, paredaoCount: 0, popWeek: {}, favPublic: false };
+        p.status = p.status || { alive: true, pop: 5, alvo: 0, strikes: 0, leaderCount: 0, anjoCount: 0, paredaoCount: 0, popWeek: {}, favPublic: false, favPermanent: false };
         p.status.popWeek = p.status.popWeek || {};
         if (p.status.favPublic === undefined) p.status.favPublic = false;
+        if (p.status.favPermanent === undefined) p.status.favPermanent = false;
         if (p.status.leaderCount === undefined || p.status.leaderCount === null) p.status.leaderCount = 0;
         if (p.status.anjoCount === undefined || p.status.anjoCount === null) p.status.anjoCount = 0;
         if (p.status.paredaoCount === undefined || p.status.paredaoCount === null) p.status.paredaoCount = (p.status.strikes ?? 0);
@@ -2313,7 +2314,7 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
         excentricidade: rndInt(0, 10),
         serenidade: rndInt(1, 10)
       },
-      status: { alive: true, pop: 5.0, alvo: 0.0, strikes: 0, leaderCount: 0, anjoCount: 0, paredaoCount: 0, popWeek: {}, favPublic: false, room: null, weeksSinceWin: 0, weeksSinceParedao: 0, weeksSinceEvent: 0, popPrev: 5.0, popStableStreak: 0, decisionStreak: 0, didSomethingThisWeek: false, madeDecisionThisWeek: false, wonSomethingThisWeek: false, planta: false, plantStreak: 0, excluido: false, excluidoStreak: 0, narr: { invisDays: 0, pressureDays: 0, lastLabel: "" } },
+      status: { alive: true, pop: 5.0, alvo: 0.0, strikes: 0, leaderCount: 0, anjoCount: 0, paredaoCount: 0, popWeek: {}, favPublic: false, favPermanent: false, room: null, weeksSinceWin: 0, weeksSinceParedao: 0, weeksSinceEvent: 0, popPrev: 5.0, popStableStreak: 0, decisionStreak: 0, didSomethingThisWeek: false, madeDecisionThisWeek: false, wonSomethingThisWeek: false, planta: false, plantStreak: 0, excluido: false, excluidoStreak: 0, narr: { invisDays: 0, pressureDays: 0, lastLabel: "" } },
       secret: { gayScore: (gender === 'M' || gender === 'F') ? sampleGayScore() : null }
     };
     ensurePlayerAge(p);
@@ -2580,9 +2581,22 @@ function currentFavorites() {
   }
 
   function syncFavFlags() {
-    const set = new Set(Array.isArray(state.publicFavoriteIds) ? state.publicFavoriteIds : []);
+    // Garante que favoritos permanentes permaneçam marcados até o fim do jogo.
+    state.publicFavoriteIds = Array.isArray(state.publicFavoriteIds) ? state.publicFavoriteIds : [];
+
+    // Injeta permanentes na lista (apenas vivos).
     for (const x of state.players) {
-      if (x.status) x.status.favPublic = set.has(x.id);
+      if (!x?.id || !x?.status) continue;
+      if (x.status.favPermanent && x.status.alive && !state.publicFavoriteIds.includes(x.id)) {
+        state.publicFavoriteIds.push(x.id);
+      }
+    }
+
+    const set = new Set(state.publicFavoriteIds);
+    for (const x of state.players) {
+      if (!x?.status) continue;
+      const isPermAlive = !!(x.status.favPermanent && x.status.alive);
+      x.status.favPublic = isPermAlive || set.has(x.id);
     }
   }
 
@@ -2644,7 +2658,9 @@ function currentFavorites() {
   }
 
   function clearPublicFavorites() {
-    state.publicFavoriteIds = [];
+    // limpa, mas preserva favoritos permanentes (vivos)
+    const perm = (state.players || []).filter(p => p?.status?.alive && p?.status?.favPermanent).map(p => p.id).filter(Boolean);
+    state.publicFavoriteIds = perm;
     syncFavFlags();
   }
 
@@ -2652,6 +2668,20 @@ function currentFavorites() {
     if (!p || !p.id) return;
     state.publicFavoriteIds = Array.isArray(state.publicFavoriteIds) ? state.publicFavoriteIds : [];
     if (!state.publicFavoriteIds.includes(p.id)) state.publicFavoriteIds.push(p.id);
+
+    // 1% de chance de virar favorito permanente (até o fim do jogo), ao ganhar a ⭐.
+    // Só roda quando o jogador está virando favorito agora (não spam).
+    p.status = p.status || {};
+    if (!p.status.favPermanent && Math.random() < 0.01) {
+      p.status.favPermanent = true;
+      // registra no arco narrativo
+      try {
+        const R = Number(state.week ?? 1);
+        pushTimelineEvent(p, { round: R, type: 'fav_perm', text: `${simpleName(p)} virou favorito permanente do público.`, refs: {}, weight: 3 });
+        tagTheme(p, 'public_favorite', 3, R, p.narrative?.timeline?.length ? (p.narrative.timeline.length - 1) : null);
+      } catch { /* ignora */ }
+    }
+
     syncFavFlags();
     // registra ⭐ (torcida) no histórico narrativo
     try { recordStarHistory(p, state.week, true); } catch { /* ignora */ }
@@ -2660,6 +2690,19 @@ function currentFavorites() {
   function removePublicFavorite(pOrId) {
     const id = typeof pOrId === "string" ? pOrId : (pOrId?.id || null);
     if (!id) return;
+
+    // Não remove favoritos permanentes (se ainda estiverem vivos).
+    try {
+      const pCheck = state.players.find(x => x.id === id);
+      if (pCheck?.status?.alive && pCheck?.status?.favPermanent) {
+        // garante que está na lista
+        state.publicFavoriteIds = Array.isArray(state.publicFavoriteIds) ? state.publicFavoriteIds : [];
+        if (!state.publicFavoriteIds.includes(id)) state.publicFavoriteIds.push(id);
+        syncFavFlags();
+        return;
+      }
+    } catch { /* ignora */ }
+
     state.publicFavoriteIds = Array.isArray(state.publicFavoriteIds) ? state.publicFavoriteIds : [];
     state.publicFavoriteIds = state.publicFavoriteIds.filter((x) => x !== id);
     syncFavFlags();
@@ -2839,10 +2882,13 @@ if (d.strikes !== undefined) {
   /* ===== Logging ===== */
   function dayCtx() {
     const d = WEEK_DAYS[state.dayIndex] || WEEK_DAYS[0];
-    const notes = String(d.notes || "");
     const isSponsorPartyDay = (d.key === "sab");
-    const festa = (/festa/i.test(notes) || (d.key === "qua") || isSponsorPartyDay);
-    const festaType = (d.key === "qua") ? "lider" : (isSponsorPartyDay ? "patrocinador" : null);
+    // A festa do líder não acontece na primeira quarta-feira (estreia).
+    // A partir da semana 2, a quarta vira dia de festa do líder.
+    const isLeaderPartyDay = (d.key === "qua" && state.week >= 2);
+
+    const festa = (isLeaderPartyDay || isSponsorPartyDay);
+    const festaType = isLeaderPartyDay ? "lider" : (isSponsorPartyDay ? "patrocinador" : null);
     const tension = d.key === "seg" || d.key === "ter";
     const sponsor = (festaType === "patrocinador") ? ensureSponsorPartyObj() : null;
     return { ...d, festa, festaType, sponsor, tension };
@@ -4054,7 +4100,7 @@ function sponsorPartyBannerHtml() {
   const sEmoji = s?.emoji || "🛍️";
 
   const title = `${sEmoji} ${sEmoji} ${sEmoji} Festa do Patrocinador: ${sName} ${sEmoji} ${sEmoji} ${sEmoji}`;
-  const subtitle = "Tema: produtos do patrocinador";
+  const subtitle = "Tema: produtos do patrocinador (paródia)";
 
   return `
     <div class="dayCard party sponsorParty" style="
@@ -4437,7 +4483,7 @@ if (alive.length <= 4) return false;
   // Regra:
   // - Se não tem amigos (0 vínculos >= +0.5)
   // - E tem desafeto com 3+ pessoas (vínculos <= -1.0, seja p->outros ou outros->p)
-  // - No máximo 3 "excluídos" por vez (os 3 com menos boas relações)
+  // - No máximo 20% do elenco vivo "excluído" por vez (os com menos boas relações)
   // Então ganha um bônus de popularidade (o público tende a comprar a narrativa do "excluído").
   function applyExclusionPopularityBoost(ctx) {
     if (state.gameOver) return;
@@ -4482,7 +4528,21 @@ if (alive.length <= 4) return false;
       social.push({ p, friends, rivals, goodLinks, isCandidate });
     }
 
-    // 2) escolhe no máximo 3 candidatos (os com menos boas relações; em empate, mais desafetos)
+    // 2) escolhe no máximo 20% do elenco vivo (arredonda pra baixo)
+    // Ex.: 20 vivos => 4 excluídos; 5 vivos => 1 excluído.
+    const maxExcluded = Math.max(0, Math.floor(alive.length * 0.20));
+
+    // se o limite for 0, ninguém pode ficar marcado como excluído
+    if (maxExcluded === 0) {
+      for (const p of alive) {
+        if (!p?.status) continue;
+        p.status.excluido = false;
+        p.status.excluidoStreak = 0;
+      }
+      return;
+    }
+
+    // escolhe até o limite (os com menos boas relações; em empate, mais desafetos)
     const chosen = social
       .filter((x) => x.isCandidate)
       .sort((a, b) => {
@@ -4490,7 +4550,7 @@ if (alive.length <= 4) return false;
         if (a.rivals !== b.rivals) return b.rivals - a.rivals;
         return (a.p.status?.pop ?? 0) - (b.p.status?.pop ?? 0); // desempate leve
       })
-      .slice(0, 3);
+      .slice(0, maxExcluded);
 
     const chosenIds = new Set(chosen.map((x) => x.p.id));
     const boosted = [];
@@ -8878,7 +8938,7 @@ $("btnLoadPreset")?.addEventListener("click", async () => {
   state.dayIndex = 0;
   state.gameOver = false;
   state.publicFavoriteIds = [];
-  state.players.forEach((p)=>{ if(p.status) p.status.favPublic=false; });
+  state.players.forEach((p)=>{ if(p.status){ p.status.favPublic=false; p.status.favPermanent=false; } });
   pendingAdvance = null;
   resetWeekState();
 
@@ -8909,7 +8969,7 @@ $("btnGenCast")?.addEventListener("click", () => {
     state.dayIndex = 0;
     state.gameOver = false;
     state.publicFavoriteIds = [];
-    state.players.forEach((p)=>{ if(p.status) p.status.favPublic=false; });
+    state.players.forEach((p)=>{ if(p.status){ p.status.favPublic=false; p.status.favPermanent=false; } });
 
     resetWeekState();
     pushLog("Sistema", `Elenco aleatório (${size}) criado.`);
