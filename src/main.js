@@ -5127,13 +5127,34 @@ function doAnjo() {
 
 
   function chooseAnjoImmunity(anjo, candidates) {
-    const weighted = candidates.map((p) => {
-      const risk = p.status.alvo * 1.0 + p.attrs.rejeicao * 0.9 + p.attrs.conflito * 0.6;
-      const likable = p.attrs.social * 0.4 + p.status.pop * 0.4;
-      const noise = rnd(-1.0, 1.0);
-      const score = risk * 0.95 + likable * 0.25 + noise;
-      return { item: p, w: clamp(score + 1.5, 0.2, 30) };
+    // Regra: o Anjo tende a imunizar alguém próximo dele que seja desafeto do Líder.
+    // Fallbacks: (1) próximo do Anjo (2) qualquer candidato.
+    const leaderId = state?.weekState?.leaderId ?? null;
+
+    // "Próximo" = relação positiva com o Anjo.
+    const closeToAnjo = candidates.filter((p) => relGet(anjo.id, p.id) >= 0.8);
+
+    // "Desafeto do líder" = relação negativa do líder com a pessoa.
+    const leaderDesafeto = leaderId ? closeToAnjo.filter((p) => relGet(leaderId, p.id) <= -0.7) : [];
+
+    const pool = (leaderDesafeto.length ? leaderDesafeto : (closeToAnjo.length ? closeToAnjo : candidates));
+
+    const weighted = pool.map((p) => {
+      const relA = relGet(anjo.id, p.id); // quanto o Anjo gosta
+      const relL = leaderId ? relGet(leaderId, p.id) : 0; // quanto o Líder gosta (negativo = desafeto)
+
+      // Pessoas em risco costumam ser salvas, mas a proximidade e o "desafeto do líder" pesam mais.
+      const risk = p.status.alvo * 1.0 + p.attrs.rejeicao * 0.7 + p.attrs.conflito * 0.4;
+      const likable = p.attrs.social * 0.25 + p.status.pop * 0.25;
+
+      const closeness = clamp((relA + 5) / 10, 0, 1); // 0..1
+      const antiLeader = leaderId ? clamp((-relL + 5) / 10, 0, 1) : 0.5; // 0..1 (mais alto = mais desafeto)
+
+      const noise = rnd(-0.8, 0.8);
+      const score = (closeness * 2.1) + (antiLeader * 1.6) + (risk * 0.55) + (likable * 0.20) + noise;
+      return { item: p, w: clamp(score + 0.8, 0.2, 30) };
     });
+
     return pickWeighted(weighted);
   }
 
