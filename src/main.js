@@ -4054,7 +4054,7 @@ function sponsorPartyBannerHtml() {
   const sEmoji = s?.emoji || "🛍️";
 
   const title = `${sEmoji} ${sEmoji} ${sEmoji} Festa do Patrocinador: ${sName} ${sEmoji} ${sEmoji} ${sEmoji}`;
-  const subtitle = "Tema: produtos do patrocinador (paródia)";
+  const subtitle = "Tema: produtos do patrocinador";
 
   return `
     <div class="dayCard party sponsorParty" style="
