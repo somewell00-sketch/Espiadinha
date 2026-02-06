@@ -10424,114 +10424,136 @@ $("btnGenCast")?.addEventListener("click", () => {
   }
 
   function renderPopularityTab() {
-    const chartEl = $("popTabChart");
-    const listEl = $("popTabList");
-    const hintEl = $("popTabHint");
-    if (!chartEl || !listEl) return;
+  const chartEl = $("popTabChart");
+  const listEl = $("popTabList");
+  const hintEl = $("popTabHint");
+  if (!chartEl || !listEl) return;
 
-    ensurePopTabSelection();
+  ensurePopTabSelection();
 
-    const lastWeek = getGlobalLastPopWeek();
-    const weeks = Array.from({ length: lastWeek }, (_, i) => i + 1);
+  const lastWeek = getGlobalLastPopWeek();
+  const weeks = Array.from({ length: lastWeek }, (_, i) => i + 1);
 
-    const playersSorted = (state.players || []).slice().sort((a, b) =>
-      String(displayName(a) || '').localeCompare(String(displayName(b) || ''), 'pt-BR', { sensitivity: 'base' })
-    );
+  const playersSorted = (state.players || []).slice().sort((a, b) =>
+    String(displayName(a) || '').localeCompare(String(displayName(b) || ''), 'pt-BR', { sensitivity: 'base' })
+  );
 
-    // Controls wiring (idempotent)
-    const sIn = $("popTabSearch");
-    if (sIn && !sIn.__wired) {
-      sIn.__wired = true;
-      sIn.addEventListener('input', () => {
-        popTabSearchTerm = String(sIn.value || '').trim().toLowerCase();
-        renderPopularityTab();
-      });
-    }
-    if (sIn && sIn.value !== (popTabSearchTerm || '')) sIn.value = popTabSearchTerm || '';
+  // mesma regra nova das cores (varia saturação e luminosidade)
+  const autoColorFromKey = (key) => {
+    // tenta manter consistência por jogador usando o hueForKey existente
+    const hue = hueForKey(String(key));
 
-    const btnAll = $("popTabAll");
-    if (btnAll && !btnAll.__wired) {
-      btnAll.__wired = true;
-      btnAll.addEventListener('click', () => {
-        popTabSelectedIds = new Set((state.players || []).map((p) => String(p.id)));
-        renderPopularityTab();
-      });
-    }
-    const btnNone = $("popTabNone");
-    if (btnNone && !btnNone.__wired) {
-      btnNone.__wired = true;
-      btnNone.addEventListener('click', () => {
-        popTabSelectedIds = new Set();
-        renderPopularityTab();
-      });
-    }
+    const styles = [
+      { s: 90, l: 54 }, // vivo, médio
+      { s: 70, l: 44 }, // vivo, escuro
+      { s: 78, l: 70 }, // vivo, claro
+      { s: 28, l: 56 }, // acinzentado, médio
+      { s: 22, l: 40 }, // acinzentado, escuro
+      { s: 32, l: 76 }, // acinzentado, claro
+      { s: 95, l: 40 }, // vivo, bem escuro
+      { s: 18, l: 68 }, // bem “dusty”, claro
+    ];
 
-    // Player list (checkboxes)
-    const q = String(popTabSearchTerm || '').trim();
-    const filtered = q
-      ? playersSorted.filter((p) => String(displayName(p) || '').toLowerCase().includes(q))
-      : playersSorted;
+    // escolhe o estilo de forma estável por jogador:
+    // usa o próprio hue como base pra distribuir nos estilos
+    const idx = Math.round(hue) % styles.length;
+    const st = styles[idx];
 
-    listEl.innerHTML = '';
-    filtered.forEach((p) => {
-      const id = String(p.id);
-      const hue = hueForKey(id);
-      const color = `hsl(${hue} 80% 70%)`;
+    return `hsl(${hue} ${st.s}% ${st.l}%)`;
+  };
 
-      const row = document.createElement('label');
-      row.className = 'popPick';
-      row.style.color = color;
-
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = popTabSelectedIds.has(id);
-      cb.addEventListener('change', () => {
-        if (cb.checked) popTabSelectedIds.add(id);
-        else popTabSelectedIds.delete(id);
-        renderPopularityTab();
-      });
-
-      const dot = document.createElement('span');
-      dot.className = 'dot';
-
-      const nm = document.createElement('span');
-      nm.className = 'nm';
-      nm.textContent = displayName(p);
-
-      row.appendChild(cb);
-      row.appendChild(dot);
-      row.appendChild(nm);
-      listEl.appendChild(row);
+  // Controls wiring (idempotent)
+  const sIn = $("popTabSearch");
+  if (sIn && !sIn.__wired) {
+    sIn.__wired = true;
+    sIn.addEventListener('input', () => {
+      popTabSearchTerm = String(sIn.value || '').trim().toLowerCase();
+      renderPopularityTab();
     });
-
-    const selected = playersSorted.filter((p) => popTabSelectedIds.has(String(p.id)));
-    const seriesList = selected.map((p) => {
-      const id = String(p.id);
-      const hue = hueForKey(id);
-      return {
-        label: displayName(p),
-        series: popSeriesForPlayer(p, lastWeek),
-        color: `hsl(${hue} 80% 70%)`
-      };
-    });
-
-    const showLegend = seriesList.length <= 24;
-    chartEl.innerHTML = seriesList.length
-      ? renderPopLineChartSvg({
-          weeks,
-          seriesList,
-          width: Math.max(920, 40 + weeks.length * 36),
-          height: 260,
-          showLegend
-        }) + (!showLegend ? `<div class="small" style="margin-top:10px; opacity:.85;">Legenda escondida porque há muitas linhas. Filtre para ver a legenda.</div>` : '')
-      : `<div class="small" style="padding:10px; opacity:.85;">Selecione pelo menos 1 participante para ver o gráfico.</div>`;
-
-    if (hintEl) {
-      const total = playersSorted.length;
-      const selN = seriesList.length;
-      hintEl.textContent = `${selN}/${total} selecionados • Semanas: S1 → S${lastWeek}`;
-    }
   }
+  if (sIn && sIn.value !== (popTabSearchTerm || '')) sIn.value = popTabSearchTerm || '';
+
+  const btnAll = $("popTabAll");
+  if (btnAll && !btnAll.__wired) {
+    btnAll.__wired = true;
+    btnAll.addEventListener('click', () => {
+      popTabSelectedIds = new Set((state.players || []).map((p) => String(p.id)));
+      renderPopularityTab();
+    });
+  }
+  const btnNone = $("popTabNone");
+  if (btnNone && !btnNone.__wired) {
+    btnNone.__wired = true;
+    btnNone.addEventListener('click', () => {
+      popTabSelectedIds = new Set();
+      renderPopularityTab();
+    });
+  }
+
+  // Player list (checkboxes)
+  const q = String(popTabSearchTerm || '').trim();
+  const filtered = q
+    ? playersSorted.filter((p) => String(displayName(p) || '').toLowerCase().includes(q))
+    : playersSorted;
+
+  listEl.innerHTML = '';
+  filtered.forEach((p) => {
+    const id = String(p.id);
+    const color = autoColorFromKey(id);
+
+    const row = document.createElement('label');
+    row.className = 'popPick';
+    row.style.color = color;
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = popTabSelectedIds.has(id);
+    cb.addEventListener('change', () => {
+      if (cb.checked) popTabSelectedIds.add(id);
+      else popTabSelectedIds.delete(id);
+      renderPopularityTab();
+    });
+
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = displayName(p);
+
+    row.appendChild(cb);
+    row.appendChild(dot);
+    row.appendChild(nm);
+    listEl.appendChild(row);
+  });
+
+  const selected = playersSorted.filter((p) => popTabSelectedIds.has(String(p.id)));
+  const seriesList = selected.map((p) => {
+    const id = String(p.id);
+    return {
+      label: displayName(p),
+      series: popSeriesForPlayer(p, lastWeek),
+      color: autoColorFromKey(id)
+    };
+  });
+
+  const showLegend = seriesList.length <= 24;
+  chartEl.innerHTML = seriesList.length
+    ? renderPopLineChartSvg({
+        weeks,
+        seriesList,
+        width: Math.max(920, 40 + weeks.length * 36),
+        height: 260,
+        showLegend
+      }) + (!showLegend ? `<div class="small" style="margin-top:10px; opacity:.85;">Legenda escondida porque há muitas linhas. Filtre para ver a legenda.</div>` : '')
+    : `<div class="small" style="padding:10px; opacity:.85;">Selecione pelo menos 1 participante para ver o gráfico.</div>`;
+
+  if (hintEl) {
+    const total = playersSorted.length;
+    const selN = seriesList.length;
+    hintEl.textContent = `${selN}/${total} selecionados • Semanas: S1 → S${lastWeek}`;
+  }
+}
 
   function roleClassForPlayer(p) {
     const ws = state.weekState;
