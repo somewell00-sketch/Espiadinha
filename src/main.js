@@ -329,6 +329,111 @@ function socialStats(p) {
   };
 }
 
+
+// --- BBB: Combos + Arcos narrativos a partir dos Top 3 arquétipos semanais ---
+// Combos: leitura editorial determinística usando os 3 principais arquétipos da semana.
+// Arcos: detecta trajetória recente combinando tendência de popularidade e mudança de arquétipos.
+const BBB_COMBO_PRESETS = [
+  // chave é: primary|secondary|tertiary (ids)
+  { key: "vilao|estrategista|caotico", title: "Manipulador perigoso", subtitle: "Controle + caos", emoji: "😈" },
+  { key: "vilao|caotico|estrategista", title: "Manipulador perigoso", subtitle: "Controle + caos", emoji: "😈" },
+  { key: "estrategista|vilao|caotico", title: "Jogador sombrio", subtitle: "Frieza e influência", emoji: "♟️" },
+
+  { key: "perseguidor|justiceiro|sabio", title: "Herói moral", subtitle: "Resistência + valores", emoji: "🎯" },
+  { key: "perseguidor|sabio|justiceiro", title: "Herói moral", subtitle: "Resistência + valores", emoji: "🎯" },
+  { key: "justiceiro|perseguidor|sabio", title: "Defensor em risco", subtitle: "Protege e vira alvo", emoji: "⚖️" },
+
+  { key: "planta|pipoqueiro|sabio", title: "Sobrevivente silencioso", subtitle: "Passa ileso e cresce aos poucos", emoji: "🪴" },
+  { key: "planta|sabio|pipoqueiro", title: "Sobrevivente silencioso", subtitle: "Passa ileso e cresce aos poucos", emoji: "🪴" },
+  { key: "pipoqueiro|planta|sabio", title: "Neutro estratégico", subtitle: "Segue o fluxo com cautela", emoji: "🍿" },
+
+  { key: "alivio|caotico|pipoqueiro", title: "Meme ambulante", subtitle: "Imprevisível e carismático", emoji: "🤡" },
+  { key: "alivio|pipoqueiro|caotico", title: "Meme ambulante", subtitle: "Imprevisível e carismático", emoji: "🤡" },
+  { key: "caotico|alivio|pipoqueiro", title: "Agente do caos carismático", subtitle: "Ninguém controla", emoji: "🌪️" },
+
+  { key: "gala|casal|pipoqueiro", title: "Romance blindado", subtitle: "Afeto como escudo", emoji: "💘" },
+  { key: "casal|gala|pipoqueiro", title: "Romance blindado", subtitle: "Afeto como escudo", emoji: "💑" },
+
+  { key: "palestrinha|justiceiro|vilao", title: "Moralista polarizador", subtitle: "Divide a casa", emoji: "📢" },
+  { key: "palestrinha|vilao|justiceiro", title: "Moralista polarizador", subtitle: "Divide a casa", emoji: "📢" },
+];
+
+function bbbComboFromTop3(top3) {
+  const ids = (top3 || []).map(x => x?.id).filter(Boolean);
+  const key = ids.slice(0,3).join('|');
+  if (!key) return { key: "", title: "Sem leitura", subtitle: "", emoji: "🎭" };
+
+  const found = BBB_COMBO_PRESETS.find(x => x.key === key);
+  if (found) return { key, title: found.title, subtitle: found.subtitle, emoji: found.emoji };
+
+  // fallback determinístico: "Primário com traços de Sec/Ter"
+  const p = ids[0] || "planta";
+  const s = ids[1] || null;
+  const t = ids[2] || null;
+  const pLab = archLabelFor(p, `combo|${key}|p`);
+  const sLab = s ? archLabelFor(s, `combo|${key}|s`) : "";
+  const tLab = t ? archLabelFor(t, `combo|${key}|t`) : "";
+  const emoji = ARCHETYPE_META[p]?.emoji || "🎭";
+  const subtitle = (sLab && tLab) ? `Traços de ${sLab} e ${tLab}` : (sLab ? `Traços de ${sLab}` : "");
+  return { key, title: pLab, subtitle, emoji };
+}
+
+function bbbArcFromHistory(p, wk) {
+  const map = p?.status?.archetypeWeek || {};
+  const keys = Object.keys(map).map(Number).filter(n=>Number.isFinite(n) && n>0 && n<=wk).sort((a,b)=>a-b);
+  if (keys.length < 2) return { id: "inicio", title: "Início de jornada", subtitle: "", emoji: "🎬" };
+
+  const lastN = keys.slice(-4); // janela curta
+  const doms = lastN.map(k => map[String(k)]?.dominantId).filter(Boolean);
+  const changes = doms.reduce((acc, cur, i) => acc + (i>0 && cur !== doms[i-1] ? 1 : 0), 0);
+
+  // tendência de popularidade
+  const deltas = lastN.slice(1).map((k,i) => {
+    const prev = lastN[i];
+    return popAtWeek(p, k) - popAtWeek(p, prev);
+  });
+  const avgDelta = deltas.reduce((a,b)=>a+b,0) / Math.max(1, deltas.length);
+  const avgAbs = deltas.reduce((a,b)=>a+Math.abs(b),0) / Math.max(1, deltas.length);
+
+  // heurísticas objetivas
+  const up = avgDelta > 0.18;
+  const down = avgDelta < -0.18;
+  const stable = Math.abs(avgDelta) <= 0.10 && avgAbs <= 0.18;
+  const volatile = avgAbs >= 0.35 || changes >= 3;
+
+  // redenção: estava em queda e agora sobe (2 últimas semanas positivas)
+  const last2 = deltas.slice(-2);
+  const redemption = (deltas.length >= 3) && (deltas[0] < -0.15) && (last2.every(x => x > 0.12));
+
+  if (redemption) return { id: "redencao", title: "Redenção", subtitle: "Virou o jogo e reconstruiu a imagem", emoji: "🌅" };
+  if (up && !volatile) return { id: "ascensao", title: "Ascensão", subtitle: "Cresce e ganha espaço", emoji: "📈" };
+  if (down && !volatile) return { id: "queda", title: "Queda", subtitle: "Perde força e vira pauta", emoji: "📉" };
+  if (stable && changes <= 1) return { id: "estagnacao", title: "Estagnação", subtitle: "Sem grandes viradas", emoji: "🧊" };
+  if (volatile) return { id: "montanha_russa", title: "Montanha-russa", subtitle: "Oscila e muda de leitura com frequência", emoji: "🎢" };
+
+  return { id: "transformacao", title: "Transformação", subtitle: "Em ajuste de rota", emoji: "🔄" };
+}
+
+function snapshotComboAndArcForWeek(p, wk, top3) {
+  if (!p?.status) return null;
+  p.status.bbbNarrative = p.status.bbbNarrative || { history: [] };
+
+  const combo = bbbComboFromTop3(top3);
+  const arc = bbbArcFromHistory(p, wk);
+
+  // histórico de combos (sem duplicar semana)
+  const hist = Array.isArray(p.status.bbbNarrative.history) ? p.status.bbbNarrative.history : [];
+  const existing = hist.find(x => Number(x.week) === Number(wk));
+  const row = { week: wk, comboKey: combo.key, comboTitle: combo.title, comboSubtitle: combo.subtitle, comboEmoji: combo.emoji };
+  if (existing) Object.assign(existing, row); else hist.push(row);
+  p.status.bbbNarrative.history = hist.slice(-40);
+
+  p.status.bbbNarrative.currentCombo = row;
+  p.status.bbbNarrative.arc = arc;
+
+  return { combo, arc };
+}
+
 // Score (0..100) por arquétipo, por semana.
 // Regras objetivas (em termos do simulador):
 // - votos recebidos, indicações, paredão, variação de pop, ações de liderança/anjo, alinhamento com maioria,
@@ -462,8 +567,21 @@ function snapshotArchetypesForWeek(weekNumber) {
 
     const dom = top3[0] || { id: 'planta', score: 0, label: '—', emoji: '🎭' };
 
+    const extraBBB = snapshotComboAndArcForWeek(p, wk, top3) || {};
+    const comboBBB = extraBBB.combo || {};
+    const arcBBB = extraBBB.arc || {};
+
+
     p.status.archetypeWeek[String(wk)] = {
       week: wk,
+      comboKey: comboBBB.key || '',
+      comboTitle: comboBBB.title || '',
+      comboSubtitle: comboBBB.subtitle || '',
+      comboEmoji: comboBBB.emoji || '🎭',
+      arcId: arcBBB.id || '',
+      arcTitle: arcBBB.title || '',
+      arcSubtitle: arcBBB.subtitle || '',
+      arcEmoji: arcBBB.emoji || '🎬',
       dominantId: dom.id,
       dominantLabel: dom.label,
       dominantEmoji: dom.emoji,
@@ -9221,11 +9339,22 @@ ${(() => {
     const dom = snap.top3[0];
     const title = `${dom.emoji||'🎭'} ${dom.label||'Arquétipo'}`;
 
+    const comboTitle = (snap.comboTitle ? `${snap.comboEmoji||'🎭'} ${snap.comboTitle}` : '');
+    const comboSub = snap.comboSubtitle || '';
+    const arcTitle = (snap.arcTitle ? `${snap.arcEmoji||'🎬'} ${snap.arcTitle}` : '');
+    const arcSub = snap.arcSubtitle || '';
+
+    const comboHtml = comboTitle ? `<div class="small" style="margin-top:6px; font-weight:900; opacity:.95;">Combo: ${escapeHtml(comboTitle)}${comboSub ? `<div style=\"margin-top:2px; font-weight:800; opacity:.85;\">${escapeHtml(comboSub)}</div>` : ''}</div>` : '';
+    const arcHtml = arcTitle ? `<div class="small" style="margin-top:6px; font-weight:900; opacity:.95;">Arco BBB: ${escapeHtml(arcTitle)}${arcSub ? `<div style=\"margin-top:2px; font-weight:800; opacity:.85;\">${escapeHtml(arcSub)}</div>` : ''}</div>` : '';
+
+
     return `
       <div class="drawerCard" style="margin-top:10px;">
         <div class="t">Arquétipo BBB (agora)</div>
         <div class="c">
           <div style="font-weight:900;">${escapeHtml(title)}</div>
+          ${comboHtml}
+          ${arcHtml}
           <div class="small" style="margin-top:4px; opacity:.9;">Top 3 (semana ${wk})</div>
           ${rows}
           <div class="small" style="margin-top:8px; opacity:.75;">Obs: arquétipos são uma leitura automática do comportamento no simulador e podem mudar a cada semana.</div>
@@ -9990,8 +10119,9 @@ $("btnGenCast")?.addEventListener("click", () => {
         const wk = keys.filter(n=>n<=lim).sort((a,b)=>b-a)[0];
         const snap = (wk != null) ? p.status.archetypeWeek[String(wk)] : null;
         if (snap && snap.dominantLabel) {
-          const emo = snap.dominantEmoji || '🎭';
-          tags.push({ t: `${emo} ${snap.dominantLabel}`, cls: 'arch' });
+          const emo = (snap.comboTitle ? (snap.comboEmoji || snap.dominantEmoji || '🎭') : (snap.dominantEmoji || '🎭'));
+          const lab = snap.comboTitle ? snap.comboTitle : snap.dominantLabel;
+          tags.push({ t: `${emo} ${lab}`, cls: 'arch' });
         }
       }
     } catch { /* ignora */ }
