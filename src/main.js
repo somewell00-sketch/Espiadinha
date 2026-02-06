@@ -3995,13 +3995,13 @@ if (d.strikes !== undefined) {
     // - pressão emocional: segunda–terça
     // - leveza/convivência: quarta (festa) e quinta (pós-líder)
     const dayProfileByKey = {
-      qua: { catMults: { strategy: 0.05, emotional: 0.35, conflict: 1.20, social: 1.25, romance: 1.35, attention: 1.25, neutral: 0.95, housefun: 1.60 }, mood: { tension: 0.55, paranoia: 0.35, leveza: 0.75 } },
-      qui: { catMults: { strategy: 0.20, emotional: 0.35, conflict: 0.85, social: 1.05, romance: 0.85, attention: 1.05, neutral: 1.15, housefun: 1.05 }, mood: { tension: 0.35, paranoia: 0.40, leveza: 0.45 } },
-      sex: { catMults: { strategy: 1.10, emotional: 0.55, conflict: 1.15, social: 1.00, romance: 0.95, attention: 1.00, neutral: 0.90, housefun: 0.95 }, mood: { tension: 0.55, paranoia: 0.55, leveza: 0.35 } },
-      sab: { catMults: { strategy: 1.20, emotional: 0.55, conflict: 1.20, social: 1.05, romance: 1.15, attention: 1.05, neutral: 0.85, housefun: 1.15 }, mood: { tension: 0.55, paranoia: 0.55, leveza: 0.55 } },
-      dom: { catMults: { strategy: 1.35, emotional: 0.65, conflict: 1.35, social: 0.85, romance: 0.85, attention: 1.10, neutral: 0.75, housefun: 0.65 }, mood: { tension: 0.75, paranoia: 0.65, leveza: 0.20 } },
-      seg: { catMults: { strategy: 0.12, emotional: 1.55, conflict: 1.35, social: 0.70, romance: 0.55, attention: 0.85, neutral: 0.70, housefun: 0.30 }, mood: { tension: 0.90, paranoia: 0.70, leveza: 0.10 } },
-      ter: { catMults: { strategy: 0.10, emotional: 1.65, conflict: 1.25, social: 0.75, romance: 0.55, attention: 0.85, neutral: 0.65, housefun: 0.25 }, mood: { tension: 0.95, paranoia: 0.75, leveza: 0.10 } }
+      qua: { catMults: { strategy: 0.05, emotional: 0.35, conflict: 1.20, social: 1.25, romance: 1.35, attention: 1.25, neutral: 0.95, housefun: 1.80 }, mood: { tension: 0.55, paranoia: 0.35, leveza: 0.75 } },
+      qui: { catMults: { strategy: 0.20, emotional: 0.35, conflict: 0.85, social: 1.05, romance: 0.85, attention: 1.05, neutral: 1.15, housefun: 1.35 }, mood: { tension: 0.35, paranoia: 0.40, leveza: 0.45 } },
+      sex: { catMults: { strategy: 1.10, emotional: 0.55, conflict: 1.15, social: 1.00, romance: 0.95, attention: 1.00, neutral: 0.90, housefun: 1.10 }, mood: { tension: 0.55, paranoia: 0.55, leveza: 0.35 } },
+      sab: { catMults: { strategy: 1.20, emotional: 0.55, conflict: 1.20, social: 1.05, romance: 1.15, attention: 1.05, neutral: 0.85, housefun: 1.50 }, mood: { tension: 0.55, paranoia: 0.55, leveza: 0.55 } },
+      dom: { catMults: { strategy: 1.35, emotional: 0.65, conflict: 1.35, social: 0.85, romance: 0.85, attention: 1.10, neutral: 0.75, housefun: 0.75 }, mood: { tension: 0.75, paranoia: 0.65, leveza: 0.20 } },
+      seg: { catMults: { strategy: 0.12, emotional: 1.55, conflict: 1.35, social: 0.70, romance: 0.55, attention: 0.85, neutral: 0.70, housefun: 0.50 }, mood: { tension: 0.90, paranoia: 0.70, leveza: 0.10 } },
+      ter: { catMults: { strategy: 0.10, emotional: 1.65, conflict: 1.25, social: 0.75, romance: 0.55, attention: 0.85, neutral: 0.65, housefun: 0.40 }, mood: { tension: 0.95, paranoia: 0.75, leveza: 0.10 } }
     };
     const prof = dayProfileByKey[d.key] || { catMults: {}, mood: { tension: tension ? 0.8 : 0.4, paranoia: 0.4, leveza: festa ? 0.6 : 0.35 } };
     const catMults = prof.catMults || {};
@@ -4009,10 +4009,11 @@ if (d.strikes !== undefined) {
     const sponsor = (festaType === "patrocinador") ? ensureSponsorPartyObj() : null;
     // Persiste um "clima" simples (o dia seguinte herda um pouco do anterior)
     state.dayMood = state.dayMood || { tension: 0.4, paranoia: 0.35, leveza: 0.35 };
+    // Reforça o impacto do dia (calendário) sem perder totalmente a "ressaca" do dia anterior.
     state.dayMood = {
-      tension: clamp(0.55 * Number(state.dayMood.tension ?? 0) + 0.45 * Number(mood.tension ?? 0), 0, 1),
-      paranoia: clamp(0.60 * Number(state.dayMood.paranoia ?? 0) + 0.40 * Number(mood.paranoia ?? 0), 0, 1),
-      leveza: clamp(0.55 * Number(state.dayMood.leveza ?? 0) + 0.45 * Number(mood.leveza ?? 0), 0, 1)
+      tension: clamp(0.35 * Number(state.dayMood.tension ?? 0) + 0.65 * Number(mood.tension ?? 0), 0, 1),
+      paranoia: clamp(0.45 * Number(state.dayMood.paranoia ?? 0) + 0.55 * Number(mood.paranoia ?? 0), 0, 1),
+      leveza: clamp(0.35 * Number(state.dayMood.leveza ?? 0) + 0.65 * Number(mood.leveza ?? 0), 0, 1)
     };
 
     return { ...d, festa, festaType, sponsor, tension, mood: state.dayMood, catMults };
@@ -4775,7 +4776,8 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
     const wEmo0 = (10 - p.attrs.emocional) * 0.75 * (1.0 + 0.55 * (mood.tension ?? 0));
     const wRomance0 = (p.attrs.social * 0.6 + p.attrs.emocional * 0.25) * (ctx.festa ? 1.4 : 0.9) * (0.65 + 0.70 * (mood.leveza ?? 0));
     const wAttention0 = (p.attrs.social * 0.55 + p.attrs.estrategia * 0.25 + p.attrs.emocional * 0.1) * (ctx.festa ? 1.35 : 1.0);
-    const wHouseFun0 = (0.55 + p.attrs.social * 0.08 + (ctx.festa ? 0.55 : 0) + (mood.leveza ?? 0) * 0.8);
+    // Mais peso pra eventos leves: festa + leveza do dia contam mais.
+    const wHouseFun0 = (0.55 + p.attrs.social * 0.08 + (ctx.festa ? 0.75 : 0) + (mood.leveza ?? 0) * 1.2);
 
     const wNeutral = wNeutral0 * (mults.neutral ?? 1);
     const wSocial = wSocial0 * (mults.social ?? 1);
