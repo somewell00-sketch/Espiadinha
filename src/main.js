@@ -227,7 +227,6 @@ const ARCHETYPE_META = {
   alivio: { emoji: "🤡" },
   palestrinha: { emoji: "📢" },
   gala: { emoji: "💘" },
-  casal: { emoji: "💑" },
   pipoqueiro: { emoji: "🍿" },
   justiceiro: { emoji: "⚖️" },
   sabio: { emoji: "🧠" },
@@ -327,6 +326,53 @@ function socialStats(p) {
     crush,
     crushRec
   };
+}
+
+// --- Vínculo: Dupla (romance/ship) ---
+// Não é "personagem". É um badge relacional: "Dupla com X".
+// Detecta melhor par com crush recíproco e sinal mínimo de estabilidade.
+function computeDuplaBadge(p, wk) {
+  try {
+    if (!p || !state?.players?.length) return null;
+    const outWeek = Number(p?.status?.outWeek ?? NaN);
+    if (Number.isFinite(outWeek) && wk > outWeek) return null;
+
+    // candidatos: crush recíproco
+    let best = null;
+    for (const o of state.players) {
+      if (!o || String(o.id) === String(p.id)) continue;
+      const oOut = Number(o?.status?.outWeek ?? NaN);
+      if (Number.isFinite(oOut) && wk > oOut) continue;
+
+      const a = classifyRelationScore(relGet(p.id, o.id)) === 'crush';
+      const b = classifyRelationScore(relGet(o.id, p.id)) === 'crush';
+      if (!a || !b) continue;
+
+      const v = Number(relGet(p.id, o.id) || 0) + Number(relGet(o.id, p.id) || 0);
+      if (!best || v > best.v) best = { o, v };
+    }
+    if (!best) return null;
+
+    const partner = best.o;
+
+    // estabilidade mínima: votos alinhados nesta semana OU vínculo muito forte
+    const wSnap = getWeekSnap(wk) || {};
+    const myVote = (wSnap.houseVotes || []).find(v => String(v?.fromId) === String(p.id));
+    const theirVote = (wSnap.houseVotes || []).find(v => String(v?.fromId) === String(partner.id));
+    const votedSame = (myVote && theirVote && String(myVote.toId || '') && String(myVote.toId) === String(theirVote.toId || '')) ? 1 : 0;
+
+    // limiar: ou votam juntos, ou a soma de relação é bem alta
+    if (!votedSame && best.v < 14) return null;
+
+    return {
+      type: 'dupla',
+      withId: String(partner.id),
+      withName: String(displayName(partner) || '').trim() || '—',
+      emoji: '💞'
+    };
+  } catch {
+    return null;
+  }
 }
 
 
@@ -628,26 +674,6 @@ function snapshotArchetypesForWeek(weekNumber) {
       // 💘 Galã/Musa: muito crush + pop e laços sociais.
       gala: S(100 * (0.34 * crushN + 0.24 * crushRecN + 0.22 * popLevelN + 0.20 * soc.avg)),
 
-      // 💑 Casal: existe crush recíproco forte e votos alinhados com o par.
-      casal: (() => {
-        if (soc.crushRec <= 0) return 0;
-        // encontra melhor par (maior soma de crush recíproco)
-        let best = null;
-        for (const o of state.players.filter(x => x && x.id !== p.id)) {
-          const a = classifyRelationScore(relGet(p.id, o.id)) === 'crush';
-          const b = classifyRelationScore(relGet(o.id, p.id)) === 'crush';
-          if (!a || !b) continue;
-          const v = relGet(p.id, o.id) + relGet(o.id, p.id);
-          if (!best || v > best.v) best = { o, v };
-        }
-        if (!best) return 0;
-        const partner = best.o;
-        const votedSame = (votesFrom > 0) && (wSnap.houseVotes || []).some(v => String(v.fromId)===String(p.id)) && (wSnap.houseVotes || []).some(v => String(v.fromId)===String(partner.id))
-          ? ((wSnap.houseVotes.find(v => String(v.fromId)===String(p.id))?.toId ?? null) === (wSnap.houseVotes.find(v => String(v.fromId)===String(partner.id))?.toId ?? null) ? 1 : 0)
-          : 0;
-        return S(100 * (0.65 * 1 + 0.35 * votedSame));
-      })(),
-
       // 🍿 Pipoqueiro: vota com a maioria, evita conflito e não se compromete.
       pipoqueiro: S(100 * (0.50 * voteWithMajority + 0.20 * (1 - enemyN) + 0.20 * (1 - madeDecision) + 0.10 * (1 - swingN))),
 
@@ -679,6 +705,8 @@ function snapshotArchetypesForWeek(weekNumber) {
     const comboBBB = extraBBB.combo || {};
     const arcBBB = extraBBB.arc || {};
 
+    const duplaBadge = computeDuplaBadge(p, wk);
+
 
     p.status.archetypeWeek[String(wk)] = {
       week: wk,
@@ -686,6 +714,9 @@ function snapshotArchetypesForWeek(weekNumber) {
       comboTitle: comboBBB.title || '',
       comboSubtitle: comboBBB.subtitle || '',
       comboEmoji: comboBBB.emoji || '🎭',
+      duplaWithId: duplaBadge ? String(duplaBadge.withId || '') : '',
+      duplaWithName: duplaBadge ? String(duplaBadge.withName || '') : '',
+      duplaEmoji: duplaBadge ? String(duplaBadge.emoji || '💞') : '',
       arcId: arcBBB.id || '',
       arcTitle: arcBBB.title || '',
       arcSubtitle: arcBBB.subtitle || '',
@@ -9765,6 +9796,7 @@ const html = tweets.map((x) => `
 
       const comboTitle = snap.comboTitle ? `${snap.comboEmoji || '🎭'} ${snap.comboTitle}` : '';
       const comboSub = snap.comboSubtitle || '';
+      const duplaLine = snap.duplaWithId ? `${snap.duplaEmoji || '💞'} Dupla com ${snap.duplaWithName || '—'}` : '';
       const arcTitle = snap.arcTitle ? `${snap.arcEmoji || '🎢'} ${snap.arcTitle}` : '';
       const arcSub = snap.arcSubtitle || '';
 
@@ -9785,6 +9817,7 @@ const html = tweets.map((x) => `
           ${comboTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Personagem</div>
             <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(comboTitle)}</div>
             ${comboSub ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(comboSub)}</div>` : ''}` : ''}
+          ${duplaLine ? `<div class="small" style="margin-top:6px; opacity:.92;">${escapeHtml(duplaLine)}</div>` : ''}
           ${arcTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Arco BBB (leitura)</div>
             <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(arcTitle)}</div>
             ${arcSub ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(arcSub)}</div>` : ''}` : ''}
@@ -11185,7 +11218,8 @@ const statusSpan = document.createElement("span");
         tdPersonagem.className = "charCell";
         const _snapP = getLastArchetypeSnapForPlayer(p);
         const _personagemP = _snapP ? ((_snapP.comboTitle ? `${_snapP.comboEmoji || '🎭'} ${_snapP.comboTitle}` : `${_snapP.dominantEmoji || '🎭'} ${_snapP.dominantLabel || ''}`).trim()) : '—';
-        tdPersonagem.textContent = _personagemP;
+        const _duplaP = _snapP && _snapP.duplaWithId ? `${_snapP.duplaEmoji || '💞'} Dupla com ${_snapP.duplaWithName || '—'}` : '';
+        tdPersonagem.innerHTML = `<div>${escapeHtml(_personagemP)}</div>${_duplaP ? `<div class="small" style="margin-top:2px; opacity:.9;">${escapeHtml(_duplaP)}</div>` : ''}`;
 
         const tdPop = document.createElement("td");
         tdPop.className = "popCell";
