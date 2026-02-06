@@ -330,52 +330,136 @@ function socialStats(p) {
 }
 
 
-// --- BBB: Combos + Arcos narrativos a partir dos Top 3 arquétipos semanais ---
-// Combos: leitura editorial determinística usando os 3 principais arquétipos da semana.
-// Arcos: detecta trajetória recente combinando tendência de popularidade e mudança de arquétipos.
-const BBB_COMBO_PRESETS = [
-  // chave é: primary|secondary|tertiary (ids)
-  { key: "vilao|estrategista|caotico", title: "Manipulador perigoso", subtitle: "Controle + caos", emoji: "😈" },
-  { key: "vilao|caotico|estrategista", title: "Manipulador perigoso", subtitle: "Controle + caos", emoji: "😈" },
-  { key: "estrategista|vilao|caotico", title: "Jogador sombrio", subtitle: "Frieza e influência", emoji: "♟️" },
+// --- BBB: Combos canônicos (síntese real) + Arcos narrativos ---
+// Importante: combo NÃO é o Top 3 reembalado.
+// Ele só existe quando há consistência numa janela curta e bate com um dicionário fechado.
 
-  { key: "perseguidor|justiceiro|sabio", title: "Herói moral", subtitle: "Resistência + valores", emoji: "🎯" },
-  { key: "perseguidor|sabio|justiceiro", title: "Herói moral", subtitle: "Resistência + valores", emoji: "🎯" },
-  { key: "justiceiro|perseguidor|sabio", title: "Defensor em risco", subtitle: "Protege e vira alvo", emoji: "⚖️" },
+const BBB_COMBO_CANON = [
+  // Estratégia & poder
+  { id: 'manipulador_frio', dom: 'vilao', secs: ['estrategista'], emoji: '😈',
+    title: (p)=>g(p,{M:'O Manipulador Frio',F:'A Manipuladora Fria',O:'E Manipuladore Frie'}),
+    reason: 'Controla o jogo com frieza e influência.' },
+  { id: 'ameaca_silenciosa', dom: 'estrategista', secs: ['planta'], emoji: '♟️',
+    title: (p)=>'A Ameaça Silenciosa',
+    reason: 'Pouco visível, mas perigosamente eficaz.' },
+  { id: 'jogador_bastidores', dom: 'estrategista', secs: ['pipoqueiro'], emoji: '♟️',
+    title: (p)=>'O Jogador de Bastidores',
+    reason: 'Evita protagonismo, mas influencia o jogo.' },
 
-  { key: "planta|pipoqueiro|sabio", title: "Sobrevivente silencioso", subtitle: "Passa ileso e cresce aos poucos", emoji: "🪴" },
-  { key: "planta|sabio|pipoqueiro", title: "Sobrevivente silencioso", subtitle: "Passa ileso e cresce aos poucos", emoji: "🪴" },
-  { key: "pipoqueiro|planta|sabio", title: "Neutro estratégico", subtitle: "Segue o fluxo com cautela", emoji: "🍿" },
+  // Moral & discurso
+  { id: 'moralista_isento', dom: 'palestrinha', secs: ['pipoqueiro'], emoji: '📢',
+    title: (p)=>g(p,{M:'O Moralista Isento',F:'A Moralista Isenta',O:'E Moraliste Isente'}),
+    reason: 'Discursa, mas raramente se compromete com o risco.' },
+  { id: 'voz_consciencia', dom: 'palestrinha', secs: ['justiceiro'], emoji: '📢',
+    title: (p)=>'A Voz da Consciência',
+    reason: 'Toma posição e compra brigas por valores claros.' },
+  { id: 'pregador_polarizador', dom: 'palestrinha', secs: ['vilao'], emoji: '📢',
+    title: (p)=>g(p,{M:'O Pregador Polarizador',F:'A Pregadora Polarizadora',O:'E Pregadore Polarizadore'}),
+    reason: 'Divide a casa com discurso e conflito.' },
 
-  { key: "alivio|caotico|pipoqueiro", title: "Meme ambulante", subtitle: "Imprevisível e carismático", emoji: "🤡" },
-  { key: "alivio|pipoqueiro|caotico", title: "Meme ambulante", subtitle: "Imprevisível e carismático", emoji: "🤡" },
-  { key: "caotico|alivio|pipoqueiro", title: "Agente do caos carismático", subtitle: "Ninguém controla", emoji: "🌪️" },
+  // Carisma & narrativa
+  { id: 'alivio_inofensivo', dom: 'alivio', secs: ['planta'], emoji: '🤡',
+    title: (p)=>'O Alívio Inofensivo',
+    reason: 'Querido, mas pouco levado a sério no jogo.' },
+  { id: 'queridinho_blindado', dom: 'alivio', secs: ['gala'], emoji: '🤡',
+    title: (p)=>g(p,{M:'O Queridinho Blindado',F:'A Queridinha Blindada',O:'E Queridinhe Blindade'}),
+    reason: 'Carisma e afeto funcionam como escudo.' },
+  { id: 'meme_ambulante', dom: 'alivio', secs: ['caotico'], emoji: '🤡',
+    title: (p)=>'O Meme Ambulante',
+    reason: 'Imprevisível, carismático e difícil de ler.' },
 
-  { key: "gala|casal|pipoqueiro", title: "Romance blindado", subtitle: "Afeto como escudo", emoji: "💘" },
-  { key: "casal|gala|pipoqueiro", title: "Romance blindado", subtitle: "Afeto como escudo", emoji: "💑" },
+  // Neutralidade & sobrevivência
+  { id: 'sobrevivente_invisivel', dom: 'planta', secs: ['pipoqueiro'], emoji: '🪴',
+    title: (p)=>'O Sobrevivente Invisível',
+    reason: 'Passa ileso por não comprar briga.' },
+  { id: 'linha_neutra', dom: 'pipoqueiro', secs: ['sabio'], emoji: '🍿',
+    title: (p)=>'A Linha Neutra',
+    reason: 'Ponderado e estável, sem se expor muito.' },
 
-  { key: "palestrinha|justiceiro|vilao", title: "Moralista polarizador", subtitle: "Divide a casa", emoji: "📢" },
-  { key: "palestrinha|vilao|justiceiro", title: "Moralista polarizador", subtitle: "Divide a casa", emoji: "📢" },
+  // Conflito & justiça
+  { id: 'protetor_em_risco', dom: 'justiceiro', secs: ['perseguidor'], emoji: '⚖️',
+    title: (p)=>'O Protetor em Risco',
+    reason: 'Defende os outros e vira alvo.' },
+  { id: 'heroi_relutante', dom: 'perseguidor', secs: ['sabio'], emoji: '🎯',
+    title: (p)=>g(p,{M:'O Herói Relutante',F:'A Heroína Relutante',O:'E Heróie Relutante'}),
+    reason: 'Cresce sem buscar protagonismo.' },
+
+  // Ruptura
+  { id: 'agente_do_caos', dom: 'caotico', secs: ['vilao'], emoji: '🌪️',
+    title: (p)=>'O Agente do Caos',
+    reason: 'Quebra alianças e expectativas.' },
+  { id: 'bomba_relogio', dom: 'caotico', secs: ['planta'], emoji: '🌪️',
+    title: (p)=>'A Bomba-Relógio',
+    reason: 'Invisível até explodir de repente.' },
 ];
 
-function bbbComboFromTop3(top3) {
-  const ids = (top3 || []).map(x => x?.id).filter(Boolean);
-  const key = ids.slice(0,3).join('|');
-  if (!key) return { key: "", title: "Sem leitura", subtitle: "", emoji: "🎭" };
 
-  const found = BBB_COMBO_PRESETS.find(x => x.key === key);
-  if (found) return { key, title: found.title, subtitle: found.subtitle, emoji: found.emoji };
+function computeBBBCombo(p, wk, top3Current) {
+  try {
+    if (!p || !top3Current || !top3Current.length) return null;
+    const domNow = String(top3Current[0]?.id || '');
+    const domScore = Number(top3Current[0]?.score ?? 0);
+    if (!domNow || !Number.isFinite(domScore) || domScore < 65) return null;
 
-  // fallback determinístico: "Primário com traços de Sec/Ter"
-  const p = ids[0] || "planta";
-  const s = ids[1] || null;
-  const t = ids[2] || null;
-  const pLab = archLabelFor(p, `combo|${key}|p`);
-  const sLab = s ? archLabelFor(s, `combo|${key}|s`) : "";
-  const tLab = t ? archLabelFor(t, `combo|${key}|t`) : "";
-  const emoji = ARCHETYPE_META[p]?.emoji || "🎭";
-  const subtitle = (sLab && tLab) ? `Traços de ${sLab} e ${tLab}` : (sLab ? `Traços de ${sLab}` : "");
-  return { key, title: pLab, subtitle, emoji };
+    const aw = p?.status?.archetypeWeek || {};
+    const wks = [wk - 2, wk - 1, wk].filter(n => Number.isFinite(n) && n > 0);
+
+    const doms = [];
+    const secsPerWeek = [];
+
+    for (const w of wks) {
+      if (w === wk) {
+        doms.push(domNow);
+        const secs = top3Current.slice(1, 3).map(x => String(x?.id || '')).filter(Boolean);
+        secsPerWeek.push(secs);
+      } else {
+        const snap = aw[String(w)];
+        if (!snap || !snap.top3 || !snap.top3.length) continue;
+        const d = String(snap.dominantId || snap.top3?.[0]?.id || '');
+        if (d) doms.push(d);
+        const secs = (snap.top3 || []).slice(1, 3).map(x => String(x?.id || '')).filter(Boolean);
+        secsPerWeek.push(secs);
+      }
+    }
+
+    if (doms.length < 2) return null;
+
+    // dominante precisa aparecer >=2 vezes na janela
+    const domCount = doms.filter(x => x === domNow).length;
+    if (domCount < 2) return null;
+
+    // algum secundário repetido (>=2) e presente nesta semana
+    const secCounts = {};
+    for (const arr of secsPerWeek) {
+      for (const id of arr) secCounts[id] = (secCounts[id] || 0) + 1;
+    }
+    const currentSecs = top3Current.slice(1, 3).map(x => String(x?.id || '')).filter(Boolean);
+    const repeated = currentSecs.filter(id => (secCounts[id] || 0) >= 2);
+    if (!repeated.length) return null;
+
+    // tenta casar com dicionário fechado (prioriza o secundário mais repetido)
+    repeated.sort((a,b)=> (secCounts[b]||0) - (secCounts[a]||0));
+
+    for (const secPick of repeated) {
+      const canon = BBB_COMBO_CANON.find(c => c.dom === domNow && (c.secs || []).includes(secPick));
+      if (canon) {
+        const title = (typeof canon.title === 'function') ? canon.title(p) : String(canon.title || '');
+        return {
+          key: canon.id,
+          id: canon.id,
+          title,
+          subtitle: String(canon.reason || ''),
+          emoji: canon.emoji || (ARCHETYPE_META[domNow]?.emoji || '🎭'),
+          dom: domNow,
+          sec: secPick
+        };
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function bbbArcFromHistory(p, wk) {
@@ -436,13 +520,19 @@ function snapshotComboAndArcForWeek(p, wk, top3) {
   if (!p?.status) return null;
   p.status.bbbNarrative = p.status.bbbNarrative || { history: [] };
 
-  const combo = bbbComboFromTop3(top3);
+  const combo = computeBBBCombo(p, wk, top3);
   const arc = bbbArcFromHistory(p, wk);
 
   // histórico de combos (sem duplicar semana)
   const hist = Array.isArray(p.status.bbbNarrative.history) ? p.status.bbbNarrative.history : [];
   const existing = hist.find(x => Number(x.week) === Number(wk));
-  const row = { week: wk, comboKey: combo.key, comboTitle: combo.title, comboSubtitle: combo.subtitle, comboEmoji: combo.emoji };
+  const row = {
+    week: wk,
+    comboKey: combo ? (combo.key || combo.id || '') : '',
+    comboTitle: combo ? (combo.title || '') : '',
+    comboSubtitle: combo ? (combo.subtitle || '') : '',
+    comboEmoji: combo ? (combo.emoji || '🎭') : '🎭'
+  };
   if (existing) Object.assign(existing, row); else hist.push(row);
   p.status.bbbNarrative.history = hist.slice(-40);
 
@@ -631,198 +721,279 @@ function classifyTier(score0to100) {
   return { id: "residual", label: "traço residual" };
 }
 
+
 function computeSeasonTitles() {
   // Executa apenas quando a temporada encerra
   if (!state?.gameOver) return;
   if (!state?.players?.length) return;
 
+  const byId = new Map((state.players || []).map(p => [String(p.id), p]));
+
   const winnerId = state?.final?.winnerId ?? null;
   const secondId = state?.final?.secondId ?? null;
   const thirdId = state?.final?.thirdId ?? null;
   const finalists = [winnerId, secondId, thirdId].filter(Boolean).map(String);
-  const finalSize = finalists.length || 1;
 
   // IDs eliminados (ordem em que saíram)
   const elim = (state.elimOrder || []).map(String).filter(Boolean);
-
   const firstBootId = elim.length ? elim[0] : null;
   const barredId = elim.length ? elim[elim.length - 1] : null; // eliminado imediatamente antes da final
 
-  const byId = new Map((state.players || []).map(p => [String(p.id), p]));
+  const numWeeks = Number(state?.week ?? 1);
 
-  const pickLabelFromSnap = (snap, fallback) => {
-    const dom = snap?.dominant?.label || "";
-    return dom || fallback || "";
+  const weeksFor = (p) => {
+    const aw = p?.status?.archetypeWeek || {};
+    const w = Object.keys(aw).map(Number).filter(n => Number.isFinite(n)).sort((a,b)=>a-b);
+    return w;
   };
 
-  const pickBlendFromSnap = (snap) => {
-    const top3 = (snap?.top3 || []).filter(Boolean);
-    return top3.slice(0,3).map(x => x.label).filter(Boolean);
+  const snapAt = (p, wk) => {
+    try { return p?.status?.archetypeWeek?.[String(wk)] || null; } catch { return null; }
   };
 
-  const snapOf = (id) => {
-    const p = byId.get(String(id));
-    return p ? getLastArchetypeSnapForPlayer(p) : null;
-  };
+  const lastSnap = (p) => getLastArchetypeSnapForPlayer(p);
 
+  const pickBlend = (snap) => ((snap?.top3 || []).slice(0,3).map(x => x?.label).filter(Boolean));
   const hasIn = (txt, parts=[]) => {
     const s = String(txt || "").toLowerCase();
     return parts.some(p => s.includes(String(p).toLowerCase()));
   };
 
-  const titleForWinner = (p, snap) => {
-    const blend = pickBlendFromSnap(snap);
-    const dom = String(snap?.dominant?.id || "");
-    const arc = String(snap?.arcTitle || "");
-    const combo = String(snap?.comboTitle || "");
-    const popHigh = (popAtWeek(p, state.week) >= 6.5);
-
-    // Prioridades (determinísticas)
-    if (hasIn(arc, ["reden"]) ) return { emoji:"🏆", title:"Redenção Coroada", reason:"Virou o jogo e terminou no topo." };
-    if (dom === "strategist" || hasIn(blend.join(" "), ["Estrategista","Jogador"])) {
-      if (hasIn(blend.join(" "), ["Vilão","Antagonista","Cobra","Manipulador"])) {
-        return { emoji:"🏆", title:"Estrategista Supremo", reason:"Controlou o jogo com frieza e precisão." };
-      }
-      return { emoji:"🏆", title:"O Xadrezista da Casa", reason:"Venceu por leitura e consistência." };
+  const popSeries = (p) => {
+    const w = weeksFor(p);
+    const arr = [];
+    for (const wk of w) {
+      const v = popAtWeek(p, wk);
+      if (Number.isFinite(v)) arr.push({ wk, v });
     }
-    if (dom === "perseguido" || hasIn(blend.join(" "), ["Perseguido","Vítima","Injustiçado","Mocinho"])) {
-      return { emoji:"🏆", title:"Campeão Improvável", reason:"Sobreviveu à pressão e cresceu quando importava." };
-    }
-    if (dom === "justiceiro" || hasIn(blend.join(" "), ["Justiceiro","Defensor","Protetor"])) {
-      return { emoji:"🏆", title:"Justiceiro Coroado", reason:"Transformou valor em voto." };
-    }
-    if (dom === "sage" || hasIn(blend.join(" "), ["Sábio","Conselheiro","Paz e Amor","Mentor"])) {
-      return { emoji:"🏆", title:"Mestre do Jogo", reason:"Chegou longe com calma, leitura e confiança." };
-    }
-    if (dom === "galamusa" || hasIn(blend.join(" "), ["Galã","Musa","Crush","Querido"])) {
-      return { emoji:"🏆", title:"Ícone da Temporada", reason:"Carisma e torcida fizeram a diferença." };
-    }
-    if (dom === "comic" || hasIn(blend.join(" "), ["Bobo da Corte","Alívio Cômico","Meme"])) {
-      return { emoji:"🏆", title:"O Queridinho do Público", reason:"Virou história, virou torcida e fechou a conta." };
-    }
-    if (dom === "chaotic" || hasIn(blend.join(" "), ["Caótico","Imprevisível","Do nada"])) {
-      return { emoji:"🏆", title:"Caos Vitorioso", reason:"Imprevisível, mas efetivo no momento certo." };
-    }
-    if (hasIn(combo, ["Casal","Romance"])) {
-      return { emoji:"🏆", title:"Final Feliz", reason:"Jogou em dupla e chegou no topo." };
-    }
-    if (popHigh) return { emoji:"🏆", title:"Favorito Consagrado", reason:"Fechou a temporada em alta com o público." };
-    return { emoji:"🏆", title:"Campeão da Temporada", reason:"Chegou ao fim com a melhor leitura do jogo." };
+    return arr;
   };
 
-  const titleForFinalist = (p, snap, place) => {
-    const blend = pickBlendFromSnap(snap);
-    const dom = String(snap?.dominant?.id || "");
-    const arc = String(snap?.arcTitle || "");
-    const combo = String(snap?.comboTitle || "");
-    const popHigh = (popAtWeek(p, state.week) >= 6.5);
-
-    if (hasIn(arc, ["queda"]) ) return { emoji: place===2 ? "🥈" : "🥉", title:"Ameaça Final", reason:"Chegou forte, mas caiu na reta decisiva." };
-    if (dom === "strategist" || hasIn(blend.join(" "), ["Estrategista","Jogador"])) {
-      return { emoji: place===2 ? "🥈" : "🥉", title:"Vice Calculista", reason:"Jogou com cabeça e quase levou." };
-    }
-    if (dom === "vilao" || hasIn(blend.join(" "), ["Vilão","Antagonista","Cobra","Manipulador"])) {
-      return { emoji: place===2 ? "🥈" : "🥉", title:"Vilão de Elite", reason:"A casa temeu. O público decidiu." };
-    }
-    if (dom === "perseguido" || hasIn(blend.join(" "), ["Perseguido","Vítima","Injustiçado"])) {
-      return { emoji: place===2 ? "🥈" : "🥉", title:"Finalista Injustiçado", reason:"Foi alvo, resistiu e chegou perto do topo." };
-    }
-    if (dom === "sage" || hasIn(blend.join(" "), ["Sábio","Conselheiro","Mentor"])) {
-      return { emoji: place===2 ? "🥈" : "🥉", title:"O Conselho do Pódio", reason:"Estabilidade e influência até o fim." };
-    }
-    if (dom === "galamusa" || hasIn(blend.join(" "), ["Galã","Musa","Crush"])) {
-      return { emoji: place===2 ? "🥈" : "🥉", title:"Coração da Temporada", reason:"Carisma e conexões levaram longe." };
-    }
-    if (dom === "comic" || hasIn(blend.join(" "), ["Bobo da Corte","Alívio Cômico","Meme"])) {
-      return { emoji: place===2 ? "🥈" : "🥉", title:"O Show do Pódio", reason:"Fez a temporada acontecer." };
-    }
-    if (hasIn(combo, ["Casal","Romance"])) {
-      return { emoji: place===2 ? "🥈" : "🥉", title:"Dupla Final", reason:"A leitura em dupla sustentou o caminho." };
-    }
-    if (popHigh) return { emoji: place===2 ? "🥈" : "🥉", title:"Querido Até o Fim", reason:"Chegou no pódio com força de torcida." };
-    return { emoji: place===2 ? "🥈" : "🥉", title:"Finalista", reason:"Fechou a temporada entre os melhores." };
+  const popStats = (p) => {
+    const ser = popSeries(p);
+    if (!ser.length) return { avg: 0, start: 0, end: 0, growth: 0, range: 0, swing: 0 };
+    const vals = ser.map(x => x.v);
+    const avg = vals.reduce((a,b)=>a+b,0) / vals.length;
+    const start = vals[0];
+    const end = vals[vals.length-1];
+    const growth = end - start;
+    const minv = Math.min(...vals);
+    const maxv = Math.max(...vals);
+    const range = maxv - minv;
+    // swing: soma de variações absolutas normalizada
+    let swing = 0;
+    for (let i=1;i<vals.length;i++) swing += Math.abs(vals[i]-vals[i-1]);
+    swing = vals.length>1 ? (swing/(vals.length-1)) : 0;
+    return { avg, start, end, growth, range, swing, n: vals.length };
   };
 
-  const titleForBarred = (p, snap) => {
-    const blend = pickBlendFromSnap(snap);
-    const dom = String(snap?.dominant?.id || "");
-    const arc = String(snap?.arcTitle || "");
-    const combo = String(snap?.comboTitle || "");
-
-    if (hasIn(arc, ["explodiu no fim","ascen","reden"]) ) return { emoji:"🚫", title:"Sonho Interrompido", reason:"Cresceu na reta final, mas caiu na porta." };
-    if (dom === "strategist" || hasIn(blend.join(" "), ["Estrategista","Jogador"])) return { emoji:"🚫", title:"Xeque-mate Antes da Final", reason:"Faltou só uma rodada para fechar a conta." };
-    if (dom === "vilao" || hasIn(blend.join(" "), ["Vilão","Antagonista"])) return { emoji:"🚫", title:"Vilão Punido na Porta", reason:"A leitura virou no último instante." };
-    if (dom === "perseguido" || hasIn(blend.join(" "), ["Perseguido","Injustiçado"])) return { emoji:"🚫", title:"A Grande Injustiça", reason:"Saiu quando já tinha torcida e narrativa." };
-    if (hasIn(combo, ["Casal","Romance"])) return { emoji:"🚫", title:"Romance Barrado", reason:"A história não chegou ao último capítulo." };
-    if (dom === "comic" || hasIn(blend.join(" "), ["Bobo da Corte","Meme"])) return { emoji:"🚫", title:"O Último Plot Twist", reason:"Parecia escapar sempre, até não escapar." };
-    return { emoji:"🚫", title:"O Último Corte", reason:"Bateu na trave da final." };
+  const dominantChanges = (p) => {
+    const w = weeksFor(p);
+    let prev = null, changes = 0;
+    for (const wk of w) {
+      const s = snapAt(p, wk);
+      const cur = String(s?.dominantId || "");
+      if (!cur) continue;
+      if (prev != null && cur !== prev) changes += 1;
+      prev = cur;
+    }
+    return { changes, weeks: w.length };
   };
 
-  const titleForFirstBoot = (p, snap) => {
-    const blend = pickBlendFromSnap(snap);
-    const dom = String(snap?.dominant?.id || "");
-    const combo = String(snap?.comboTitle || "");
-
-    if (dom === "vilao" || hasIn(blend.join(" "), ["Vilão","Antagonista"])) return { emoji:"❌", title:"Aposta Errada", reason:"Entrou forte e caiu cedo." };
-    if (dom === "chaotic" || hasIn(blend.join(" "), ["Caótico","Imprevisível"])) return { emoji:"❌", title:"Do Nada, Pra Fora", reason:"O primeiro choque da temporada." };
-    if (dom === "planta" || hasIn(blend.join(" "), ["Planta","Figurante","Invisível"])) return { emoji:"❌", title:"Primeiro Sacrifício", reason:"A casa escolheu o caminho mais fácil." };
-    if (dom === "perseguido" || hasIn(blend.join(" "), ["Perseguido","Vítima"])) return { emoji:"❌", title:"Sem Tempo de Jogo", reason:"Virou alvo antes de construir base." };
-    if (dom === "galamusa" || hasIn(blend.join(" "), ["Galã","Musa","Crush"])) return { emoji:"❌", title:"Promessa Que Não Andou", reason:"Chamou atenção, mas não virou história." };
-    if (hasIn(combo, ["Casal","Romance"])) return { emoji:"❌", title:"Ship Cancelado", reason:"Nem deu tempo de virar enredo." };
-    return { emoji:"❌", title:"Primeira Baixa", reason:"O começo da temporada cobrou seu preço." };
+  const chaosSum = (p) => {
+    const w = weeksFor(p);
+    let sum = 0;
+    for (const wk of w) {
+      const s = snapAt(p, wk);
+      const v = Number(s?.scores?.caotico ?? 0);
+      if (Number.isFinite(v)) sum += v;
+    }
+    return { sum, weeks: w.length, avg: (w.length? sum/w.length : 0) };
   };
 
-  const setSeasonTitle = (id, payload) => {
-    const p = byId.get(String(id));
-    if (!p) return;
+  const activityCount = (p) => {
+    const tl = p?.narrative?.timeline;
+    return Array.isArray(tl) ? tl.length : 0;
+  };
+
+  const mkMain = (p, payload) => {
+    const snap = lastSnap(p) || {};
+    const blend = pickBlend(snap);
+    const dom = String(snap?.dominantLabel || "");
     p.status = p.status || {};
-    const snap = getLastArchetypeSnapForPlayer(p) || {};
-    const blend = pickBlendFromSnap(snap);
-    const dom = pickLabelFromSnap(snap, "");
     p.status.seasonTitle = {
       emoji: payload.emoji || "🏷️",
       title: payload.title || "",
       reason: payload.reason || "",
-      blend: blend,
-      dominant: dom
+      blend,
+      dominant: dom,
+      arc: String(snap?.arcTitle || "")
     };
+  };
+
+  const addAccolade = (p, payload) => {
+    p.status = p.status || {};
+    p.status.seasonAccolades = Array.isArray(p.status.seasonAccolades) ? p.status.seasonAccolades : [];
+    p.status.seasonAccolades.push({
+      emoji: payload.emoji || "🏷️",
+      title: payload.title || "",
+      reason: payload.reason || ""
+    });
   };
 
   // Limpa títulos antigos para evitar vazamento entre sims
   for (const p of (state.players || [])) {
-    if (p?.status) delete p.status.seasonTitle;
+    if (p?.status) {
+      delete p.status.seasonTitle;
+      delete p.status.seasonAccolades;
+    }
   }
 
-  // Winner
-  if (winnerId && byId.get(String(winnerId))) {
-    const p = byId.get(String(winnerId));
-    setSeasonTitle(winnerId, titleForWinner(p, snapOf(winnerId)));
-  }
+  // ===== Catálogo de títulos principais (por categoria) =====
 
-  // Finalistas (todos os que aparecem em state.final)
-  if (secondId && byId.get(String(secondId))) {
-    const p = byId.get(String(secondId));
-    setSeasonTitle(secondId, titleForFinalist(p, snapOf(secondId), 2));
-  }
-  if (thirdId && byId.get(String(thirdId))) {
-    const p = byId.get(String(thirdId));
-    setSeasonTitle(thirdId, titleForFinalist(p, snapOf(thirdId), 3));
-  }
+  const titleForWinner = (p) => {
+    const snap = lastSnap(p) || {};
+    const blend = pickBlend(snap).join(" · ");
+    const dom = String(snap?.dominantId || "");
+    const arc = String(snap?.arcTitle || "");
+    const ps = popStats(p);
 
-  // Barrado da final (último eliminado antes do resultado final)
+    const Campeao = g(p,{M:"Campeão",F:"Campeã",O:"Campeãe"});
+    const Queridinho = g(p,{M:"Queridinho",F:"Queridinha",O:"Queridinhe"});
+    const Ultimo = g(p,{M:"Último",F:"Última",O:"Últime"});
+
+    if (hasIn(arc, ["reden"])) return { emoji:"🏆", title:`${Campeao} da Redenção`, reason:"Virou o jogo e terminou no topo." };
+    if (dom === "strategist" || hasIn(blend, ["Estrategista","Jogador"])) {
+      if (hasIn(blend, ["Vilão","Antagonista","Cobra","Manipulador"])) return { emoji:"🏆", title:"Estrategista Supremo", reason:"Controlou o jogo com frieza e precisão." };
+      if (ps.swing <= 0.6 && ps.range <= 2.0) return { emoji:"🏆", title:"Jogo Sem Erros", reason:"Leitura estável, sem grandes quedas." };
+      return { emoji:"🏆", title:"Mente Estratégica", reason:"Venceu por leitura e consistência." };
+    }
+    if (dom === "perseguido" || hasIn(blend, ["Perseguido","Vítima","Injustiçado","Mocinho"])) return { emoji:"🏆", title:`${Campeao} Improvável`, reason:"Sobreviveu à pressão e cresceu quando importava." };
+    if (dom === "justiceiro" || hasIn(blend, ["Justiceiro","Defensor","Protetor"])) return { emoji:"🏆", title:"Justiceiro Coroado", reason:"Transformou valor em voto." };
+    if (dom === "sage" || hasIn(blend, ["Sábio","Conselheiro","Paz e Amor","Mentor"])) return { emoji:"🏆", title:"Mestre do Jogo", reason:"Chegou longe com calma, leitura e confiança." };
+    if (dom === "galamusa" || hasIn(blend, ["Galã","Musa","Crush","Querido"])) return { emoji:"🏆", title:"Ícone da Temporada", reason:"Carisma e torcida fizeram a diferença." };
+    if (dom === "comic" || hasIn(blend, ["Bobo da Corte","Alívio Cômico","Meme"])) return { emoji:"🏆", title:`${Queridinho} do Público`, reason:"Virou história, virou torcida e fechou a conta." };
+    if (dom === "chaotic" || hasIn(blend, ["Caótico","Imprevisível","Do nada"])) return { emoji:"🏆", title:"Caos Vitorioso", reason:"Imprevisível, mas efetivo no momento certo." };
+    if (hasIn(String(snap?.comboTitle||""), ["Casal","Romance"])) return { emoji:"🏆", title:"Final Feliz", reason:"Jogou em dupla e chegou no topo." };
+
+    if (ps.growth >= 2.2) return { emoji:"🏆", title:`${Campeao} da Virada`, reason:"Terminou em alta depois de uma mudança clara de leitura." };
+    if (ps.avg >= 6.8) return { emoji:"🏆", title:"Favorito Consagrado", reason:"Fechou a temporada em alta com o público." };
+    if (ps.range <= 1.6 && ps.swing <= 0.6) return { emoji:"🏆", title:"Campeão da Persistência", reason:"Constância e sobrevivência até o fim." };
+    return { emoji:"🏆", title:`${Ultimo} em Pé`, reason:"Chegou ao fim com a melhor leitura do jogo." };
+  };
+
+  const titleForFinalist = (p, place) => {
+    const snap = lastSnap(p) || {};
+    const blend = pickBlend(snap).join(" · ");
+    const dom = String(snap?.dominantId || "");
+    const arc = String(snap?.arcTitle || "");
+    const ps = popStats(p);
+
+    const Campeao = g(p,{M:"Campeão",F:"Campeã",O:"Campeãe"});
+    const Quase = g(p,{M:"Quase Campeão",F:"Quase Campeã",O:"Quase Campeãe"});
+
+    if (place === 2 && ps.avg >= 6.8 && Math.abs(ps.growth) <= 1.2) return { emoji:"🥈", title:"Vice Incontestável", reason:"Chegou muito forte e perdeu por pouco." };
+    if (place === 2 && ps.avg >= 6.6 && ps.growth >= 1.8) return { emoji:"🥈", title:Quase, reason:"Cresceu no fim e bateu na trave." };
+    if (hasIn(arc, ["queda"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Ameaça Final", reason:"Chegou forte, mas caiu na reta decisiva." };
+    if (dom === "strategist" || hasIn(blend, ["Estrategista","Jogador"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Finalista Estratégico", reason:"Jogou com cabeça e quase levou." };
+    if (dom === "vilao" || hasIn(blend, ["Vilão","Antagonista","Cobra","Manipulador"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Vilão de Elite", reason:"A casa temeu. O público decidiu." };
+    if (dom === "perseguido" || hasIn(blend, ["Perseguido","Vítima","Injustiçado"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Finalista Resiliente", reason:"Foi alvo, resistiu e chegou até o fim." };
+    if (dom === "sage" || hasIn(blend, ["Sábio","Conselheiro","Mentor"])) return { emoji: place===2 ? "🥈" : "🥉", title:"O Conselho do Pódio", reason:"Estabilidade e influência até o fim." };
+    if (dom === "galamusa" || hasIn(blend, ["Galã","Musa","Crush"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Coração da Temporada", reason:"Carisma e conexões levaram longe." };
+    if (dom === "comic" || hasIn(blend, ["Bobo da Corte","Alívio Cômico","Meme"])) return { emoji: place===2 ? "🥈" : "🥉", title:"O Show do Pódio", reason:"Fez a temporada acontecer." };
+    if (hasIn(String(snap?.comboTitle||""), ["Casal","Romance"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Dupla Final", reason:"A leitura em dupla sustentou o caminho." };
+    if (ps.avg >= 6.6) return { emoji: place===2 ? "🥈" : "🥉", title:"Querido Até o Fim", reason:"Chegou no pódio com força de torcida." };
+    return { emoji: place===2 ? "🥈" : "🥉", title:"Finalista", reason:"Fechou a temporada entre os melhores." };
+  };
+
+  const titleForBarred = (p) => {
+    const snap = lastSnap(p) || {};
+    const blend = pickBlend(snap).join(" · ");
+    const dom = String(snap?.dominantId || "");
+    const arc = String(snap?.arcTitle || "");
+    const ps = popStats(p);
+
+    const Vilo = g(p,{M:"Vilão",F:"Vilã",O:"Vilãe"});
+
+    if (hasIn(arc, ["explodiu no fim","ascen","reden"])) return { emoji:"🚫", title:"Sonho Interrompido", reason:"Cresceu na reta final, mas caiu na porta." };
+    if (ps.avg >= 6.8) return { emoji:"🚫", title:"Queda do Favorito", reason:"Chegou como favorito e caiu no último corte." };
+    if (dom === "strategist" || hasIn(blend, ["Estrategista","Jogador"])) return { emoji:"🚫", title:"Xeque-mate Antes da Final", reason:"Faltou só uma rodada para fechar a conta." };
+    if (dom === "vilao" || hasIn(blend, ["Vilão","Antagonista"])) return { emoji:"🚫", title:`${Vilo} Punid${g(p,{M:"o",F:"a",O:"e"})} na Porta`, reason:"A leitura virou no último instante." };
+    if (dom === "perseguido" || hasIn(blend, ["Perseguido","Injustiçado"])) return { emoji:"🚫", title:"A Grande Injustiça", reason:"Saiu quando já tinha torcida e narrativa." };
+    if (hasIn(String(snap?.comboTitle||""), ["Casal","Romance"])) return { emoji:"🚫", title:"Romance Barrado", reason:"A história não chegou ao último capítulo." };
+    if (dom === "comic" || hasIn(blend, ["Bobo da Corte","Meme"])) return { emoji:"🚫", title:"O Último Plot Twist", reason:"Parecia escapar sempre, até não escapar." };
+    return { emoji:"🚫", title:"O Último Corte", reason:"Bateu na trave da final." };
+  };
+
+  const titleForFirstBoot = (p) => {
+    const snap = lastSnap(p) || {};
+    const blend = pickBlend(snap).join(" · ");
+    const dom = String(snap?.dominantId || "");
+    const ps = popStats(p);
+
+    const Primeiro = g(p,{M:"Primeiro",F:"Primeira",O:"Primeire"});
+    const Vilo = g(p,{M:"Vilão",F:"Vilã",O:"Vilãe"});
+
+    if (dom === "vilao" || hasIn(blend, ["Vilão","Antagonista"])) return { emoji:"❌", title:"Aposta Errada", reason:`Entrou como ${Vilo} e caiu cedo.` };
+    if (dom === "chaotic" || hasIn(blend, ["Caótico","Imprevisível"])) return { emoji:"❌", title:"Movimento Prematuro", reason:"O primeiro choque da temporada." };
+    if (dom === "planta" || hasIn(blend, ["Planta","Figurante","Invisível"])) return { emoji:"❌", title:`${Primeiro} Sacrifício`, reason:"A casa escolheu o caminho mais fácil." };
+    if (dom === "perseguido" || hasIn(blend, ["Perseguido","Vítima"])) return { emoji:"❌", title:"Não Teve Chance", reason:"Virou alvo antes de construir base." };
+    if (dom === "galamusa" || hasIn(blend, ["Galã","Musa","Crush"])) return { emoji:"❌", title:"Promessa Que Não Andou", reason:"Chamou atenção, mas não virou história." };
+    if (hasIn(String(snap?.comboTitle||""), ["Casal","Romance"])) return { emoji:"❌", title:"Ship Cancelado", reason:"Nem deu tempo de virar enredo." };
+    // fallback: se teve pop muito baixa logo no começo
+    if (ps.avg <= 4.2) return { emoji:"❌", title:"Saída Relâmpago", reason:"O jogo começou cobrando caro." };
+    return { emoji:"❌", title:"Primeira Baixa", reason:"O começo da temporada cobrou seu preço." };
+  };
+
+  // ===== Atribuição dos títulos principais (únicos por categoria) =====
+  if (winnerId && byId.get(String(winnerId))) mkMain(byId.get(String(winnerId)), titleForWinner(byId.get(String(winnerId))));
+  if (secondId && byId.get(String(secondId))) mkMain(byId.get(String(secondId)), titleForFinalist(byId.get(String(secondId)), 2));
+  if (thirdId && byId.get(String(thirdId))) mkMain(byId.get(String(thirdId)), titleForFinalist(byId.get(String(thirdId)), 3));
+
   if (barredId && !finalists.includes(String(barredId)) && byId.get(String(barredId))) {
-    const p = byId.get(String(barredId));
-    setSeasonTitle(barredId, titleForBarred(p, snapOf(barredId)));
+    mkMain(byId.get(String(barredId)), titleForBarred(byId.get(String(barredId))));
   }
 
-  // First boot
   if (firstBootId && byId.get(String(firstBootId))) {
-    const p = byId.get(String(firstBootId));
-    setSeasonTitle(firstBootId, titleForFirstBoot(p, snapOf(firstBootId)));
+    mkMain(byId.get(String(firstBootId)), titleForFirstBoot(byId.get(String(firstBootId))));
+  }
+
+  // ===== Accolades raros (1 por temporada cada) =====
+  // 1) Agente do Caos da Temporada (maior média de "caotico" e pelo menos 3 semanas)
+  let bestChaos = null;
+  for (const p of (state.players || [])) {
+    const cs = chaosSum(p);
+    if (cs.weeks < 3) continue;
+    if (bestChaos == null || cs.avg > bestChaos.avg) bestChaos = { id: p.id, avg: cs.avg, sum: cs.sum, weeks: cs.weeks };
+  }
+  if (bestChaos && bestChaos.avg >= 65) {
+    const p = byId.get(String(bestChaos.id));
+    addAccolade(p, { emoji:"🌪️", title:"Agente do Caos da Temporada", reason:"Movimentos imprevisíveis e impacto recorrente." });
+  }
+
+  // 2) Rosto da Temporada (maior presença na timeline, mínimo de 8 eventos)
+  let bestFace = null;
+  for (const p of (state.players || [])) {
+    const n = activityCount(p);
+    if (bestFace == null || n > bestFace.n) bestFace = { id: p.id, n };
+  }
+  if (bestFace && bestFace.n >= 8) {
+    const p = byId.get(String(bestFace.id));
+    addAccolade(p, { emoji:"🎭", title:"Rosto da Temporada", reason:"Esteve no centro dos acontecimentos com mais frequência." });
+  }
+
+  // 3) Símbolo da Temporada (maior crescimento + média alta)
+  let bestSymbol = null;
+  for (const p of (state.players || [])) {
+    const ps = popStats(p);
+    const score = (ps.growth * 1.2) + (ps.avg * 0.6);
+    if (bestSymbol == null || score > bestSymbol.score) bestSymbol = { id: p.id, score, ps };
+  }
+  if (bestSymbol && bestSymbol.ps && (bestSymbol.ps.growth >= 1.8 || bestSymbol.ps.avg >= 6.8)) {
+    const p = byId.get(String(bestSymbol.id));
+    addAccolade(p, { emoji:"🧿", title:"Símbolo da Temporada", reason:"Representou a narrativa central na percepção do público." });
   }
 }
-
-
 
   function tagTheme(p, themeId, scoreDelta = 1, round = 1, timelineIndex = null) {
     if (!p) return;
@@ -9590,7 +9761,7 @@ const html = tweets.map((x) => `
       const domTitle = `${dom.emoji || '🎭'} ${dom.label || dom.id || 'Arquétipo'}`;
 
       const traits = snap.top3.slice(1, 3).map((x) => `${x.emoji || '🎭'} ${x.label || x.id}`).join(' · ');
-      const traitsLine = traits ? `Traços de ${traits}` : '';
+      const traitsLine = traits ? `Arquétipos secundários: ${traits}` : '';
 
       const comboTitle = snap.comboTitle ? `${snap.comboEmoji || '🎭'} ${snap.comboTitle}` : '';
       const comboSub = snap.comboSubtitle || '';
@@ -9611,7 +9782,7 @@ const html = tweets.map((x) => `
           <div class="small" style="font-weight:900;">Leitura editorial (semana ${wk})</div>
           <div style="margin-top:6px; font-weight:900;">${escapeHtml(domTitle)}</div>
           ${traitsLine ? `<div class="small" style="margin-top:4px; opacity:.9;">${escapeHtml(traitsLine)}</div>` : ''}
-          ${comboTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Combo</div>
+          ${comboTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Personagem</div>
             <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(comboTitle)}</div>
             ${comboSub ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(comboSub)}</div>` : ''}` : ''}
           ${arcTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Arco BBB (leitura)</div>
@@ -9641,6 +9812,21 @@ const seasonTitleHtml = st ? `
     ` : ''}
   </div>
 ` : '';
+
+const acc = Array.isArray(p?.status?.seasonAccolades) ? p.status.seasonAccolades : [];
+const seasonAccHtml = acc.length ? `
+  <div style="margin-bottom:10px; padding:10px 12px; border:1px solid rgba(255,255,255,.14); border-radius:12px; background:rgba(255,255,255,.04);">
+    <div style="font-size:12px; font-weight:900; letter-spacing:.2px; opacity:.85;">DESTAQUES DA TEMPORADA</div>
+    <div style="margin-top:6px; display:flex; flex-direction:column; gap:6px;">
+      ${acc.slice(0,3).map(a => `
+        <div>
+          <div style="font-weight:900;">${escapeHtml(a.emoji || "🏷️")} ${escapeHtml(a.title || "")}</div>
+          ${a.reason ? `<div class="small" style="opacity:.9;">${escapeHtml(a.reason)}</div>` : ``}
+        </div>
+      `).join("")}
+    </div>
+  </div>
+` : '';
     const arcBody = hasArc ? `
       <div style="font-weight:900;">${escapeHtml(titleLine)}</div>
       ${subtitleLine ? `<div class="small" style="margin-top:2px; font-weight:800; opacity:.9;">${escapeHtml(subtitleLine)}</div>` : ''}
@@ -9653,6 +9839,7 @@ const seasonTitleHtml = st ? `
         <div class="t">Narrativa BBB</div>
         <div class="c">
           ${seasonTitleHtml}
+          ${seasonAccHtml}
           ${arcBody}
           ${editorialHtml}
           ${momentsHtml}
@@ -10972,6 +11159,12 @@ const statusSpan = document.createElement("span");
         tdName.className = "nameCell";
         tdName.textContent = displayName(p);
 
+        const tdPersonagem = document.createElement("td");
+        tdPersonagem.className = "charCell";
+        const _snapP = getLastArchetypeSnapForPlayer(p);
+        const _personagemP = _snapP ? ((_snapP.comboTitle ? `${_snapP.comboEmoji || '🎭'} ${_snapP.comboTitle}` : `${_snapP.dominantEmoji || '🎭'} ${_snapP.dominantLabel || ''}`).trim()) : '—';
+        tdPersonagem.textContent = _personagemP;
+
         const tdPop = document.createElement("td");
         tdPop.className = "popCell";
         tdPop.textContent = fmt2(p.status.pop ?? 0);
@@ -11006,6 +11199,7 @@ const statusSpan = document.createElement("span");
         tdTags.appendChild(wrap);
         tr.appendChild(tdRank);
         tr.appendChild(tdName);
+        tr.appendChild(tdPersonagem);
         tr.appendChild(tdPop);
         tr.appendChild(tdRej);
 
@@ -11032,7 +11226,7 @@ list.appendChild(tr);
       if (!ordered.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 9;
+        td.colSpan = 10;
         td.className = "small";
         td.textContent = "—";
         tr.appendChild(td);
@@ -11108,7 +11302,6 @@ list.appendChild(tr);
         const tdName = document.createElement("td");
         tdName.className = "nameCell";
         tdName.textContent = displayName(p);
-
         const tdCrush = document.createElement("td");
         tdCrush.innerHTML = fmtNames(buckets.crush);
 
