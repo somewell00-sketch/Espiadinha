@@ -4813,6 +4813,7 @@ const POP_EVENT_MULT = 1.65;
     if (cat === "neutral") {
       const dPop = -0.07 - (p.status.pop > 7.8 ? 0.05 : 0);
       return {
+        eid: "neutral",
         theme,
         people: p.name,
         desc: pickOne(EVENT_TEXTS.neutral.desc),
@@ -4832,6 +4833,7 @@ const POP_EVENT_MULT = 1.65;
       const dPopB = duo ? popDelta(0.05 + (ctx.festa ? 0.05 : 0) + rnd(-0.10, 0.10)) : 0;
       const dRel = duo ? clamp(0.35 + rnd(-0.15, 0.25), 0.05, 0.9) : 0;
       return {
+        eid: duo ? "housefun_duo" : "housefun_solo",
         theme,
         people: duo ? `${p.name} e ${other.name}` : p.name,
         desc: pickOne(EVENT_TEXTS.housefun.desc),
@@ -4851,6 +4853,7 @@ const POP_EVENT_MULT = 1.65;
       const dPopA = popDelta(0.1 + p.attrs.social * 0.03 - p.attrs.rejeicao * 0.02 + rnd(-0.08, 0.12));
       const dPopB = popDelta(0.07 + other.attrs.social * 0.03 - other.attrs.rejeicao * 0.02 + rnd(-0.08, 0.12));
       return {
+        eid: "social",
         theme,
         people: `${p.name} e ${other.name}`,
         desc: pickOne(EVENT_TEXTS.social.desc),
@@ -4873,6 +4876,7 @@ const POP_EVENT_MULT = 1.65;
       const dAlvoB = alvoDelta(0.35 + rnd(-0.10, 0.18));
       const dRel = -clamp(1.0 + heat * 0.08 + rnd(-0.35, 0.25), 0.6, 2.0);
       return {
+        eid: escalated ? "conflict_big" : "conflict",
         theme,
         people: `${p.name} e ${other.name}`,
         desc: escalated ? pickOne(EVENT_TEXTS.conflict.bigDesc) : pickOne(EVENT_TEXTS.conflict.desc),
@@ -4896,6 +4900,7 @@ const POP_EVENT_MULT = 1.65;
       const dPopA = popDelta((smart ? 0.12 : -0.05) + rnd(-0.12, 0.12));
       const dAlvoA = alvoDelta((smart ? 0.22 : 0.08) + rnd(-0.10, 0.12));
       return {
+        eid: smart ? "strategy_smart" : "strategy_messy",
         theme,
         people: `${p.name} (com ${other.name})`,
         desc: smart ? pickOne(EVENT_TEXTS.strategy.descSmart) : pickOne(EVENT_TEXTS.strategy.descMessy),
@@ -4914,6 +4919,7 @@ const POP_EVENT_MULT = 1.65;
       const dPop = popDelta((meltdown ? 0.10 : 0.18) + rnd(-0.12, 0.12));
       const dAlvo = alvoDelta((meltdown ? 0.10 : -0.10) + rnd(-0.12, 0.12));
       return {
+        eid: meltdown ? "emotional_meltdown" : "emotional_rise",
         theme,
         people: p.name,
         desc: meltdown ? pickOne(EVENT_TEXTS.emotional.meltdown) : pickOne(EVENT_TEXTS.emotional.rise),
@@ -4933,6 +4939,7 @@ const POP_EVENT_MULT = 1.65;
       const dPopA = popDelta(0.14 + (ctx.festa ? 0.08 : 0) + rnd(-0.12, 0.12));
       const dPopB = popDelta(0.14 + (ctx.festa ? 0.08 : 0) + rnd(-0.12, 0.12));
       return {
+        eid: "romance",
         theme,
         people: `${p.name} e ${other.name}`,
         desc: pickOne(EVENT_TEXTS.romance.desc),
@@ -4952,6 +4959,7 @@ const POP_EVENT_MULT = 1.65;
     const dAlvo = clamp((score < 0 ? 0.6 : 0.15) + rnd(-0.1, 0.2), 0, 1.2);
     const pos = score > 0;
     return {
+      eid: pos ? "attention_pos" : "attention_neg",
       theme,
       people: p.name,
       desc: pos ? pickOne(EVENT_TEXTS.attention.pos) : pickOne(EVENT_TEXTS.attention.neg),
@@ -5836,6 +5844,7 @@ if (alive.length <= 4) return false;
           survP.flags = survP.flags || {};
           survP.flags.confrontedLeader = true;
           applyEventBlock({
+            eid: "trigger_returned_vs_leader",
             theme: ctx.festa ? 'party' : 'default',
             people: `${survP.name} e ${leader.name}`,
             desc: `volta do paredão com sangue nos olhos e cobra {a:ele|ela|elu} na cara por ter indicado`,
@@ -5866,6 +5875,7 @@ if (alive.length <= 4) return false;
           pick.to.flags = pick.to.flags || {};
           pick.to.flags.voteExposed = true;
           applyEventBlock({
+            eid: "trigger_vote_exposed",
             theme: 'default',
             people: `${pick.to.name} e ${pick.from.name}`,
             desc: `descobre um voto e vai tirar satisfações com {b:cara de pau|cara de pau|cara de pau}`,
@@ -5883,6 +5893,206 @@ if (alive.length <= 4) return false;
     }
 
     return false;
+  }
+
+  /* ===== Sequências narrativas curtas (mini-arcos do dia) =====
+     Ideia: 1–2 cadeias por dia (2–3 eventos), para dar sensação de roteiro.
+     Não substitui o gerador atual: apenas preenche uma fila (state.eventQueue)
+     que é consumida antes dos eventos randômicos.
+  */
+
+  const SEQ_SEEDS_BY_DAY = {
+    // semana começa na quarta
+    qua: [
+      { p: "housefun", w: 3.2 },
+      { p: "social", w: 2.4 },
+      { p: "romance", w: 1.1 },
+      { p: "attention", w: 1.2 },
+      { p: "emotional", w: 0.8 }
+    ],
+    qui: [
+      { p: "social", w: 2.6 },
+      { p: "attention", w: 2.2 },
+      { p: "housefun", w: 1.6 },
+      { p: "strategy", w: 0.7 },
+      { p: "conflict", w: 0.7 }
+    ],
+    sex: [
+      { p: "strategy", w: 2.6 },
+      { p: "conflict", w: 1.6 },
+      { p: "attention", w: 1.2 },
+      { p: "housefun", w: 1.0 },
+      { p: "social", w: 0.9 }
+    ],
+    sab: [
+      { p: "strategy", w: 2.4 },
+      { p: "social", w: 1.8 },
+      { p: "housefun", w: 1.8 },
+      { p: "conflict", w: 1.1 },
+      { p: "romance", w: 1.0 }
+    ],
+    dom: [
+      { p: "conflict", w: 2.8 },
+      { p: "emotional", w: 2.0 },
+      { p: "strategy", w: 1.2 },
+      { p: "attention", w: 0.9 },
+      { p: "housefun", w: 0.6 }
+    ],
+    seg: [
+      { p: "emotional", w: 2.8 },
+      { p: "conflict", w: 2.4 },
+      { p: "attention", w: 1.1 },
+      { p: "strategy", w: 0.9 },
+      { p: "housefun", w: 0.5 }
+    ],
+    ter: [
+      { p: "emotional", w: 2.4 },
+      { p: "attention", w: 1.8 },
+      { p: "neutral", w: 1.2 },
+      { p: "social", w: 1.0 },
+      { p: "housefun", w: 0.6 }
+    ]
+  };
+
+  // Follow-ups por "prefixo" de eid
+  const SEQ_FOLLOW_UPS = {
+    housefun: [
+      { p: "social", w: 1.6 },
+      { p: "attention", w: 1.4 },
+      { p: "conflict", w: 0.9 }
+    ],
+    social: [
+      { p: "attention", w: 1.4 },
+      { p: "romance", w: 1.0 },
+      { p: "strategy", w: 0.9 },
+      { p: "conflict", w: 0.8 }
+    ],
+    romance: [
+      { p: "attention", w: 1.6 },
+      { p: "social", w: 1.0 },
+      { p: "conflict", w: 0.6 }
+    ],
+    strategy: [
+      { p: "strategy", w: 1.0 },
+      { p: "conflict", w: 1.4 },
+      { p: "attention", w: 1.0 },
+      { p: "emotional", w: 0.8 }
+    ],
+    conflict: [
+      { p: "emotional", w: 1.8 },
+      { p: "attention", w: 1.2 },
+      { p: "social", w: 0.6 }
+    ],
+    emotional: [
+      { p: "attention", w: 1.6 },
+      { p: "social", w: 1.0 },
+      { p: "neutral", w: 0.8 }
+    ],
+    attention: [
+      { p: "social", w: 1.2 },
+      { p: "conflict", w: 1.0 },
+      { p: "emotional", w: 1.0 },
+      { p: "housefun", w: 0.9 }
+    ],
+    neutral: [
+      { p: "social", w: 1.2 },
+      { p: "attention", w: 1.0 },
+      { p: "emotional", w: 0.9 }
+    ]
+  };
+
+  function seqPrefixFromEid(eid) {
+    const s = String(eid || "");
+    if (s.startsWith("housefun")) return "housefun";
+    if (s.startsWith("strategy")) return "strategy";
+    if (s.startsWith("conflict")) return "conflict";
+    if (s.startsWith("emotional")) return "emotional";
+    if (s.startsWith("attention")) return "attention";
+    if (s.startsWith("romance")) return "romance";
+    if (s.startsWith("social")) return "social";
+    if (s.startsWith("neutral")) return "neutral";
+    if (s.startsWith("trigger_")) return "conflict"; // gatilhos geralmente são tensos
+    return "neutral";
+  }
+
+  function pickNarrativeActor(alive, ctx) {
+    const mood = ctx?.mood || { tension: ctx.tension ? 0.85 : 0.45, paranoia: 0.45, leveza: ctx.festa ? 0.65 : 0.35 };
+    return pickWeighted(
+      alive.map((p) => {
+        const base = 0.35 + p.attrs.social * 0.04 + p.attrs.conflito * 0.03 + p.attrs.estrategia * 0.02;
+        const tensionBias = (mood.tension ?? 0) * (0.04 * p.attrs.conflito);
+        const festaBias = (ctx.festa ? 0.08 * p.attrs.social : 0);
+        return { item: p, w: clamp(base + tensionBias + festaBias, 0.05, 2.5) };
+      })
+    );
+  }
+
+  function genEventTry(p, ctx, alive, wantPrefix, wantOtherId = null) {
+    const tries = 10;
+    for (let i = 0; i < tries; i++) {
+      const ev = genEventForPlayer(p, ctx, alive);
+      const pref = seqPrefixFromEid(ev?.eid);
+      if (pref !== wantPrefix) continue;
+      if (wantOtherId) {
+        if (!ev?.b || ev.b.id !== wantOtherId) continue;
+      }
+      return ev;
+    }
+    return null;
+  }
+
+  function buildDailySequence(ctx, alive) {
+    const seedPrefs = SEQ_SEEDS_BY_DAY[ctx.key] || SEQ_SEEDS_BY_DAY.qua;
+    const seedPrefix = pickWeighted(seedPrefs.map((x) => ({ item: x.p, w: x.w })));
+    const A = pickNarrativeActor(alive, ctx) || pickOne(alive);
+    if (!A) return [];
+
+    const seed = genEventTry(A, ctx, alive, seedPrefix);
+    if (!seed) return [];
+
+    const seq = [seed];
+    const B = seed?.b || pickOther(A, alive);
+    const maxSteps = clamp(2 + (ctx.festa ? 1 : 0) + (ctx.key === "seg" ? 1 : 0), 2, 3);
+
+    for (let step = 1; step < maxSteps; step++) {
+      const last = seq[seq.length - 1];
+      const lastPref = seqPrefixFromEid(last?.eid);
+      const nextOptions = (SEQ_FOLLOW_UPS[lastPref] || []).map((x) => ({ item: x.p, w: x.w }));
+      if (!nextOptions.length) break;
+      const nextPref = pickWeighted(nextOptions);
+
+      // tenta manter os mesmos protagonistas sempre que o evento for de dupla
+      const duoPref = (nextPref === "social" || nextPref === "romance" || nextPref === "conflict" || nextPref === "strategy" || nextPref === "housefun");
+      const wantOtherId = (duoPref && B) ? B.id : null;
+
+      // alterna o foco: às vezes A reage, às vezes B reage
+      const actor = (B && Math.random() < 0.35) ? B : A;
+      const ev = genEventTry(actor, ctx, alive, nextPref, wantOtherId);
+      if (!ev) break;
+      seq.push(ev);
+    }
+
+    return seq;
+  }
+
+  function enqueueDailySequences(ctx, alive, cap) {
+    state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
+    state.eventQueue.length = 0;
+    if (!alive?.length) return;
+
+    // 1 sequência sempre; 2 em dias mais "de episódio" (festa, domingo, segunda)
+    const want = clamp(1 + (ctx.festa ? 1 : 0) + (ctx.key === "dom" ? 1 : 0) + (ctx.key === "seg" ? 1 : 0), 1, 2);
+    const hardMax = clamp(Math.floor(cap / 2), 1, 3); // não toma o dia inteiro
+    const seqCount = Math.min(want, hardMax);
+
+    for (let i = 0; i < seqCount; i++) {
+      if (state.eventQueue.length >= cap - 1) break;
+      const seq = buildDailySequence(ctx, alive);
+      for (const ev of seq) {
+        if (state.eventQueue.length >= cap - 1) break;
+        state.eventQueue.push(ev);
+      }
+    }
   }
 
   function generateDayEvents(ctx) {
@@ -5920,6 +6130,9 @@ if (maybeQuitEvent(ctx)) return;
 
     const cap = clamp(Math.round(rnd(2, 5) + (ctx.festa ? 1 : 0) + (ctx.tension ? 1 : 0)), 2, 6);
 
+    // Mini-arcos do dia: enfileira 1–2 sequências (2–3 eventos) antes do aleatório
+    enqueueDailySequences(ctx, alive, cap);
+
     const candidates = alive
       .map((p) => {
         const base = 0.28 + p.attrs.social * 0.03 + p.attrs.conflito * 0.02 + p.attrs.estrategia * 0.015 - p.attrs.rejeicao * 0.01;
@@ -5929,6 +6142,15 @@ if (maybeQuitEvent(ctx)) return;
       .sort((a, b) => b.chance - a.chance);
 
     let made = 0;
+
+    // Consome fila narrativa primeiro
+    while (state.eventQueue && state.eventQueue.length && made < cap) {
+      const ev = state.eventQueue.shift();
+      if (ev) {
+        applyEventBlock(ev);
+        made++;
+      }
+    }
     for (const c of candidates) {
       if (made >= cap) break;
       if (Math.random() < c.chance) {
