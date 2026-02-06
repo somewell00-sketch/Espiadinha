@@ -2357,6 +2357,10 @@ function statusLabel(p) {
   });
 
   let state = load() ?? defaultState();
+
+  // UI state: aba Popularidade
+  let popTabSelectedIds = null; // Set<string>
+  let popTabSearchTerm = "";
   let logFilter = "all";
 
   
@@ -8993,6 +8997,8 @@ const html = tweets.map((x) => `
 
   function hardResetWithSample() {
     state = defaultState();
+    popTabSelectedIds = null;
+    popTabSearchTerm = "";
     const size = parseInt($("castSize")?.value || "12", 8) || 32;
     state.players = generateBalancedCast(size);
 
@@ -9063,6 +9069,8 @@ const html = tweets.map((x) => `
     fresh.rooms = { pair: null, colors: { A: null, B: null }, assigned: false };
 
     state = fresh;
+    popTabSelectedIds = null;
+    popTabSearchTerm = "";
     pendingAdvance = null;
     // limpa buffers de intro
     state.introPingShown = {};
@@ -9372,6 +9380,16 @@ $("btnGenCast")?.addEventListener("click", () => {
     return series;
   }
 
+  function hueForKey(key) {
+    const s = String(key ?? '');
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h) + s.charCodeAt(i);
+      h |= 0;
+    }
+    return Math.abs(h) % 360;
+  }
+
   function renderPopLineChartSvg({ weeks, seriesList, height = 220, width = 860, showLegend = false }) {
     const padL = 34, padR = 16, padT = 14, padB = 28;
     const W = Math.max(width, 620);
@@ -9398,7 +9416,7 @@ $("btnGenCast")?.addEventListener("click", () => {
 
     const paths = seriesList.map((s, idx) => {
       const hue = (idx * 47) % 360;
-      const color = `hsl(${hue} 80% 70%)`;
+      const color = s?.color ? String(s.color) : `hsl(${hue} 80% 70%)`;
 
       // gera paths quebrando nos nulls
       let d = '';
@@ -9432,6 +9450,121 @@ $("btnGenCast")?.addEventListener("click", () => {
       : '';
 
     return svg + legendHtml;
+  }
+
+  function ensurePopTabSelection() {
+    if (popTabSelectedIds && popTabSelectedIds.size) return;
+    popTabSelectedIds = new Set((state.players || []).map((p) => String(p.id)));
+  }
+
+  function renderPopularityTab() {
+    const chartEl = $("popTabChart");
+    const listEl = $("popTabList");
+    const hintEl = $("popTabHint");
+    if (!chartEl || !listEl) return;
+
+    ensurePopTabSelection();
+
+    const lastWeek = getGlobalLastPopWeek();
+    const weeks = Array.from({ length: lastWeek }, (_, i) => i + 1);
+
+    const playersSorted = (state.players || []).slice().sort((a, b) =>
+      String(displayName(a) || '').localeCompare(String(displayName(b) || ''), 'pt-BR', { sensitivity: 'base' })
+    );
+
+    // Controls wiring (idempotent)
+    const sIn = $("popTabSearch");
+    if (sIn && !sIn.__wired) {
+      sIn.__wired = true;
+      sIn.addEventListener('input', () => {
+        popTabSearchTerm = String(sIn.value || '').trim().toLowerCase();
+        renderPopularityTab();
+      });
+    }
+    if (sIn && sIn.value !== (popTabSearchTerm || '')) sIn.value = popTabSearchTerm || '';
+
+    const btnAll = $("popTabAll");
+    if (btnAll && !btnAll.__wired) {
+      btnAll.__wired = true;
+      btnAll.addEventListener('click', () => {
+        popTabSelectedIds = new Set((state.players || []).map((p) => String(p.id)));
+        renderPopularityTab();
+      });
+    }
+    const btnNone = $("popTabNone");
+    if (btnNone && !btnNone.__wired) {
+      btnNone.__wired = true;
+      btnNone.addEventListener('click', () => {
+        popTabSelectedIds = new Set();
+        renderPopularityTab();
+      });
+    }
+
+    // Player list (checkboxes)
+    const q = String(popTabSearchTerm || '').trim();
+    const filtered = q
+      ? playersSorted.filter((p) => String(displayName(p) || '').toLowerCase().includes(q))
+      : playersSorted;
+
+    listEl.innerHTML = '';
+    filtered.forEach((p) => {
+      const id = String(p.id);
+      const hue = hueForKey(id);
+      const color = `hsl(${hue} 80% 70%)`;
+
+      const row = document.createElement('label');
+      row.className = 'popPick';
+      row.style.color = color;
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = popTabSelectedIds.has(id);
+      cb.addEventListener('change', () => {
+        if (cb.checked) popTabSelectedIds.add(id);
+        else popTabSelectedIds.delete(id);
+        renderPopularityTab();
+      });
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = displayName(p);
+
+      row.appendChild(cb);
+      row.appendChild(dot);
+      row.appendChild(nm);
+      listEl.appendChild(row);
+    });
+
+    const selected = playersSorted.filter((p) => popTabSelectedIds.has(String(p.id)));
+    const seriesList = selected.map((p) => {
+      const id = String(p.id);
+      const hue = hueForKey(id);
+      return {
+        label: displayName(p),
+        series: popSeriesForPlayer(p, lastWeek),
+        color: `hsl(${hue} 80% 70%)`
+      };
+    });
+
+    const showLegend = seriesList.length <= 24;
+    chartEl.innerHTML = seriesList.length
+      ? renderPopLineChartSvg({
+          weeks,
+          seriesList,
+          width: Math.max(920, 40 + weeks.length * 36),
+          height: 260,
+          showLegend
+        }) + (!showLegend ? `<div class="small" style="margin-top:10px; opacity:.85;">Legenda escondida porque há muitas linhas. Filtre para ver a legenda.</div>` : '')
+      : `<div class="small" style="padding:10px; opacity:.85;">Selecione pelo menos 1 participante para ver o gráfico.</div>`;
+
+    if (hintEl) {
+      const total = playersSorted.length;
+      const selN = seriesList.length;
+      hintEl.textContent = `${selN}/${total} selecionados • Semanas: S1 → S${lastWeek}`;
+    }
   }
 
   function roleClassForPlayer(p) {
@@ -10337,6 +10470,10 @@ list.appendChild(tr);
         votesBody.innerHTML = '<tr><td class="small" colspan="2">Sem dados ainda. A tabela é preenchida quando uma semana termina (na eliminação).</td></tr>';
       }
     }
+    }
+
+    if (activeTab === "tabPopularidade") {
+      renderPopularityTab();
     }
 
     if (activeTab === "tabElims") {

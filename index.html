@@ -95,6 +95,7 @@
   <button class="tabBtn" data-tab="tabCasa">Casa</button>
   <button class="tabBtn" data-tab="tabHistorico">Histórico</button>
   <button class="tabBtn" data-tab="tabRels">Relações</button>
+  <button class="tabBtn" data-tab="tabPopularidade">Popularidade</button>
   <button class="tabBtn" data-tab="tabElims">Eliminações</button>
   <button class="tabBtn" data-tab="tabConfig">Config</button>
 </div>
@@ -207,6 +208,29 @@
     </div>
   </div>
 </div>
+
+
+	<!-- Popularidade: comparação + filtros -->
+	<div class="menuPanel" id="tabPopularidade">
+	  <div class="panel" style="border:none;">
+	    <div class="hd">
+	      <h2>Popularidade</h2>
+	      <div class="small">Gráfico em linha da Semana 1 até a última semana da temporada. As linhas param na semana em que cada participante sai, mas o eixo vai até o fim.</div>
+	    </div>
+	    <div class="bd">
+	      <div class="popTabTools">
+	        <input class="grow" id="popTabSearch" placeholder="Filtrar participantes…" />
+	        <button class="ghost" id="popTabAll">Todos</button>
+	        <button class="ghost" id="popTabNone">Nenhum</button>
+	      </div>
+	      <div class="popTabGrid">
+	        <div class="popTabList" id="popTabList"></div>
+	        <div class="popTabChart" id="popTabChart"></div>
+	      </div>
+	      <div class="small" id="popTabHint" style="margin-top:10px; opacity:.85;">—</div>
+	    </div>
+	  </div>
+	</div>
 
 
 

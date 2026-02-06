@@ -778,3 +778,62 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
   font-size: 13px;
   opacity: .75;
 }
+
+/* ===== Popularidade (aba) ===== */
+.popTabTools{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  margin-bottom:10px;
+}
+
+.popTabGrid{
+  display:grid;
+  grid-template-columns: 280px 1fr;
+  gap:12px;
+}
+
+.popTabList{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  padding:10px;
+  max-height:420px;
+  overflow:auto;
+  background: rgba(255,255,255,.02);
+}
+
+.popPick{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:6px 8px;
+  border-radius:10px;
+  cursor:pointer;
+  user-select:none;
+}
+.popPick:hover{ background: rgba(255,255,255,.04); }
+.popPick input{ transform: translateY(1px); }
+.popPick .dot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  background: currentColor;
+  opacity:.95;
+}
+.popPick .nm{
+  font-weight:800;
+  font-size:13px;
+}
+
+.popTabChart{
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  padding:10px;
+  background: rgba(255,255,255,.02);
+  overflow:auto;
+}
+
+@media (max-width: 900px){
+  .popTabGrid{ grid-template-columns:1fr; }
+  .popTabList{ max-height:240px; }
+}
