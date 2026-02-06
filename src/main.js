@@ -244,6 +244,11 @@ const POP_VOTE = {
         case 'vote_cast': return B ? `${aName} votou em ${bName}.` : `${aName} votou.`;
         case 'vote_received': return B ? `${aName} recebeu voto de ${bName}.` : `${aName} recebeu voto.`;
         case 'betrayal': return B ? `${aName} traiu ${bName} no voto.` : `${aName} fez uma traição.`;
+        case 'friendship': return B ? `${aName} fortaleceu uma amizade com ${bName}.` : `${aName} criou um laço forte na casa.`;
+        case 'friendship_betrayed': return B ? `${aName} rompeu a amizade com ${bName}.` : `${aName} quebrou um laço importante.`;
+        case 'vulnerability': return B ? `${aName} se abriu com ${bName} e mostrou vulnerabilidade.` : `${aName} mostrou vulnerabilidade e ganhou empatia.`;
+        case 'monster_punished': return B ? `${aName} caiu no Monstro junto com ${bName}.` : `${aName} foi colocado(a) no Monstro.`;
+        case 'monster_sent': return B ? `${aName} colocou ${bName} no Monstro.` : `${aName} colocou alguém no Monstro.`;
         case 'conflict': return B ? `${aName} teve uma treta com ${bName}.` : `${aName} se envolveu em treta.`;
         case 'reconciliation': return B ? `${aName} fez as pazes com ${bName}.` : `${aName} fez as pazes com alguém.`;
         case 'eviction_survived': return `${aName} sobreviveu ao Paredão.`;
@@ -260,7 +265,7 @@ const POP_VOTE = {
 
     // relations + rep + themes + momentum
     if (B) {
-      if (type === 'bond' || type === 'alliance_form' || type === 'save' || type === 'reconciliation') {
+      if (type === 'bond' || type === 'alliance_form' || type === 'save' || type === 'reconciliation' || type === 'friendship' || type === 'vulnerability') {
         adjustRelation(A, B, { bondDelta: 8, trustDelta: 6, rivalryDelta: -4, round: R, tag: type });
         adjustRelation(B, A, { bondDelta: 6, trustDelta: 5, rivalryDelta: -3, round: R, tag: type });
       }
@@ -271,6 +276,21 @@ const POP_VOTE = {
       if (type === 'betrayal') {
         adjustRelation(A, B, { rivalryDelta: 10, trustDelta: -16, bondDelta: -8, round: R, tag: type });
         adjustRelation(B, A, { rivalryDelta: 12, trustDelta: -20, bondDelta: -10, round: R, tag: type });
+      }
+
+      if (type === 'friendship') {
+        adjustRelation(A, B, { bondDelta: 14, trustDelta: 10, rivalryDelta: -6, round: R, tag: 'friendship' });
+        adjustRelation(B, A, { bondDelta: 12, trustDelta: 9, rivalryDelta: -5, round: R, tag: 'friendship' });
+      }
+
+      if (type === 'friendship_betrayed') {
+        adjustRelation(A, B, { rivalryDelta: 14, trustDelta: -22, bondDelta: -14, round: R, tag: 'friendship_betrayed' });
+        adjustRelation(B, A, { rivalryDelta: 16, trustDelta: -26, bondDelta: -16, round: R, tag: 'friendship_betrayed' });
+      }
+
+      if (type === 'vulnerability') {
+        adjustRelation(A, B, { bondDelta: 10, trustDelta: 12, rivalryDelta: -4, round: R, tag: 'vulnerability' });
+        adjustRelation(B, A, { bondDelta: 6, trustDelta: 8, rivalryDelta: -2, round: R, tag: 'vulnerability' });
       }
     }
 
@@ -283,6 +303,7 @@ const POP_VOTE = {
     if (type === 'vote_cast') st.votesCast += 1;
     if (type === 'vote_received') st.votesReceived += 1;
     if (type === 'betrayal') st.betrayalsDone += 1;
+    if (type === 'friendship_betrayed') st.betrayalsDone += 1;
     if (type === 'eliminated') {
       // guarda pico de rejeição (% no paredão) se disponível
       try {
@@ -314,6 +335,51 @@ const POP_VOTE = {
         bumpMomentum(B, -1);
         B.narrative.stats.betrayalsSuffered = (B.narrative.stats.betrayalsSuffered || 0) + 1;
       }
+    }
+
+    if (type === 'friendship') {
+      adjustReputation(A, { social: 2, loyal: 1 });
+      bumpMomentum(A, 1);
+      tagTheme(A, 'unbreakable_bond', 2, R, idxA);
+      if (B) {
+        adjustReputation(B, { social: 1, loyal: 1 });
+        bumpMomentum(B, 1);
+        tagTheme(B, 'unbreakable_bond', 1, R, null);
+      }
+    }
+
+    if (type === 'friendship_betrayed') {
+      adjustReputation(A, { villain: 2, strategist: 1, loyal: -3 });
+      bumpMomentum(A, 1);
+      tagTheme(A, 'heartbreak', 3, R, idxA);
+      if (B) {
+        adjustReputation(B, { underdog: 1, loyal: 1 });
+        bumpMomentum(B, -1);
+        tagTheme(B, 'heartbreak', 2, R, null);
+        B.narrative.stats.betrayalsSuffered = (B.narrative.stats.betrayalsSuffered || 0) + 1;
+      }
+    }
+
+    if (type === 'vulnerability') {
+      adjustReputation(A, { social: 1, loyal: 1, underdog: 1 });
+      bumpMomentum(A, 1);
+      tagTheme(A, 'vulnerability', 2, R, idxA);
+      if (B) {
+        adjustReputation(B, { social: 1, loyal: 1 });
+        bumpMomentum(B, 1);
+      }
+    }
+
+    if (type === 'monster_punished') {
+      adjustReputation(A, { underdog: 1 });
+      bumpMomentum(A, -1);
+      tagTheme(A, 'monster', 2, R, idxA);
+    }
+
+    if (type === 'monster_sent') {
+      adjustReputation(A, { strategist: 1, villain: 1 });
+      bumpMomentum(A, 0);
+      tagTheme(A, 'monster_sender', 1, R, idxA);
     }
 
     if (type === 'conflict') { adjustReputation(A, { villain: 1 }); bumpMomentum(A, 0); tagTheme(A, 'rivalry', 1, R, idxA); }
@@ -442,6 +508,85 @@ const POP_VOTE = {
     ]
   };
 
+  // Subtítulos: explicam o porquê do arquétipo (curto, direto, reaproveitável)
+  const ARC_SUBTITLE_POOLS = {
+    survivor: [
+      "viveu no limite e achou brechas para continuar",
+      "sobreviveu quando parecia impossível",
+      "fez do risco um combustível"
+    ],
+    strategist: [
+      "mexeu as peças sem precisar aparecer",
+      "transformou informação em voto",
+      "controlou o tabuleiro por trás"
+    ],
+    villain: [
+      "colecionou atritos e não recuou",
+      "jogou pesado mesmo sob pressão",
+      "virou assunto por polêmica e conflito"
+    ],
+    comp: [
+      "acumulou vitórias e intimidou rivais",
+      "usou prova como escudo e espada",
+      "fez o jogo girar na força"
+    ],
+    social: [
+      "costurou relações e escapou de mira",
+      "ganhou espaço pelo carisma",
+      "sobreviveu pela rede social"
+    ],
+    plant: [
+      "passou despercebido(a) por tempo demais",
+      "existiu mais como coadjuvante",
+      "ficou fora dos centros de decisão"
+    ],
+    rejected: [
+      "virou alvo claro do público",
+      "enfrentou rejeição alta e desgaste",
+      "pagou o preço da narrativa negativa"
+    ],
+    chaos: [
+      "criou instabilidade a cada semana",
+      "ninguém sabia de que lado estava",
+      "virou faísca de enredos"
+    ],
+    isolated: [
+      "jogou sem base fixa",
+      "ficou de fora dos blocos principais",
+      "andou sozinho(a) por necessidade"
+    ],
+    fav_long: [
+      "manteve torcida consistente",
+      "foi protegido(a) pelo fandom",
+      "teve blindagem de público"
+    ],
+    fav_flash: [
+      "explodiu em hype e sumiu rápido",
+      "teve um pico curto de torcida",
+      "foi febre por um instante"
+    ],
+    fav_late: [
+      "cresceu na reta final",
+      "virou favorito(a) tarde",
+      "ganhou força quando importava"
+    ],
+    fav_fallen: [
+      "perdeu a torcida no caminho",
+      "caiu no julgamento do público",
+      "desgastou a própria imagem"
+    ],
+    fav_mixed: [
+      "dividiu a torcida",
+      "foi amado(a) e odiado(a) ao mesmo tempo",
+      "viveu a montanha russa do público"
+    ],
+    neutral: [
+      "teve uma trajetória com picos pontuais",
+      "oscilou entre sombra e destaque",
+      "foi peça útil, mas não central"
+    ]
+  };
+
   const hashStr = (str) => {
     // hash simples e estável (djb2)
     let h = 5381;
@@ -515,12 +660,14 @@ const POP_VOTE = {
     const secondary = mods.find(m => m && m !== main) || null;
 
     const title = pickDet(ARC_TITLE_POOLS[main] || ARC_TITLE_POOLS.neutral, `${id}|${main}|title`, "Figura Imprevisível");
-    const subtitle = secondary ? pickDet(ARC_TITLE_POOLS[secondary] || ARC_TITLE_POOLS.neutral, `${id}|${main}|${secondary}|sub`, '') : '';
+    const baseSub = pickDet(ARC_SUBTITLE_POOLS[main] || ARC_SUBTITLE_POOLS.neutral, `${id}|${main}|subtitle`, "teve uma trajetória com picos pontuais");
+    const secSub = secondary
+      ? pickDet(ARC_SUBTITLE_POOLS[secondary] || ARC_SUBTITLE_POOLS.neutral, `${id}|${main}|${secondary}|subtitle`, '')
+      : '';
 
-    // Evita título e subtítulo iguais
-    const sub = (subtitle && subtitle !== title) ? subtitle : '';
+    const subtitle = secSub ? `${baseSub}. Também: ${secSub}.` : `${baseSub}.`;
 
-    return { title, subtitle: sub || null, axis: main, secondary };
+    return { title, subtitle: subtitle || null, axis: main, secondary };
   };
 
   function buildPlayerArc(playerId, totalRounds) {
@@ -557,6 +704,10 @@ const POP_VOTE = {
     };
 
     const pickPhaseLine = (ph) => {
+      // Se a pessoa já tinha saído antes do começo da fase, não faz sentido forçar narrativa.
+      const outWeek = Number(p?.status?.outWeek ?? NaN);
+      if (Number.isFinite(outWeek) && ph.a > outWeek) return `Na fase ${ph.id}, não participou.`;
+
       const evs = tline.filter(e => e.round >= ph.a && e.round <= ph.b);
       if (!evs.length) return `Na fase ${ph.id}, sem grandes viradas.`;
 
@@ -573,6 +724,11 @@ const POP_VOTE = {
       }
       if (types.conflict) parts.push('se envolveu em treta');
       if (types.betrayal) parts.push('quebrou confiança no voto');
+      if (types.friendship) parts.push('firmou uma amizade forte');
+      if (types.friendship_betrayed) parts.push('viveu uma amizade traída');
+      if (types.vulnerability) parts.push('mostrou vulnerabilidade');
+      if (types.monster_punished) parts.push('sofreu o Monstro');
+      if (types.monster_sent) parts.push('aplicou o Monstro');
       if (types.danger) parts.push('ficou em risco');
       if (types.eviction_survived) parts.push('sobreviveu ao Paredão');
 
@@ -617,7 +773,10 @@ const POP_VOTE = {
 
     const typeBucket = (t) => {
       if (t === 'win_hoh' || t === 'win_veto') return 'win';
-      if (t === 'conflict' || t === 'betrayal') return 'heat';
+      if (t === 'conflict' || t === 'betrayal' || t === 'friendship_betrayed') return 'heat';
+      if (t === 'friendship') return 'bond';
+      if (t === 'vulnerability') return 'vuln';
+      if (t === 'monster_punished' || t === 'monster_sent') return 'monster';
       if (t === 'eviction_survived' || t === 'danger') return 'risk';
       if (t === 'nomination') return 'move';
       return 'other';
@@ -744,6 +903,11 @@ const POP_VOTE = {
               if (!ws._narrBreaks[key] && bond >= 72 && trust >= 60) {
                 ws._narrBreaks[key] = true;
                 applyNarrativeEvent({ type: 'betrayal', actorId: voter.id, targetId: target.id, round, meta: { weight: 2, refs: { why: 'voto_contra_aliado' } } });
+
+                // Quando era um laço muito forte, trata como "amizade traída" (momento maior).
+                if (bond >= 82 && trust >= 68) {
+                  applyNarrativeEvent({ type: 'friendship_betrayed', actorId: voter.id, targetId: target.id, round, meta: { weight: 3, refs: { why: 'voto_contra_aliado_forte' } } });
+                }
               }
             }
           } catch { /* ignora */ }
@@ -1848,6 +2012,89 @@ if (namesArr.length === 2) {
 dayAdd(
   `<div class="bigFightBox">🔥 🔥 ${who} brigam por <strong>${escapeHtml(reason)}</strong> 🔥 🔥</div>`
 );
+
+    return true;
+  }
+
+  // Momento de vulnerabilidade: alguém se abre e ganha empatia.
+  // Chance: 2% por dia.
+  function maybeVulnerabilityMoment(ctx) {
+    const alive = alivePlayers();
+    if (alive.length < 2) return false;
+    if (Math.random() >= 0.02) return false;
+
+    // Escolhe quem vai se abrir (puxa mais para quem está em risco/rejeição)
+    const weighted = alive.map((p) => {
+      const w = 1 + (p.attrs.rejeicao ?? 0) * 0.35 + (p.status.alvo ?? 0) * 0.25 + (p.status.strikes ?? 0) * 0.35;
+      return { p, w: Math.max(0.1, w) };
+    });
+    const who = pickWeighted(weighted);
+    const others = alive.filter((p) => p.id !== who.id);
+    if (!others.length) return false;
+
+    // Listener: tende a ser alguém com boa relação
+    const listener = others
+      .slice()
+      .sort((a, b) => relGet(who.id, b.id) - relGet(who.id, a.id))[0];
+
+    bump(who, { pop: rnd(0.25, 0.55), alvo: -rnd(0.05, 0.20) });
+    applyRejection(who, -rnd(0.25, 0.75));
+    if (listener) {
+      bump(listener, { pop: rnd(0.05, 0.20) });
+      relAdd(who.id, listener.id, +rnd(0.6, 1.2), "intimo");
+      relAdd(listener.id, who.id, +rnd(0.3, 0.8), "intimo");
+    }
+
+    dayAdd(`
+      <div class="dayCard evNeu">
+        <span style="flex:1; min-width:0;">🥺 <strong>${escapeHtml(displayName(who))}</strong> se abre${listener ? ` com <strong>${escapeHtml(displayName(listener))}</strong>` : ''} e mostra vulnerabilidade.</span>
+        <span class="vtLine" style="margin:0; white-space:nowrap;">${vtToEmojis("positivo")}</span>
+      </div>
+    `);
+
+    try {
+      applyNarrativeEvent({ type: 'vulnerability', actorId: who.id, targetId: listener?.id, round: state.week, meta: { weight: 2 } });
+    } catch { /* ignora */ }
+
+    return true;
+  }
+
+  // Amizade inquebrável: um laço vira "marca" do jogo.
+  // Chance: 2% por dia.
+  function maybeUnbreakableFriendship(ctx) {
+    const alive = alivePlayers();
+    if (alive.length < 2) return false;
+    if (Math.random() >= 0.02) return false;
+
+    // Pega pares com relação alta
+    const pairs = [];
+    for (let i = 0; i < alive.length; i++) {
+      for (let j = i + 1; j < alive.length; j++) {
+        const A = alive[i], B = alive[j];
+        const s = (relGet(A.id, B.id) + relGet(B.id, A.id)) / 2;
+        if (s >= 2.8) pairs.push({ A, B, s });
+      }
+    }
+    if (!pairs.length) return false;
+    pairs.sort((a, b) => b.s - a.s);
+    const pick = pairs[0];
+
+    bump(pick.A, { pop: rnd(0.10, 0.30) });
+    bump(pick.B, { pop: rnd(0.10, 0.30) });
+    relAdd(pick.A.id, pick.B.id, +rnd(0.7, 1.4), "intimo");
+    relAdd(pick.B.id, pick.A.id, +rnd(0.7, 1.4), "intimo");
+
+    dayAdd(`
+      <div class="dayCard evNeu">
+        <span style="flex:1; min-width:0;">🤝 <strong>${escapeHtml(displayName(pick.A))}</strong> e <strong>${escapeHtml(displayName(pick.B))}</strong> firmam uma amizade que parece inquebrável.</span>
+        <span class="vtLine" style="margin:0; white-space:nowrap;">${vtToEmojis("positivo")}</span>
+      </div>
+    `);
+
+    try {
+      applyNarrativeEvent({ type: 'friendship', actorId: pick.A.id, targetId: pick.B.id, round: state.week, meta: { weight: 2 } });
+      applyNarrativeEvent({ type: 'friendship', actorId: pick.B.id, targetId: pick.A.id, round: state.week, meta: { weight: 2 } });
+    } catch { /* ignora */ }
 
     return true;
   }
@@ -4645,6 +4892,14 @@ if (maybeQuitEvent(ctx)) return;
       maybeSpecialFightEvent(ctx);
     }
 
+    // Eventos adicionais para enriquecer jornada
+    if (typeof maybeVulnerabilityMoment === "function") {
+      maybeVulnerabilityMoment(ctx);
+    }
+    if (typeof maybeUnbreakableFriendship === "function") {
+      maybeUnbreakableFriendship(ctx);
+    }
+
     const cap = clamp(Math.round(rnd(2, 5) + (ctx.festa ? 1 : 0) + (ctx.tension ? 1 : 0)), 2, 6);
 
     const candidates = alive
@@ -5452,6 +5707,13 @@ function pickMonstroPunishment() {
         <div style="font-size:12px; opacity:.92;">${escapeHtml(line2)}</div>
       </div>
     `);
+
+    // Linha do tempo (arco): registra o Monstro como evento grande.
+    try {
+      applyNarrativeEvent({ type: 'monster_sent', actorId: anjo.id, targetId: targets[0].id, round: state.week, meta: { weight: 2, refs: { pun, targetId: targets[0].id } } });
+      applyNarrativeEvent({ type: 'monster_punished', actorId: targets[0].id, targetId: targets[1].id, round: state.week, meta: { weight: 2, refs: { pun, targetId: targets[1].id } } });
+      applyNarrativeEvent({ type: 'monster_punished', actorId: targets[1].id, targetId: targets[0].id, round: state.week, meta: { weight: 2, refs: { pun, targetId: targets[0].id } } });
+    } catch { /* ignora */ }
 
     // sábado já conta como dia 1 do castigo
     applyMonstroDayEffects(meta, targets.map((p) => p.id));
@@ -9652,6 +9914,10 @@ const statusSpan = document.createElement("span");
         tdPop.className = "popCell";
         tdPop.textContent = fmt2(p.status.pop ?? 0);
 
+        const tdRej = document.createElement("td");
+        tdRej.className = "rejCell";
+        tdRej.textContent = fmt2(p.attrs.rejeicao ?? 0);
+
         const tdHist = document.createElement("td");
         tdHist.className = "histCell";
         tdHist.textContent = popHistoryLabel(p, 7);
@@ -9679,6 +9945,7 @@ const statusSpan = document.createElement("span");
         tr.appendChild(tdRank);
         tr.appendChild(tdName);
         tr.appendChild(tdPop);
+        tr.appendChild(tdRej);
 
         const tdLeader = document.createElement("td");
         tdLeader.textContent = String(p.status.leaderCount ?? 0);
@@ -9703,7 +9970,7 @@ list.appendChild(tr);
       if (!ordered.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 8;
+        td.colSpan = 9;
         td.className = "small";
         td.textContent = "—";
         tr.appendChild(td);

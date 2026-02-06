@@ -556,6 +556,7 @@ tr:last-child td{ border-bottom:none; }
 .tag.plant{ background:transparent; border-color:transparent; padding:2px 0; font-size:14px; }
 
 .popCell{ width:90px; color:var(--text-2); font-weight:650; }
+.rejCell{ width:80px; color:var(--text-2); font-weight:650; }
 .histCell{ color:var(--muted); }
 
 /* =========================================================
