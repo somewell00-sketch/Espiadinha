@@ -837,3 +837,10 @@ body.setupMode .menuPanel#tabConfig{ display:block !important; }
   .popTabGrid{ grid-template-columns:1fr; }
   .popTabList{ max-height:240px; }
 }
+
+
+/* Arquétipo BBB (tag) */
+.tag.arch{
+  background: rgba(255,255,255,.10);
+  border: 1px solid rgba(255,255,255,.18);
+}

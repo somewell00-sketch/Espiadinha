@@ -199,6 +199,280 @@ const POP_VOTE = {
     p.narrative.momentum = clamp(Number(p.narrative.momentum ?? 0) + Number(delta || 0), -5, 5);
   }
 
+
+/* ===== Arquétipos BBB (scores por semana) ===== */
+// Observação: isso NÃO substitui o arco narrativo antigo (reputation/themes).
+// Aqui é uma leitura semanal mais "BBB" (vilão, perseguido, planta etc.).
+
+const ARCHETYPE_POOLS = {
+  perseguidor: ["Perseguido", "Mocinho", "Vítima", "Herói", "Injustiçado", "Sobrevivente"],
+  vilao: ["Vilão", "Antagonista", "Manipulador", "Cobra", "Jogador Sujo"],
+  planta: ["Planta", "Inexpressivo", "Invisível", "Figurante", "Encostado"],
+  estrategista: ["Estrategista", "Jogador", "Cerebral", "Calculista", "Frio"],
+  alivio: ["Alívio Cômico", "Bobo da Corte", "Meme", "Engraçado", "Figura"],
+  palestrinha: ["Palestrinha", "Militante", "Educador", "Moralista", "Professor"],
+  gala: ["Galã", "Musa", "Crush da Casa", "Queridinho", "Favorito"],
+  casal: ["Casal", "Dupla", "Shippados", "Fechados", "Par"],
+  pipoqueiro: ["Pipoqueiro", "Isento", "Em cima do muro", "Neutro"],
+  justiceiro: ["Justiceiro", "Defensor", "Protetor", "Guardião"],
+  sabio: ["Sábio", "Conselheiro", "Mentor", "Paz e Amor"],
+  caotico: ["Caótico", "Imprevisível", "Agente do Caos", "Do nada"],
+};
+
+const ARCHETYPE_META = {
+  perseguidor: { emoji: "🎯" },
+  vilao: { emoji: "😈" },
+  planta: { emoji: "🪴" },
+  estrategista: { emoji: "♟️" },
+  alivio: { emoji: "🤡" },
+  palestrinha: { emoji: "📢" },
+  gala: { emoji: "💘" },
+  casal: { emoji: "💑" },
+  pipoqueiro: { emoji: "🍿" },
+  justiceiro: { emoji: "⚖️" },
+  sabio: { emoji: "🧠" },
+  caotico: { emoji: "🌪️" },
+};
+
+function ensureArchetypeState(p) {
+  if (!p) return;
+  p.status = p.status || {};
+  p.status.archetypeWeek = p.status.archetypeWeek || {};
+}
+
+function archLabelFor(id, seed) {
+  const pool = ARCHETYPE_POOLS[id] || [String(id || 'Arquétipo')];
+  // pickDet existe no arquivo e é determinístico.
+  return pickDet(pool, String(seed || id), pool[0]);
+}
+
+function getWeekSnap(weekNumber) {
+  const wk = Number(weekNumber || state.week || 1);
+  const hist = Array.isArray(state.votesHistory) ? state.votesHistory : [];
+  const found = hist.find(x => x && Number(x.week) === wk);
+  if (found) return found;
+  const w = state.weekState || {};
+  return {
+    week: wk,
+    leaderId: w.leaderId ?? null,
+    anjoId: w.anjoId ?? null,
+    imuneId: w.imuneId ?? null,
+    indicadoLiderId: w.indicadoLiderId ?? null,
+    contragolpeId: w.contragolpeId ?? null,
+    indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
+    houseVotes: Array.isArray(w.houseVotes) ? w.houseVotes.map(v => ({ fromId: v.fromId, toId: v.toId })) : [],
+    tally: w.tally ? { ...w.tally } : {},
+    paredaoIds: Array.isArray(w.paredaoIds) ? w.paredaoIds.slice() : [],
+    publicoPerc: w.publicoPerc ? { ...w.publicoPerc } : {},
+    eliminadoId: w.eliminadoId ?? null
+  };
+}
+
+function voteMajorityTargetId(wSnap) {
+  const tally = wSnap?.tally || {};
+  let bestId = null;
+  let best = -Infinity;
+  for (const [id, v] of Object.entries(tally)) {
+    const n = Number(v || 0);
+    if (n > best) { best = n; bestId = id; }
+  }
+  return bestId;
+}
+
+function popAtWeek(p, wk) {
+  const w = p?.status?.popWeek || {};
+  const v = (w && w[String(wk)] != null) ? Number(w[String(wk)]) : null;
+  if (Number.isFinite(v)) return v;
+  return Number(p?.status?.pop ?? 0) || 0;
+}
+
+function countWeekEvents(p, wk) {
+  try {
+    initNarrativeForPlayer(p, wk);
+    const t = Array.isArray(p?.narrative?.timeline) ? p.narrative.timeline : [];
+    return t.filter(e => Number(e?.round) === Number(wk) && String(e?.type || '') !== 'intro').length;
+  } catch { return 0; }
+}
+
+function socialStats(p) {
+  const others = state.players.filter(o => o && o.id !== p.id && (o.status?.alive || (Number(o.status?.outWeek || 0) >= Number(state.week || 1))));
+  if (!others.length) return { avg: 0.5, enemies: 0, rivals: 0, friends: 0, crush: 0, crushRec: 0 };
+
+  let sum = 0;
+  let enemies = 0, rivals = 0, friends = 0, crush = 0, crushRec = 0;
+
+  for (const o of others) {
+    const s = relGet(p.id, o.id);
+    const cat = classifyRelationScore(s);
+    if (cat === 'enemy') enemies++;
+    else if (cat === 'rival') rivals++;
+    else if (cat === 'friend') friends++;
+    else if (cat === 'crush') crush++;
+
+    // normaliza -5..+5 para 0..1
+    sum += clamp((Number(s || 0) + 5) / 10, 0, 1);
+
+    // crush recíproco
+    if (cat === 'crush') {
+      const s2 = relGet(o.id, p.id);
+      if (classifyRelationScore(s2) === 'crush') crushRec++;
+    }
+  }
+
+  return {
+    avg: sum / others.length,
+    enemies,
+    rivals,
+    friends,
+    crush,
+    crushRec
+  };
+}
+
+// Score (0..100) por arquétipo, por semana.
+// Regras objetivas (em termos do simulador):
+// - votos recebidos, indicações, paredão, variação de pop, ações de liderança/anjo, alinhamento com maioria,
+// - volume de eventos na timeline, contagem de inimigos/rivais/amigos/crush.
+function snapshotArchetypesForWeek(weekNumber) {
+  const wk = Number(weekNumber || state.week || 1);
+  const wSnap = getWeekSnap(wk);
+  const aliveCount = (state.players || []).filter(p => p?.status?.alive).length || 1;
+
+  const majorityTarget = voteMajorityTargetId(wSnap);
+
+  for (const p of (state.players || [])) {
+    ensureArchetypeState(p);
+
+    // não cria leitura após a eliminação (semana em que já saiu)
+    const outWeek = Number(p?.status?.outWeek ?? NaN);
+    if (Number.isFinite(outWeek) && wk > outWeek) continue;
+
+    const prevPop = popAtWeek(p, wk - 1);
+    const curPop = popAtWeek(p, wk);
+    const popDelta = curPop - prevPop;
+
+    const votesTo = (wSnap.houseVotes || []).filter(v => String(v?.toId) === String(p.id)).length;
+    const votesFrom = (wSnap.houseVotes || []).filter(v => String(v?.fromId) === String(p.id)).length;
+    const votesRecN = clamp(votesTo / Math.max(1, aliveCount - 1), 0, 1);
+
+    const nominated = (
+      (String(wSnap.indicadoLiderId || '') === String(p.id) ? 1 : 0) +
+      (String(wSnap.contragolpeId || '') === String(p.id) ? 1 : 0) +
+      ((wSnap.indicadosCasaIds || []).map(String).includes(String(p.id)) ? 1 : 0)
+    );
+    const nomN = clamp(nominated / 3, 0, 1);
+
+    const inParedao = (wSnap.paredaoIds || []).map(String).includes(String(p.id)) ? 1 : 0;
+    const leaderWin = (String(wSnap.leaderId || '') === String(p.id)) ? 1 : 0;
+    const anjoWin = (String(wSnap.anjoId || '') === String(p.id)) ? 1 : 0;
+    const gaveImmunity = (anjoWin && wSnap.imuneId && String(wSnap.imuneId) !== String(p.id)) ? 1 : 0;
+
+    const madeDecision = p?.status?.madeDecisionThisWeek ? 1 : 0;
+    const didSomething = p?.status?.didSomethingThisWeek ? 1 : 0;
+
+    const eventsThisWeek = countWeekEvents(p, wk);
+    const activityN = clamp(eventsThisWeek / 4, 0, 1);
+
+    const posDeltaN = clamp(popDelta / 1.0, 0, 1);
+    const negDeltaN = clamp((-popDelta) / 1.0, 0, 1);
+    const swingN = clamp(Math.abs(popDelta) / 1.2, 0, 1);
+    const popLevelN = clamp((Number(p?.status?.pop ?? 0) + 0) / 10, 0, 1);
+
+    const voteWithMajority = (votesFrom > 0 && majorityTarget && (wSnap.houseVotes || []).some(v => String(v.fromId)===String(p.id) && String(v.toId)===String(majorityTarget))) ? 1 : 0;
+    const voteAgainstMajority = (votesFrom > 0 && majorityTarget && (wSnap.houseVotes || []).some(v => String(v.fromId)===String(p.id) && String(v.toId)!==String(majorityTarget))) ? 1 : 0;
+
+    const soc = socialStats(p);
+    const enemyN = clamp((soc.enemies + soc.rivals) / Math.max(1, aliveCount - 1), 0, 1);
+    const friendN = clamp(soc.friends / Math.max(1, aliveCount - 1), 0, 1);
+    const crushN = clamp(soc.crush / Math.max(1, aliveCount - 1), 0, 1);
+    const crushRecN = clamp(soc.crushRec / Math.max(1, aliveCount - 1), 0, 1);
+
+    const ex = clamp((Number(p?.attrs?.excentricidade ?? 0)) / 10, 0, 1);
+    const calm = clamp((Number(p?.attrs?.serenidade ?? 5)) / 10, 0, 1);
+
+    // helpers: score builder
+    const S = (x) => clamp(Math.round(Number(x || 0)), 0, 100);
+
+    const scores = {
+      // 🎯 Perseguido: recebe votos/indicações, vai ao paredão e (muitas vezes) cresce com isso.
+      perseguidor: S(100 * (0.42 * votesRecN + 0.22 * nomN + 0.18 * inParedao + 0.14 * posDeltaN + 0.04 * (1 - leaderWin))),
+
+      // 😈 Vilão: toma decisões de jogo impopulares, tem atritos e perde pop.
+      vilao: S(100 * (0.28 * madeDecision + 0.22 * leaderWin + 0.18 * enemyN + 0.18 * negDeltaN + 0.14 * voteAgainstMajority)),
+
+      // 🪴 Planta: baixa ação/impacto, quase não aparece e não move pop.
+      planta: S(100 * (0.40 * (1 - didSomething) + 0.20 * (1 - activityN) + 0.18 * (1 - swingN) + 0.12 * (1 - votesRecN) + 0.10 * (1 - nomN))),
+
+      // ♟️ Estrategista: ganha poder, decide, e costuma votar alinhado à maioria.
+      estrategista: S(100 * (0.24 * leaderWin + 0.14 * anjoWin + 0.22 * madeDecision + 0.22 * voteWithMajority + 0.18 * (1 - votesRecN))),
+
+      // 🤡 Alívio cômico: excentricidade alta + popularidade razoável, sem ser o motor estratégico.
+      alivio: S(100 * (0.30 * ex + 0.26 * popLevelN + 0.18 * (1 - madeDecision) + 0.16 * swingN + 0.10 * friendN)),
+
+      // 📢 Palestrinha: polariza (oscila pop) e entra em atrito (muitos rivais/inimigos).
+      palestrinha: S(100 * (0.34 * enemyN + 0.30 * swingN + 0.18 * activityN + 0.18 * (1 - calm))),
+
+      // 💘 Galã/Musa: muito crush + pop e laços sociais.
+      gala: S(100 * (0.34 * crushN + 0.24 * crushRecN + 0.22 * popLevelN + 0.20 * soc.avg)),
+
+      // 💑 Casal: existe crush recíproco forte e votos alinhados com o par.
+      casal: (() => {
+        if (soc.crushRec <= 0) return 0;
+        // encontra melhor par (maior soma de crush recíproco)
+        let best = null;
+        for (const o of state.players.filter(x => x && x.id !== p.id)) {
+          const a = classifyRelationScore(relGet(p.id, o.id)) === 'crush';
+          const b = classifyRelationScore(relGet(o.id, p.id)) === 'crush';
+          if (!a || !b) continue;
+          const v = relGet(p.id, o.id) + relGet(o.id, p.id);
+          if (!best || v > best.v) best = { o, v };
+        }
+        if (!best) return 0;
+        const partner = best.o;
+        const votedSame = (votesFrom > 0) && (wSnap.houseVotes || []).some(v => String(v.fromId)===String(p.id)) && (wSnap.houseVotes || []).some(v => String(v.fromId)===String(partner.id))
+          ? ((wSnap.houseVotes.find(v => String(v.fromId)===String(p.id))?.toId ?? null) === (wSnap.houseVotes.find(v => String(v.fromId)===String(partner.id))?.toId ?? null) ? 1 : 0)
+          : 0;
+        return S(100 * (0.65 * 1 + 0.35 * votedSame));
+      })(),
+
+      // 🍿 Pipoqueiro: vota com a maioria, evita conflito e não se compromete.
+      pipoqueiro: S(100 * (0.50 * voteWithMajority + 0.20 * (1 - enemyN) + 0.20 * (1 - madeDecision) + 0.10 * (1 - swingN))),
+
+      // ⚖️ Justiceiro: usa poder para proteger (anjo -> imune) e compra briga (contra rivais).
+      justiceiro: S(100 * (0.45 * gaveImmunity + 0.30 * enemyN + 0.25 * posDeltaN)),
+
+      // 🧠 Sábio: social/trust estável (avg alta), pouca treta, e pouca exposição em votos.
+      sabio: S(100 * (0.40 * soc.avg + 0.25 * calm + 0.20 * (1 - enemyN) + 0.15 * (1 - votesRecN))),
+
+      // 🌪️ Caótico: vota fora da maioria, excentricidade e oscilação.
+      caotico: S(100 * (0.38 * voteAgainstMajority + 0.26 * ex + 0.22 * swingN + 0.14 * activityN)),
+    };
+
+    // top3
+    const top = Object.entries(scores)
+      .map(([id, v]) => ({ id, v }))
+      .sort((a,b)=>b.v-a.v);
+
+    const top3 = top.slice(0, 3).map((x, i) => ({
+      id: x.id,
+      score: x.v,
+      label: archLabelFor(x.id, `${p.id}|${wk}|${x.id}|${i}`),
+      emoji: ARCHETYPE_META[x.id]?.emoji || "🎭"
+    }));
+
+    const dom = top3[0] || { id: 'planta', score: 0, label: '—', emoji: '🎭' };
+
+    p.status.archetypeWeek[String(wk)] = {
+      week: wk,
+      dominantId: dom.id,
+      dominantLabel: dom.label,
+      dominantEmoji: dom.emoji,
+      top3,
+      scores
+    };
+  }
+}
+
   function tagTheme(p, themeId, scoreDelta = 1, round = 1, timelineIndex = null) {
     if (!p) return;
     initNarrativeForPlayer(p, round);
@@ -6623,6 +6897,9 @@ function snapshotPopForWeek(weekNumber) {
 
   // Mantém snapshots e fluxo original do jogo
   snapshotPopForWeek(state.week);
+  // Arquétipos BBB: snapshot semanal
+  try { snapshotArchetypesForWeek(state.week); } catch { /* ignora */ }
+  snapshotArchetypesForWeek(state.week);
   // Guarda o evento de eliminação para o 🦜 Xuitter (sem depender de weekState, que é resetado)
   state.lastEvent = {
     type: "elimination",
@@ -6760,6 +7037,8 @@ function doPublicoWin() {
 
     state.gameOver = true;
     snapshotPopForWeek(state.week);
+  // Arquétipos BBB: snapshot semanal
+  try { snapshotArchetypesForWeek(state.week); } catch { /* ignora */ }
 
     const winnerLabel = g(only, { M: "Vencedor", F: "Vencedora", O: "Vencedore" });
 
@@ -6797,6 +7076,8 @@ function doPublicoWin() {
 
     state.gameOver = true;
     snapshotPopForWeek(state.week);
+  // Arquétipos BBB: snapshot semanal
+  try { snapshotArchetypesForWeek(state.week); } catch { /* ignora */ }
 
     const winnerLabel = g(winner.p, { M: "Vencedor", F: "Vencedora", O: "Vencedore" });
 
@@ -6842,6 +7123,8 @@ function doPublicoWin() {
 
   state.gameOver = true;
   snapshotPopForWeek(state.week);
+  // Arquétipos BBB: snapshot semanal
+  try { snapshotArchetypesForWeek(state.week); } catch { /* ignora */ }
 
   const winnerLabel = g(winner.p, { M: "Vencedor", F: "Vencedora", O: "Vencedore" });
 
@@ -8916,6 +9199,43 @@ const html = tweets.map((x) => `
           }
         })()}
 
+${(() => {
+  try {
+    // Arquétipos BBB (dominante + top3) — baseado em score semanal
+    const map = p?.status?.archetypeWeek || {};
+    const keys = Object.keys(map).map(Number).filter(n=>Number.isFinite(n) && n>0);
+    const outW = Number(p?.status?.outWeek ?? NaN);
+    const lim = Number.isFinite(outW) ? Math.min(outW, Number(state.week||1)) : Number(state.week||1);
+    const wk = keys.filter(n=>n<=lim).sort((a,b)=>b-a)[0];
+    const snap = (wk != null) ? map[String(wk)] : null;
+    if (!snap || !snap.top3 || !snap.top3.length) return '';
+
+    const rows = snap.top3.map((x) => {
+      const pct = Number.isFinite(x.score) ? `${x.score}` : '0';
+      return `<div class="small" style="margin-top:6px; display:flex; gap:10px; align-items:center;">
+        <div style="min-width:120px; font-weight:900;">${escapeHtml(`${x.emoji||'🎭'} ${x.label||x.id}`)}</div>
+        <div style="opacity:.9;">score ${escapeHtml(pct)}</div>
+      </div>`;
+    }).join('');
+
+    const dom = snap.top3[0];
+    const title = `${dom.emoji||'🎭'} ${dom.label||'Arquétipo'}`;
+
+    return `
+      <div class="drawerCard" style="margin-top:10px;">
+        <div class="t">Arquétipo BBB (agora)</div>
+        <div class="c">
+          <div style="font-weight:900;">${escapeHtml(title)}</div>
+          <div class="small" style="margin-top:4px; opacity:.9;">Top 3 (semana ${wk})</div>
+          ${rows}
+          <div class="small" style="margin-top:8px; opacity:.75;">Obs: arquétipos são uma leitura automática do comportamento no simulador e podem mudar a cada semana.</div>
+        </div>
+      </div>
+    `;
+  } catch { return ''; }
+})()}
+
+
         <div class="drawerCard" style="margin-top:10px;">
           <div class="t">Histórico (eventos em que apareceu)</div>
           <div class="c">${histHtml}</div>
@@ -9638,7 +9958,23 @@ $("btnGenCast")?.addEventListener("click", () => {
       if (e2 && p.status.alive) tags.push({ t: e2, cls: 'emo' });
     }
 
-    // Planta (tag)
+    // Arquétipo BBB dominante (última semana disponível)
+    try {
+      if (p.status?.alive && p.status?.archetypeWeek) {
+        const keys = Object.keys(p.status.archetypeWeek).map(Number).filter(n=>Number.isFinite(n) && n>0);
+        const outW = Number(p.status?.outWeek ?? NaN);
+        const lim = Number.isFinite(outW) ? Math.min(outW, Number(state.week||1)) : Number(state.week||1);
+        const wk = keys.filter(n=>n<=lim).sort((a,b)=>b-a)[0];
+        const snap = (wk != null) ? p.status.archetypeWeek[String(wk)] : null;
+        if (snap && snap.dominantLabel) {
+          const emo = snap.dominantEmoji || '🎭';
+          tags.push({ t: `${emo} ${snap.dominantLabel}`, cls: 'arch' });
+        }
+      }
+    } catch { /* ignora */ }
+
+
+// Planta (tag)
     if (p.status?.planta && p.status.alive) tags.push({ t: "🪴", cls: 'plant' });
 
     // Excluído (tag)
