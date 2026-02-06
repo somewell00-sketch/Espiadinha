@@ -687,6 +687,18 @@ function snapshotArchetypesForWeek(weekNumber) {
       caotico: S(100 * (0.38 * voteAgainstMajority + 0.26 * ex + 0.22 * swingN + 0.14 * activityN)),
     };
 
+// Ajuste: arco de exclusão influencia leitura de arquétipos (e, por consequência, combos).
+// - Excluído tende a ficar entre "Perseguido/Injustiçado" e "Planta/Invisível".
+const exclStreak = Number(p?.status?.excluidoStreak ?? 0);
+if (exclStreak > 0) {
+  const k = clamp(exclStreak, 1, 6); // teto para não dominar tudo
+  scores.perseguidor = clamp(scores.perseguidor + Math.round(6 * k), 0, 100);
+  scores.planta = clamp(scores.planta + Math.round(4 * k), 0, 100);
+  // se está crescendo de pop mesmo isolado, reforça o "injustiçado"
+  if (popDelta > 0.20) scores.perseguidor = clamp(scores.perseguidor + 6, 0, 100);
+}
+
+
     // top3
     const top = Object.entries(scores)
       .map(([id, v]) => ({ id, v }))
@@ -4452,28 +4464,27 @@ dayAdd(`
 
   const EVENT_TEXTS = {
   neutral: {
-    // Eventos de "planta" precisam virar cena: ação + leitura da casa
     desc: [
-      "{A} passa o dia quiet{a:o|a|e} e evita se envolver, enquanto a casa quase não nota 👻",
-      "{A} fica no modo observador e se esquiva de qualquer assunto que renda VT 🚪",
-      "{A} circula pela casa sem se posicionar e deixa a impressão de presença fraca 🌫️",
-      "{A} some das conversas importantes e termina o dia sem deixar marca ☁️",
-      "{A} evita tomar lado até quando o clima esquenta, frustrando quem esperava postura 🧊",
-      "{A} passa tempo sozinho e vira comentário de \"sumid{a:o|a|e}\" no quarto 🤐",
-      "{A} responde tudo com frases curtas e mantém distância de alianças 😶",
-      "{A} assiste as tensões de camarote e não se compromete com ninguém 🍿",
-      "{A} faz figuração no episódio e não vira assunto da casa 🖼️",
-      "{A} joga seguro demais e deixa a leitura de \"não joga\" crescer 💤",
-      "{A} evita conflitos e também evita laços, ficando no meio do caminho 🪨",
-      "{A} aparece pouco nas rodas e parece já {a:eliminad{o|a|e}} na cabeça de alguns 🫥",
-      "{A} dá voltas na conversa para não dizer nada e isso pega mal pra alguns 🗒️",
-      "{A} prefere ficar fora de tudo e a casa começa a esquecer que {a:exist{e|e|e}} 🧍",
-      "{A} tenta não se expor, mas vira exatamente o tipo de planta que irrita 😴",
-      "{A} escolhe silêncio ao invés de opinião e perde espaço na edição 🎭",
-      "{A} passa o dia inteiro neutro e não conquista nem antipatia nem torcida 🌡️",
-      "{A} não entra em pauta e a sensação é de \"dia morno\" de novo 🫧",
-      "{A} evita qualquer conversa de jogo e deixa os outros preencherem o vazio 🧩",
-      "{A} se mantém invisível e a casa segue sem reagir 🗃️"
+      "some do jogo completamente ☁️",
+      "vira planta decorativa 🪴",
+      "fica no modo avião ✈️",
+      "faz figuração no episódio 🎭",
+      "existe sem deixar marca 🌫️",
+      "mantém presença neutra demais 🧊",
+      "assiste tudo de camarote 🍿",
+      "não compra briga nenhuma 🤷",
+      "não cria laço algum 🪨",
+      "passa {a:despercebido|despercebida|despercebide} geral 👻",
+      "entrega um dia morno 🌡️",
+      "vive sem conflitos nem alianças 😶",
+      "não serve nem pra irritar 😴",
+      "evita tudo que rende VT 🚪",
+      "sobrevive sem jogar 💤",
+      "parece já {a:eliminado|eliminada|eliminade} 🫥",
+      "fica em silêncio absoluto 🤐",
+      "ocupa espaço sem impacto 🧍",
+      "não vira assunto de ninguém 🗒️",
+      "vira só cenário hoje 🖼️"
     ],
     vt: [
       "neutro, sem enredo",
@@ -4485,41 +4496,27 @@ dayAdd(`
 
   // Cotidiano leve/engraçado (não-estratégico)
   housefun: {
-    descSolo: [
-      "{A} tenta cozinhar pra casa, se enrola e vira piada do dia na cozinha 🍳",
-      "{A} derruba alguma coisa no chão e transforma o tropeço em meme interno 😂",
-      "{A} se empolga numa dança, erra tudo e arranca risadas gerais 🕺",
-      "{A} puxa uma brincadeira boba e contagia quem está por perto 🎲",
-      "{A} conta uma história tão absurda que a casa fica sem saber se é verdade 🤥",
-      "{A} solta um comentário aleatório e sem querer cria o bordão do dia 🗯️",
-      "{A} tenta organizar a casa e começa uma confusão de \"cada um faz de um jeito\" 🧼",
-      "{A} erra o nome de alguém e rende risada meio desconfortável 😅",
-      "{A} vira meme sem perceber e a edição agradece 📸",
-      "{A} fica cantando baixinho e divide a casa entre rir e reclamar 🎶",
-      "{A} inventa apelidos e começa a espalhar pela casa 🏷️",
-      "{A} faz careta pra câmera e chama atenção da edição 📺",
-      "{A} se empolga num jogo improvisado e vira respiro do dia ♠️",
-      "{A} quase derruba tudo carregando prato e sai rindo de nervoso 🥣",
-      "{A} conta piada ruim e insiste até alguém finalmente rir 🤡",
-      "{A} improvisa uma fantasia com qualquer coisa e vira cena pronta 🧦",
-      "{A} puxa um \"verdade ou consequência\" e faz a casa se expor um pouco 🎤",
-      "{A} entra numa coreografia improvisada e paga mico sem dó 🪩",
-      "{A} ri de nervoso e acaba contagiando o resto 😬",
-      "{A} tenta bancar o engraçadinho e acerta o timing por acidente 🎭"
-    ],
-    descDuo: [
-      "{A} chama {B} pra brincar e os dois viram o centro das risadas no sofá 🛋️",
-      "{A} tenta ensinar {B} a dançar, os dois se enrolam e a casa ri junto 🕺",
-      "{A} faz uma imitação exagerada e {B} entrega a cena com risada alta 🎭",
-      "{A} inventa um apelido pra {B} e isso começa a circular pela casa 🏷️",
-      "{A} puxa {B} pro jogo improvisado e os dois passam vergonha alheia ♠️",
-      "{A} zoa {B} de leve, {B} devolve na hora e a cena vira VT 😂",
-      "{A} tenta cozinhar com {B}, dá errado e os dois viram piada na cozinha 🍳",
-      "{A} combina uma brincadeira com {B} e o resto da casa entra na onda 🎲",
-      "{A} faz careta pra câmera e {B} se junta, entregando cena pra edição 📺",
-      "{A} provoca {B} numa \"verdade ou consequência\" e {B} aceita o desafio 🎤",
-      "{A} tenta arrumar a casa com {B}, mas os dois discordam e vira confusão engraçada 🧼",
-      "{A} faz uma piada pra {B}, {B} finge que não entendeu e a casa ri do constrangimento 😅"
+    desc: [
+      "faz uma receita e dá tudo errado na cozinha 🍳",
+      "derruba coisa no chão e vira piada interna 😂",
+      "se perde numa dança e todo mundo ri 🕺",
+      "faz imitação de alguém da casa e gera caos leve 🎭",
+      "inventa uma brincadeira boba e a casa entra na onda 🎲",
+      "conta uma história absurda e ninguém sabe se é verdade 🤥",
+      "faz um comentário aleatório que vira bordão do dia 🗯️",
+      "tenta limpar a casa e começa uma confusão de organização 🧼",
+      "erra o nome de alguém e rende risada desconfortável 😅",
+      "vira meme por um momento sem querer 📸",
+      "fica cantando baixinho e incomoda e diverte ao mesmo tempo 🎶",
+      "inventa apelidos e espalha pela casa 🏷️",
+      "faz careta na câmera e chama atenção da edição 📺",
+      "se empolga num jogo de cartas improvisado ♠️",
+      "se atrapalha carregando prato e quase derruba tudo 🥣",
+      "faz piada ruim e insiste até alguém rir 🤡",
+      "se fantasia com coisas aleatórias e vira cena pronta 🧦",
+      "puxa uma brincadeira de 'verdade ou consequência' improvisada 🎤",
+      "se mete numa coreografia improvisada e paga mico 🪩",
+      "ri de nervoso e contagia o resto da casa 😬"
     ],
     vt: [
       "positivo, leve e engraçado",
@@ -4530,87 +4527,120 @@ dayAdd(`
     scope: "coletivo"
   },
 
-  // Aproximação social: sujeito + intenção + reação
   social: {
-    desc: [
-      "{A} puxa {B} pra conversar no quarto e encontra abertura do outro lado 🤫",
-      "{A} procura {B} ao longo do dia pra se aproximar e a parceria começa a ficar visível 👥",
-      "{A} se abre com {B} em tom mais íntimo, e {B} responde com confiança 🧵",
-      "{A} senta perto de {B} pra marcar presença e a casa já repara na aproximação 👀",
-      "{A} defende {B} numa conversa casual e sinaliza aliança pra quem está ouvindo 🛡️",
-      "{A} testa a receptividade de {B} com um papo de leve, e {B} entra no clima 🌈",
-      "{A} chama {B} pra resenha e os dois acabam criando um laço que rende comentários 💬",
-      "{A} divide uma confidência com {B}, e {B} guarda a informação como prova de confiança 🔒",
-      "{A} se alinha com {B} no silêncio e no olhar, e isso deixa alguns desconfiados 👂",
-      "{A} passa tempo demais com {B} e vira fofoca inocente no quarto 🫢",
-      "{A} cochicha com {B} por tempo demais, e a casa começa a especular 🐍",
-      "{A} faz companhia constante a {B} e o vínculo vira assunto do dia 📢"
-    ],
-    vt: [
-      "positivo, rende torcida",
-      "positivo, VT fofo",
-      "positivo, recorte fácil",
-      "positivo, carisma em alta"
-    ],
-    scope: "intimo"
-  },
+  desc: [
+    "fazem resenha e criam conexão 💬",
+    "criam afinidade naturalmente ✨",
+    "riem juntos e se aproximam 😄",
+    "conversam e viram parceria 🤝",
+    "ficam colados o dia todo 👥",
+    "mantêm clima leve e cúmplice 🌈",
+    "começam uma amizade 🧵",
+    "trocam confidências no quarto 🛏️",
+    "se entendem sem esforço 🤍",
+    "viram companhia constante 👀",
+    "se defendem mutuamente 🛡️",
+    "mostram afinidade pra casa 👁️",
+    "fazem papo bobo virar laço 🤪",
+    "passam tempo demais juntos ⏳",
+    "agem como dupla antiga 🧩",
+    "se alinham no silêncio 👂",
+    "geram comentários pela casa 🗣️",
+    "viram fofoca inocente rapidinho 🫢",
+    "fazem cochichos circularem 🐍",
+    "viram assunto do dia 📢"
+  ],
+  vt: [
+    "positivo, rende torcida",
+    "positivo, VT fofo",
+    "positivo, recorte fácil",
+    "positivo, carisma em alta"
+  ],
+  scope: "intimo"
+},
 
-  // Conflito: sujeito + gatilho + reação
-  conflict: {
-    desc: [
-      "{A} solta uma provocação velada pra {B} e recebe resposta atravessada 🌵",
-      "{A} cutuca {B} num detalhe e a conversa escala mais do que devia ⚡",
-      "{A} leva um comentário de {B} pro lado pessoal e o climão se instala 😬",
-      "{A} cobra {B} por algo do dia e {B} se recusa a ceder 🧱",
-      "{A} retruca {B} em público e a casa para pra assistir 📢",
-      "{A} acusa {B} de incoerência e {B} devolve na mesma moeda 🎯",
-      "{A} tenta \"conversar\" com {B}, mas vira discussão em dois minutos 🧨",
-      "{A} revive uma treta antiga com {B} e os ressentimentos voltam 👻",
-      "{A} troca farpas com {B} e a cozinha vira palco 🍽️",
-      "{A} joga uma indireta pra {B}, {B} entende na hora e não deixa passar 💥",
-      "{A} distorce uma fala de {B} e isso alimenta fofoca e briga 🔥",
-      "{A} olha torto pra {B}, {B} percebe e o clima azeda sem ninguém dizer muito 👀"
-    ],
-    bigDesc: [
-      "{A} perde a linha com {B} e protagoniza um barraco que divide a casa 🔥",
-      "{A} confronta {B} em público e vira marco pesado da convivência 🧱",
-      "{A} e {B} entram em choque direto de personalidades e sobra pra todo mundo 💥",
-      "{A} explode com {B}, grita, e a casa escolhe lado na hora 🧨"
-    ],
-    vt: [
-      "negativo, treta rende e pesa",
-      "negativo, público escolhe lado",
-      "muito negativo, climão",
-      "negativo, pode virar rejeição"
-    ],
-    scope: "coletivo"
-  },
+ conflict: {
+  desc: [
+    "começam treta pequena ⚡",
+    "trocam farpas do nada 🌵",
+    "entram em discussão desnecessária 🍽️",
+    "causam um bate-boca generalizado 🔊",
+    "se recusam a ceder numa discussão 🧱",
+    "brigam por conta de ego 🎈",
+    "fazem o clima da casa azedar 🍋",
+    "discutem por besteira 🤦",
+    "elevam o tom numa discussão 📢",
+    "trocam acusações na cara 🎯",
+    "instalam um climão pesado 😬",
+    "dizem coisas que não voltam 💥",
+    "tentam conversar e acabam brigando 🧨",
+    "reabrem treta velha 👻",
+    "trazem ressentimento à tona 🪨",
+    "lançam olhares atravessados 👀",
+    "levam tudo pro lado pessoal 💣",
+    "usam comentários como munição 🧨",
+    "deixam fofoca alimentar uma briga 🐍",
+    "inflamam tudo com versões distorcidas 🔥"
+  ],
+  bigDesc: [
+    "protagonizam um barraco gigantesco 🔥",
+    "fazem a treta dividir a casa 🧨",
+    "viram marco pesado da convivência 🧱",
+    "tem um choque de personalidades 💥"
+  ],
+  vt: [
+    "negativo, treta rende e pesa",
+    "negativo, público escolhe lado",
+    "muito negativo, climão",
+    "negativo, pode virar rejeição"
+  ],
+  scope: "coletivo"
+},
 
-  // Estratégia: vira cena de jogo, com intenção + leitura
   strategy: {
     descSmart: [
-      "{A} chama {B} num canto pra calibrar voto e mede a reação com cuidado ♟️",
-      "{A} puxa {B} pra alinhar opções e sai com mais informação do que entregou 👂",
-      "{A} planta uma ideia em {B} e observa se a semente pega 🌱",
-      "{A} testa a lealdade de {B} com uma pergunta inocente e registra tudo 🧠",
-      "{A} sugere um caminho pra {B} e espera {B} se comprometer primeiro 🤫",
-      "{A} articula com {B} sem se expor e melhora o próprio posicionamento 🧩",
-      "{A} usa fofoca como termômetro com {B} e ajusta o discurso na hora 🐍",
-      "{A} escolhe o timing certo com {B} e faz a conversa render sem risco ⏳",
-      "{A} deixa {B} falar mais e sai do papo com a leitura completa 👁️",
-      "{A} mexe as peças com {B} discretamente e evita virar alvo 🎭"
+      "lê bem o jogo ♟️",
+      "faz jogada silenciosa 🧠",
+      "planta ideia certeira 🌱",
+      "articula voto com cuidado 🤫",
+      "mexe peças invisivelmente 🎭",
+      "pensa à frente 📊",
+      "coleta informação valiosa 👂",
+      "faz movimento limpo e eficiente 🪡",
+      "se posiciona melhor 🧩",
+      "faz jogo fino 🧠",
+      "testa lealdades discretamente 👁️",
+      "atua sem se expor 🛡️",
+      "acerta o timing ⏳",
+      "controla a narrativa discretamente 🧵",
+      "pega a hora certa 🕰️",
+      "usa fofoca como termômetro 🐍",
+      "ouve mais do que fala 👂",
+      "deixa outros se queimarem 🔥",
+      "joga com paciência 🐍",
+      "calcula riscos com frieza 🎯"
     ],
     descMessy: [
-      "{A} fala demais de jogo com {B} e a conversa começa a soar armado 🚨",
-      "{A} tenta convencer {B}, se enrola e acaba se contradizendo 🌀",
-      "{A} promete coisa pra {B} e deixa a sensação de \"papo torto\" 💳",
-      "{A} mistura versões com {B} e o plano começa a vazar distorcido 🔄",
-      "{A} quer bancar gênio com {B}, mas entrega ansiedade demais 😬",
-      "{A} explica demais pra {B} e a estratégia sai pela culatra 🧯",
-      "{A} fala com {B} na hora errada e vira alvo por exposição 🎯",
-      "{A} deixa o jogo aberto com {B} e perde confiança sem perceber 🚫",
-      "{A} tenta costurar voto com {B} e o assunto volta pra casa como fofoca 🐍",
-      "{A} fecha com {B} num plano e já vê a casa desconfiar 👣"
+      "fala demais de jogo 🚨",
+      "passa recibo ao vivo 📝",
+      "tenta articular e se enrola 🌀",
+      "quer bancar gênio 🤡",
+      "deixa o jogo aberto demais 👣",
+      "mistura versões e confunde 🕸️",
+      "se contradiz na mesma frase 🧩",
+      "deixa ansiedade entregar tudo 😬",
+      "promete demais pra geral 💳",
+      "confunde aliados com papo torto 🤯",
+      "deixa estratégia virar fofoca 🐍",
+      "vaza o plano rápido 💨",
+      "fala com gente demais 📢",
+      "vê comentários voltarem distorcidos 🔄",
+      "vira alvo por falar demais 🎯",
+      "faz a jogada sair pela culatra 🪤",
+      "deixa fofoca expor o plano 🧨",
+      "perde confiança de geral 🚫",
+      "perde o controle da narrativa 📉",
+      "tenta explicar e piora 🧯"
     ],
     vt: [
       "misto, inteligente mas pode soar armado",
@@ -4621,31 +4651,50 @@ dayAdd(`
     scope: "intimo"
   },
 
-  // Emocional: sujeito + causa implícita + reação/efeito
   emotional: {
     meltdown: [
-      "{A} sente a pressão bater e desaba emocionalmente 😢",
-      "{A} chora sem segurar e a casa percebe o peso do dia 🌊",
-      "{A} fica abatido e se isola, chamando atenção de quem observa 🫥",
-      "{A} faz um desabafo intenso e deixa o clima mais pesado 📺",
-      "{A} entra num silêncio longo e parece sem chão 🤐",
-      "{A} sente saudade bater forte e não consegue disfarçar 🌧️",
-      "{A} expõe fragilidade e divide reações na casa 🫀",
-      "{A} pensa em desistir por um momento e depois se recolhe 🚪",
-      "{A} fica em frangalhos e vira conversa no quarto 🧩",
-      "{A} se sente {a:excluído|excluída|excluíde} e carrega o dia nas costas 😞"
+      "desaba emocionalmente 😢",
+      "chora sem segurar 🌊",
+      "sente a pressão esmagar 💔",
+      "vive uma crise forte 📺",
+      "pensa em desistir 🚪",
+      "se isola totalmente 🫥",
+      "expõe fragilidade 🫀",
+      "carrega um dia pesado 🧠",
+      "faz um desabafo intenso 😭",
+      "perde o chão 🌪️",
+      "deixa emoção dominar 🎭",
+      "entra num silêncio gritante 🤐",
+      "sente saudade bater forte 🌧️",
+      "vive um colapso emocional 💥",
+      "não aguenta a carga 🪨",
+      "chora sozinho no quarto 🛏️",
+      "fica com olhar perdido 👁️",
+      "fica em frangalhos 🧩",
+      "se sente {a:excluído|excluída|excluíde} 😞",
+      "sente o peso do jogo ⚖️"
     ],
     rise: [
-      "{A} respira fundo, se recompõe e volta com outra energia 🦁",
-      "{A} transforma o dia pesado em foco e muda a postura 🔥",
-      "{A} recebe apoio e ganha confiança pra seguir 🫂",
-      "{A} segura firme, não se deixa quebrar e surpreende a casa 🛡️",
-      "{A} se levanta depois da queda e mostra resiliência clara 📈",
-      "{A} muda a energia visivelmente e melhora a própria leitura ✨",
-      "{A} volta diferente hoje e isso chama atenção 👀",
-      "{A} recupera o controle e estabiliza o emocional 🧠",
-      "{A} reage bem à pressão e ganha empatia 🌤️",
-      "{A} se fortalece por dentro e não dá brecha 🎯"
+      "se recompõe 🦁",
+      "volta mais forte 📈",
+      "ganha apoio da casa 🫂",
+      "se levanta após queda ⚓",
+      "muda a postura 🧭",
+      "transforma dor em foco 🔥",
+      "retoma o controle 🧠",
+      "mostra resiliência 🛡️",
+      "reage bem 🌱",
+      "estabiliza o emocional 🧩",
+      "recupera confiança 💪",
+      "segura firme 🎯",
+      "respira e volta 🫧",
+      "cresce com a pressão 🧗",
+      "mostra superação clara 🌤️",
+      "se fortalece por dentro 🪵",
+      "não se deixa quebrar 🧱",
+      "muda a energia visivelmente ✨",
+      "surpreende a casa 👀",
+      "volta diferente hoje 🔄"
     ],
     vt: [
       "positivo, rende empatia",
@@ -4656,54 +4705,82 @@ dayAdd(`
     scope: "coletivo"
   },
 
-  // Romance/chemistry: sujeito + iniciativa + reação
   romance: {
-    desc: [
-      "{A} flerta com {B} sem disfarçar e a casa já percebe o clima 💘",
-      "{A} troca olhares com {B} o tempo todo e isso vira comentário 👁️",
-      "{A} senta colado em {B} e deixa o clima no ar 🛋️",
-      "{A} busca proximidade com {B} e {B} corresponde com risadinha 🤭",
-      "{A} encosta em {B} com naturalidade e a química fica visível 🫶",
-      "{A} puxa {B} pra um canto e os dois passam tempo demais juntos 🌙",
-      "{A} faz chamego com {B} e vira recorte imediato da edição 🍯",
-      "{A} força proximidade com {B} e isso pega mal pra alguns 😏",
-      "{A} gruda em {B} o dia inteiro e a casa começa a falar 👀",
-      "{A} deixa {B} confortável e o romance começa a despontar 🌹"
-    ],
-    vt: [
-      "positivo, ship forte",
-      "misto, pode virar enredo",
-      "positivo, química rende VT",
-      "misto, pode pegar mal"
-    ],
-    scope: "intimo"
-  },
+  desc: [
+    "deixam clima no ar 💘",
+    "trocam olhares constantes 👁️",
+    "flertam sem disfarçar 🌹",
+    "fazem chamego suspeito 🍯",
+    "trocam toques frequentes 🫶",
+    "não desgrudam nem um minuto 👀",
+    "mostram química visível 😌",
+    "fazem romance despontar 🌙",
+    "forçam proximidade exagerada 😏",
+    "soltam risadinhas entregadoras 🤭",
+    "sentam colados no sofá 🛋️",
+    "mantêm conversa só entre eles 🫣",
+    "vivem um climinha constante 💞",
+    "aceleram a intimidade ⏩",
+    "viram proteção mútua 🛡️",
+    "criam tensão romântica 🔥",
+    "chegam no quase beijo 👄",
+    "fazem o mundo sumir ao redor 🌌",
+    "viram comentário pela casa 🗣️",
+    "viram fofoca rápida 🐍"
+  ],
+  vt: [
+    "positivo, casal rende",
+    "positivo, recorte romântico",
+    "positivo, torcida nasce",
+    "misto, romance muda prioridades"
+  ],
+  scope: "intimo"
+},
 
-  // Atenção/VT: sujeito + tentativa + reação da casa/edição
   attention: {
     pos: [
-      "{A} aparece na medida certa e emplaca um VT bom 🎬",
-      "{A} crava um momento certeiro e vira referência do dia 📌",
-      "{A} chama atenção positivamente e cresce na edição 🌟",
-      "{A} faz o nome circular por motivo bom e ganha aplausos 👏",
-      "{A} mantém carisma em alta e vira assunto positivo 🗨️",
-      "{A} brilha num recorte rápido e melhora presença 💫",
-      "{A} vira queridinho da edição por um momento 📺",
-      "{A} assume protagonismo natural e a casa compra 🧭",
-      "{A} entrega um comentário certeiro e atrai olhares 👁️",
-      "{A} mostra crescimento claro e ganha respeito 📈"
+      "ganha destaque ⭐",
+      "cresce na edição 🔝",
+      "marca presença forte ✨",
+      "aparece bem hoje 🎥",
+      "assume protagonismo natural 🧭",
+      "mantém carisma em alta 😄",
+      "crava um momento certeiro 🎯",
+      "sabe aparecer 📸",
+      "vira queridinho da edição 📺",
+      "entrega um VT bom 🎬",
+      "chama atenção positivamente 🌟",
+      "mostra crescimento claro 📈",
+      "vira presença marcante 🧲",
+      "faz o nome circular 🗣️",
+      "brilha no momento 💫",
+      "cresce no jogo 🎮",
+      "vira assunto positivo 🗨️",
+      "ganha aplausos 👏",
+      "vira referência do dia 📌",
+      "atrai olhares pra si 👁️"
     ],
     neg: [
-      "{A} força protagonismo e a casa lê como artificial 🤡",
-      "{A} quer aparecer demais e começa a irritar 🧨",
-      "{A} exagera na cena e pega mal geral 🚫",
-      "{A} faz monólogo constrangedor e vira chacota nos comentários 🪞",
-      "{A} busca VT a qualquer custo e vira alvo fácil 🎯",
-      "{A} se expõe sem necessidade e alimenta fofoca 🐍",
-      "{A} tenta roubar a cena e soa teatral demais 🎪",
-      "{A} faz falação vazia e perde credibilidade 🗣️",
-      "{A} aparece pelo motivo errado e gera carisma questionável 😬",
-      "{A} quer controlar narrativa e acaba virando piada interna 😂"
+      "força protagonismo 🤡",
+      "quer aparecer demais 🍭",
+      "exagera na cena 🎬",
+      "soa artificial 🔊",
+      "faz um monólogo constrangedor 🪞",
+      "aparece pelo motivo errado ❌",
+      "gera carisma questionável 😬",
+      "irrita pelo excesso 🧨",
+      "vira teatral demais 🎭",
+      "faz falação vazia 🗣️",
+      "busca VT a qualquer custo 📺",
+      "força narrativa própria 🧵",
+      "pega mal geral 🚫",
+      "gera rejeição na casa 😒",
+      "vira piada interna 🤡",
+      "vira chacota nos comentários 😂",
+      "alimenta fofoca e rejeição 🐍",
+      "se expõe sem necessidade 👀",
+      "tenta roubar a cena 🎪",
+      "vira alvo fácil 🎯"
     ],
     vtPos: [
       "positivo, melhora presença",
@@ -4719,7 +4796,6 @@ dayAdd(`
     scope: "coletivo"
   }
 };
-
 
 
   function genEventForPlayer(p, ctx, alive) {
@@ -4798,7 +4874,7 @@ const POP_EVENT_MULT = 1.65;
         eid: duo ? "housefun_duo" : "housefun_solo",
         theme,
         people: duo ? `${p.name} e ${other.name}` : p.name,
-        desc: pickOne(duo ? EVENT_TEXTS.housefun.descDuo : EVENT_TEXTS.housefun.descSolo),
+        desc: pickOne(EVENT_TEXTS.housefun.desc),
         vt: pickOne(EVENT_TEXTS.housefun.vt),
         scope: duo ? "coletivo" : "coletivo",
         a: p,
@@ -5752,38 +5828,158 @@ if (alive.length <= 4) return false;
 
     if (!boosted.length) return;
 
-    // Card único no feed do dia (pra não floodar)
-    const items = boosted
-      .slice(0, 6)
-      .map((x) => `<strong>${escapeHtml(displayName(x.p))}</strong>`)
-      .join(", ");
+// Eventos narrativos de exclusão (1–2 destaques no feed; o resto só ganha o bump).
+// A ideia é ser "cena observável" (sujeito → intenção → reação), e não etiqueta repetida.
+const EXCLUSION_SCENES = {
+  entrySolo: [
+    "{A} circula pela casa tentando se encaixar, mas não encontra abertura nas conversas.",
+    "{A} passa o dia quiet{a:o|a|e}, evitando se expor, e acaba ficando fora dos papos principais.",
+    "{A} tenta puxar assunto em momentos aleatórios, mas a conversa não engrena e morre rápido.",
+    "{A} fica perto da galera, mas sem ser chamad{a:o|a|e} pra nada de verdade."
+  ],
+  entryWithB: [
+    "{A} chega numa roda onde {B} está e percebe o clima esfriar na hora.",
+    "{A} tenta se enturmar com {B}, mas recebe respostas curtas e se afasta sem insistir.",
+    "{A} puxa assunto com {B} e sente que está falando sozinho(a), então corta o papo."
+  ],
+  midSolo: [
+    "{A} começa a reparar que as alianças estão se formando sem {a:ele|ela|elu} e isso pesa no humor.",
+    "{A} tenta ocupar espaço, mas termina o dia sentindo que virou figurante das relações.",
+    "{A} se isola depois de notar que não é prioridade pra ninguém nas decisões informais."
+  ],
+  midWithB: [
+    "{A} tenta entrar numa conversa com {B}, mas percebe que o assunto muda na hora.",
+    "{A} cutuca {B} buscando alguma leitura do jogo e recebe um desvio educado, mas frio.",
+    "{A} comenta algo leve com {B}, mas a reação é tão neutra que vira um silêncio constrangedor."
+  ],
+  lateSolo: [
+    "{A} já começa a agir como se estivesse por conta própria e isso vira pauta na casa.",
+    "{A} sente o isolamento virar bola de neve e passa a desconfiar de todo mundo.",
+    "{A} tenta manter a cabeça no lugar, mas o clima de exclusão vira um peso visível."
+  ],
+  lateWithB: [
+    "{A} cobra um mínimo de acolhimento de {B}, mas não sente reciprocidade e sai frustrad{a:o|a|e}.",
+    "{A} busca aproximação com {B}, mas lê a recusa como sinal de que virou descartável no jogo.",
+    "{A} tenta um gesto de paz com {B}, mas a resposta morna deixa tudo pior."
+  ]
+};
 
-    dayAdd(`
-      <div class="dayCard evNeu">
-        <span style="flex:1; min-width:0;">
-          🚪 Narrativa de <strong>exclusão</strong>: ${items}.
-          <span style="opacity:.88;">O público costuma comprar o enredo do "isolado".</span>
-        </span>
-        <span class="vtLine" style="margin:0; white-space:nowrap;">${vtToEmojis("misto")}</span>
-      </div>
-    `);
+const pickSnubber = (p) => {
+  try {
+    const candidates = alive.filter(o => o && o.id && o.id !== p.id && o.status?.alive);
+    if (!candidates.length) return null;
+    // pega um "ponto frio": pior das relações (p->o e o->p)
+    candidates.sort((o1, o2) => {
+      const s1 = Math.min(relGet(p.id, o1.id), relGet(o1.id, p.id));
+      const s2 = Math.min(relGet(p.id, o2.id), relGet(o2.id, p.id));
+      return s1 - s2;
+    });
+    // dá chance de escolher entre os 3 piores pra variar
+    const top = candidates.slice(0, Math.min(3, candidates.length));
+    return top[Math.floor(Math.random() * top.length)];
+  } catch { return null; }
+};
 
-    if (isolatedNotes.length) {
-      const names = isolatedNotes.slice(0, 6)
-        .map((p) => `<strong>${escapeHtml(displayName(p))}</strong>`)
-        .join(", ");
-      const verb = isolatedNotes.length === 1 ? "está" : "estão";
-      const end = isolatedNotes.length === 1 ? "isolado" : "isolados";
-      dayAdd(`
-        <div class="dayCard evNeu">
-          <span style="flex:1; min-width:0;">🥺 ${names} ${verb} cada vez mais ${end} na casa.</span>
-          <span class="vtLine" style="margin:0; white-space:nowrap;">${vtToEmojis("misto")}</span>
-        </div>
-      `);
-    }
+const pickScene = (p) => {
+  const streak = Number(p?.status?.excluidoStreak ?? 0);
+  const stage =
+    streak <= 1 ? "entry" :
+    streak <= 3 ? "mid" : "late";
+
+  const wantB = (Math.random() < 0.55);
+  const b = wantB ? pickSnubber(p) : null;
+
+  if (stage === "entry") {
+    return b ? { desc: pickOne(EXCLUSION_SCENES.entryWithB), b } : { desc: pickOne(EXCLUSION_SCENES.entrySolo), b: null };
   }
+  if (stage === "mid") {
+    return b ? { desc: pickOne(EXCLUSION_SCENES.midWithB), b } : { desc: pickOne(EXCLUSION_SCENES.midSolo), b: null };
+  }
+  return b ? { desc: pickOne(EXCLUSION_SCENES.lateWithB), b } : { desc: pickOne(EXCLUSION_SCENES.lateSolo), b: null };
+};
 
+// Destaques no feed (1–2)
+const featured = isolatedNotes
+  .slice()
+  .sort((a, b) => (Number(b?.status?.excluidoStreak ?? 0) - Number(a?.status?.excluidoStreak ?? 0)))
+  .slice(0, Math.min(2, isolatedNotes.length));
 
+for (const p of featured) {
+  if (!p?.status?.alive) continue;
+
+  const streak = Number(p.status.excluidoStreak ?? 0);
+
+  // guarda para arquétipos/narrativa
+  p.status.narr = p.status.narr || {};
+  p.status.narr.exclusionDays = (p.status.narr.exclusionDays ?? 0) + 1;
+
+  const scene = pickScene(p);
+  const b = scene?.b || null;
+
+  // cria o bloco (texto começa com {A} para virar frase direta)
+  applyEventBlock({
+    eid: `exclusion_scene_${p.id}_${state.week}_${ctx?.key || 'day'}`,
+    theme: ctx.festa ? "party" : "default",
+    people: `${p.name}`,
+    desc: scene.desc,
+    vt: (streak >= 4 ? "negativo, isolamento pesado" : "misto, narrativa de exclusão"),
+    scope: "coletivo",
+    a: p,
+    b,
+    directed: true,
+    deltaA: { pop: (streak >= 4 ? 0.18 : 0.12), alvo: (streak >= 3 ? 0.08 : 0.02) },
+    deltaB: b ? { pop: -0.02 } : {}
+  });
+
+  // marca como tema e deixa rastros na timeline (pra alimentar leitura/combos)
+  try {
+    const aName = simpleName(p);
+    const bName = b ? simpleName(b) : '';
+    const raw = String(scene.desc || '').split('{A}').join(aName).split('{B}').join(bName);
+    const idx = pushTimelineEvent(p, { round: state.week, type: 'misc', text: raw, weight: 1 });
+    tagTheme(p, 'exclusion_arc', 2, state.week, idx);
+    if (streak >= 3) tagTheme(p, 'underdog', 1, state.week, idx);
+  } catch { /* ignora */ }
+
+  // Arco do excluído: pode virar "virada" ou "queda" (impacto real no jogo)
+  // - Virada: encontra uma brecha com alguém e melhora relações (pode sair do estado no dia seguinte)
+  // - Queda: vira alvo mais explícito
+  if (streak >= 3 && Math.random() < 0.28) {
+    const ally = alive
+      .filter(o => o && o.id !== p.id && o.status?.alive)
+      .sort((o1, o2) => relGet(p.id, o2.id) - relGet(p.id, o1.id))[0] || null;
+
+    if (ally) {
+      // melhora a relação bilateral para tentar quebrar o isolamento
+      relAdd(p.id, ally.id, +0.9, "intimo");
+      relAdd(ally.id, p.id, +0.6, "intimo");
+
+      applyEventBlock({
+        eid: `exclusion_turn_${p.id}_${state.week}_${ctx?.key || 'day'}`,
+        theme: ctx.festa ? "party" : "default",
+        people: `${p.name} e ${ally.name}`,
+        desc: "{A} se abre com {B} e encontra uma brecha de acolhimento, mudando o clima do dia.",
+        vt: "positivo, virada de percepção",
+        scope: "intimo",
+        a: p,
+        b: ally,
+        directed: true,
+        deltaA: { pop: +0.32, alvo: -0.08 },
+        deltaB: { pop: +0.08 },
+        relDelta: +0.9
+      });
+
+      try { applyNarrativeEvent({ type: 'vulnerability', actorId: p.id, targetId: ally.id, round: state.week }); } catch {}
+      try { tagTheme(p, 'redencao_seed', 2, state.week); } catch {}
+    }
+  } else if (streak >= 4 && Math.random() < 0.30) {
+    // queda: a casa começa a tratar como opção fácil
+    bump(p, { alvo: +0.35 });
+    try { applyNarrativeEvent({ type: 'house_target', actorId: p.id, round: state.week }); } catch {}
+    try { tagTheme(p, 'easy_target', 2, state.week); } catch {}
+  }
+}
+  }
 
 
   // ===== Eventos com gatilho (confrontos/reações) =====
