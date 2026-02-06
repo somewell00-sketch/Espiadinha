@@ -4352,10 +4352,22 @@ function applyEventBlock(e) {
   }
 
 
-  const peopleTxt = genderizeText(formatNamesInText(e.people), e.a, e.b);
-  const descTxt = genderizeText(formatNamesInText(e.desc), e.a, e.b);
 
-  const rejBase =
+  // Permite templates com tokens simples de nome:
+  // - {A} = nome curto do participante A
+  // - {B} = nome curto do participante B (se existir)
+  const fillAB = (txt) => {
+    let s = String(txt ?? "");
+    const aN = e.a ? shortNameForEvents(e.a) : "";
+    const bN = e.b ? shortNameForEvents(e.b) : "";
+    s = s.replaceAll("{A}", aN);
+    s = s.replaceAll("{B}", bN);
+    return s;
+  };
+
+  const peopleTxt = genderizeText(formatNamesInText(fillAB(e.people)), e.a, e.b);
+  const descTxt = genderizeText(formatNamesInText(fillAB(e.desc)), e.a, e.b);
+const rejBase =
     tone === "neg" ? rnd(0.18, 0.45) :
     tone === "pos" ? -rnd(0.08, 0.20) :
     0;
