@@ -9239,133 +9239,186 @@ const html = tweets.map((x) => `
         </div>
 
         ${(() => {
-          try {
-            initNarrativeForPlayer(p, state.week);
-            const arc = buildPlayerArc(p.id, state.week);
-            if (!arc) return '';
-            const beats = (arc.arcBeats || []).map(b => `<div class="small" style="margin-top:6px;"><strong>${escapeHtml(b.phase)}:</strong> ${escapeHtml(b.text)}</div>`).join('');
-            const playersById = Object.fromEntries(state.players.map(pp => [String(pp.id), pp]));
-            const relLabel = (otherId) => {
-              const r = p?.narrative?.relations?.[otherId];
-              if (!r) return null;
-              const bond = Number(r.bond ?? 0);
-              const rivalry = Number(r.rivalry ?? 0);
-              const tags = Array.isArray(r.tags) ? r.tags : [];
-              if (tags.includes('crush') || tags.includes('peguete')) return 'Peguete';
-              if (rivalry >= 65) return 'Rival';
-              if (bond >= 65 && rivalry <= 35) return 'Aliado';
-              return null;
-            };
-            const weekLabel = (round) => `Semana ${round}`;
-            const fmtMoment = (e) => {
-              const base = String(e?.text || '').trim();
-              const round = Number(e?.round || state.week || 1);
-              const tid = e?.refs?.targetId != null ? String(e.refs.targetId) : null;
-              const target = tid ? playersById[tid] : null;
-
-              const isRisk = (e?.type === 'danger' || e?.type === 'eviction_survived' || e?.type === 'close_call');
-              const paredaoIds = Array.isArray(e?.refs?.paredaoIds) ? e.refs.paredaoIds.map(String) : null;
-
-              let extra = '';
-              if (target) {
-                const nm = simpleName(target);
-                const lab = relLabel(target.id);
-                // só adiciona se o nome não estiver já no texto
-                const has = base.toLowerCase().includes(nm.toLowerCase());
-                if (!has) extra = lab ? ` (${lab}: ${nm})` : ` (${nm})`;
-              } else if (isRisk && paredaoIds && paredaoIds.length >= 3) {
-                // Contexto do paredão: mostra com quem foi, e etiqueta só quando for relevante.
-                const selfId = String(arc?.playerId ?? p?.id ?? '');
-                const others = paredaoIds.filter(id => id && id !== selfId)
-                  .map(id => playersById[String(id)])
-                  .filter(Boolean);
-                if (others.length) {
-                  const parts = others.slice(0,2).map((q) => {
-                    const nm = simpleName(q);
-                    const lab = relLabel(q.id);
-                    return lab ? `${nm} (${lab})` : nm;
-                  });
-                  extra = ` (com ${parts.join(' e ')})`;
-                }
-              }
-              return `${weekLabel(round)}: ${base.replace(/\.$/, '')}${extra}.`;
-            };
-            const moments = (arc.definingMoments || []).slice(0,4).map(e => `<li>${escapeHtml(fmtMoment(e))}</li>`).join('');
-            return `
-              <div class="drawerCard" style="margin-top:10px;">
-                <div class="t">Arco narrativo</div>
-                <div class="c">
-                  <div style="font-weight:900;">${escapeHtml(arc.title)}</div>${arc.subtitle ? `<div class=\"small\" style=\"margin-top:2px; font-weight:800; opacity:.9;\">${escapeHtml(arc.subtitle)}</div>` : ''}
-                  <div class="small" style="margin-top:4px; opacity:.92;">${escapeHtml(arc.logline)}</div>
-                  ${beats ? `<div style="margin-top:8px;">${beats}</div>` : ''}
-                  ${moments ? `<div style="margin-top:10px;"><div class="small" style="font-weight:900;">Momentos marcantes</div><ul class="small" style="margin:6px 0 0 18px;">${moments}</ul></div>` : ''}
-                </div>
-              </div>
-            `;
-          } catch (e) {
-            try { console.error('[Arco narrativo] erro ao gerar arco', e); } catch {}
-            const msg = (e && (e.message || e.toString)) ? (e.message || String(e)) : 'erro desconhecido';
-            return `
-              <div class="drawerCard" style="margin-top:10px;">
-                <div class="t">Arco narrativo</div>
-                <div class="c">
-                  <div class="small" style="opacity:.9;">Falha ao gerar o arco narrativo. Abra o console para ver detalhes.</div>
-                  <div class="small" style="margin-top:6px; opacity:.7;">${escapeHtml(msg)}</div>
-                </div>
-              </div>
-            `;
-          }
-        })()}
-
-${(() => {
   try {
-    // Arquétipos BBB (dominante + top3) — baseado em score semanal
+    // Garante que os dados narrativos e de arquétipos da semana estejam prontos
+    initNarrativeForPlayer(p, state.week);
+    const arc = buildPlayerArc(p.id, state.week);
+
+    // Snapshot de arquétipos BBB (última semana válida do jogador)
     const map = p?.status?.archetypeWeek || {};
-    const keys = Object.keys(map).map(Number).filter(n=>Number.isFinite(n) && n>0);
+    const keys = Object.keys(map).map(Number).filter(n => Number.isFinite(n) && n > 0);
     const outW = Number(p?.status?.outWeek ?? NaN);
-    const lim = Number.isFinite(outW) ? Math.min(outW, Number(state.week||1)) : Number(state.week||1);
-    const wk = keys.filter(n=>n<=lim).sort((a,b)=>b-a)[0];
+    const lim = Number.isFinite(outW) ? Math.min(outW, Number(state.week || 1)) : Number(state.week || 1);
+    const wk = keys.filter(n => n <= lim).sort((a, b) => b - a)[0];
     const snap = (wk != null) ? map[String(wk)] : null;
-    if (!snap || !snap.top3 || !snap.top3.length) return '';
 
-    const rows = snap.top3.map((x) => {
-      const pct = Number.isFinite(x.score) ? `${x.score}` : '0';
-      return `<div class="small" style="margin-top:6px; display:flex; gap:10px; align-items:center;">
-        <div style="min-width:120px; font-weight:900;">${escapeHtml(`${x.emoji||'🎭'} ${x.label||x.id}`)}</div>
-        <div style="opacity:.9;">score ${escapeHtml(pct)}</div>
-      </div>`;
-    }).join('');
+    const hasArc = !!arc;
+    const hasSnap = !!(snap && Array.isArray(snap.top3) && snap.top3.length);
 
-    const dom = snap.top3[0];
-    const title = `${dom.emoji||'🎭'} ${dom.label||'Arquétipo'}`;
+    if (!hasArc && !hasSnap) return '';
 
-    const comboTitle = (snap.comboTitle ? `${snap.comboEmoji||'🎭'} ${snap.comboTitle}` : '');
-    const comboSub = snap.comboSubtitle || '';
-    const arcTitle = (snap.arcTitle ? `${snap.arcEmoji||'🎬'} ${snap.arcTitle}` : '');
-    const arcSub = snap.arcSubtitle || '';
+    const tierLabel = (score) => {
+      const s = Number(score ?? 0);
+      if (s >= 90) return 'dominante absoluto';
+      if (s >= 70) return 'traço forte';
+      if (s >= 50) return 'traço presente';
+      return 'traço residual';
+    };
 
-    const comboHtml = comboTitle ? `<div class="small" style="margin-top:6px; font-weight:900; opacity:.95;">Combo: ${escapeHtml(comboTitle)}${comboSub ? `<div style=\"margin-top:2px; font-weight:800; opacity:.85;\">${escapeHtml(comboSub)}</div>` : ''}</div>` : '';
-    const arcHtml = arcTitle ? `<div class="small" style="margin-top:6px; font-weight:900; opacity:.95;">Arco BBB: ${escapeHtml(arcTitle)}${arcSub ? `<div style=\"margin-top:2px; font-weight:800; opacity:.85;\">${escapeHtml(arcSub)}</div>` : ''}</div>` : '';
+    // --- Arco (macro) ---
+    const titleLine = hasArc ? `${arc.emoji || '🎬'} ${arc.title || 'Arco narrativo'}` : '🎬 Arco narrativo';
+    const subtitleLine = hasArc && arc.subtitle ? arc.subtitle : '';
+    const logline = hasArc && arc.logline ? arc.logline : '';
 
+    // Beats por fase (dedup por texto para evitar repetição tipo "sofreu o Monstro" em tudo)
+    const beats = hasArc ? (arc.arcBeats || []) : [];
+    const seenBeat = new Set();
+    const beatsHtml = beats
+      .map(b => {
+        const phase = String(b?.phase || '').trim();
+        const text = String(b?.text || '').trim();
+        if (!phase || !text) return '';
+        const key = text.toLowerCase();
+        if (seenBeat.has(key)) return '';
+        seenBeat.add(key);
+        return `<div class="small" style="margin-top:8px;"><strong>${escapeHtml(phase)}:</strong> ${escapeHtml(text)}</div>`;
+      })
+      .filter(Boolean)
+      .join('');
+
+    // Momentos marcantes (com contexto básico)
+    const playersById = Object.fromEntries(state.players.map(pp => [String(pp.id), pp]));
+    const relLabel = (otherId) => {
+      const r = p?.narrative?.relations?.[otherId];
+      if (!r) return null;
+      const bond = Number(r.bond ?? 0);
+      const rivalry = Number(r.rivalry ?? 0);
+      const tags = Array.isArray(r.tags) ? r.tags : [];
+      if (tags.includes('crush') || tags.includes('peguete')) return 'Peguete';
+      if (rivalry >= 65) return 'Rival';
+      if (bond >= 65 && rivalry <= 35) return 'Aliado';
+      return null;
+    };
+    const weekLabel = (round) => `Semana ${round}`;
+    const fmtMoment = (e) => {
+      const base = String(e?.text || '').trim();
+      const round = Number(e?.round || state.week || 1);
+
+      const isRisk = (e?.type === 'danger' || e?.type === 'eviction_survived' || e?.type === 'close_call');
+      const paredaoIds = Array.isArray(e?.refs?.paredaoIds) ? e.refs.paredaoIds.map(String) : null;
+
+      let extra = '';
+
+      if (isRisk && paredaoIds && paredaoIds.length >= 3) {
+        const selfId = String(arc?.playerId ?? p?.id ?? '');
+        const others = paredaoIds.filter(id => id && id !== selfId)
+          .map(id => playersById[String(id)])
+          .filter(Boolean);
+        if (others.length) {
+          const parts = others.slice(0, 2).map((q) => {
+            const nm = simpleName(q);
+            const lab = relLabel(q.id);
+            return lab ? `${nm} (${lab})` : nm;
+          });
+          extra = ` (com ${parts.join(' e ')})`;
+        }
+      } else {
+        const tid = e?.refs?.targetId != null ? String(e.refs.targetId) : null;
+        const target = tid ? playersById[tid] : null;
+        if (target) {
+          const nm = simpleName(target);
+          const lab = relLabel(target.id);
+          const has = base.toLowerCase().includes(nm.toLowerCase());
+          if (!has) extra = lab ? ` (${lab}: ${nm})` : ` (${nm})`;
+        }
+      }
+
+      return `${weekLabel(round)}: ${base.replace(/\.$/, '')}${extra}.`;
+    };
+
+    const moments = hasArc ? (arc.definingMoments || []).slice(0, 6) : [];
+    const momentsHtml = moments.length
+      ? `<div style="margin-top:12px;">
+          <div class="small" style="font-weight:900;">Momentos que sustentam essa leitura</div>
+          <ul class="small" style="margin:6px 0 0 18px;">
+            ${moments.map(e => `<li>${escapeHtml(fmtMoment(e))}</li>`).join('')}
+          </ul>
+        </div>`
+      : '';
+
+    // --- Leitura editorial (micro) ---
+    let editorialHtml = '';
+    if (hasSnap) {
+      const dom = snap.top3[0] || {};
+      const domTitle = `${dom.emoji || '🎭'} ${dom.label || dom.id || 'Arquétipo'}`;
+
+      const traits = snap.top3.slice(1, 3).map((x) => `${x.emoji || '🎭'} ${x.label || x.id}`).join(' · ');
+      const traitsLine = traits ? `Traços de ${traits}` : '';
+
+      const comboTitle = snap.comboTitle ? `${snap.comboEmoji || '🎭'} ${snap.comboTitle}` : '';
+      const comboSub = snap.comboSubtitle || '';
+      const arcTitle = snap.arcTitle ? `${snap.arcEmoji || '🎢'} ${snap.arcTitle}` : '';
+      const arcSub = snap.arcSubtitle || '';
+
+      const top3Rows = snap.top3.map((x) => {
+        const s = Number(x.score ?? 0);
+        const tier = tierLabel(s);
+        return `<div class="small" style="margin-top:8px; display:flex; justify-content:space-between; gap:10px;">
+          <div style="font-weight:900;">${escapeHtml(`${x.emoji || '🎭'} ${x.label || x.id}`)}</div>
+          <div style="opacity:.85;">${escapeHtml(`${tier} · ${s}`)}</div>
+        </div>`;
+      }).join('');
+
+      editorialHtml = `
+        <div style="margin-top:12px;">
+          <div class="small" style="font-weight:900;">Leitura editorial (semana ${wk})</div>
+          <div style="margin-top:6px; font-weight:900;">${escapeHtml(domTitle)}</div>
+          ${traitsLine ? `<div class="small" style="margin-top:4px; opacity:.9;">${escapeHtml(traitsLine)}</div>` : ''}
+          ${comboTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Combo</div>
+            <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(comboTitle)}</div>
+            ${comboSub ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(comboSub)}</div>` : ''}` : ''}
+          ${arcTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Arco BBB (leitura)</div>
+            <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(arcTitle)}</div>
+            ${arcSub ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(arcSub)}</div>` : ''}` : ''}
+          <div class="small" style="margin-top:10px; opacity:.9;">Top 3</div>
+          ${top3Rows}
+          <div class="small" style="margin-top:10px; opacity:.75;">Obs: isso é uma leitura automática do comportamento no simulador e pode mudar a cada semana.</div>
+        </div>
+      `;
+    }
+
+    // Blending: arco manda, editorial explica
+    const arcBody = hasArc ? `
+      <div style="font-weight:900;">${escapeHtml(titleLine)}</div>
+      ${subtitleLine ? `<div class="small" style="margin-top:2px; font-weight:800; opacity:.9;">${escapeHtml(subtitleLine)}</div>` : ''}
+      ${logline ? `<div class="small" style="margin-top:6px; opacity:.92;">${escapeHtml(logline)}</div>` : ''}
+      ${beatsHtml ? `<div style="margin-top:10px;">${beatsHtml}</div>` : ''}
+    ` : `<div style="font-weight:900;">${escapeHtml(titleLine)}</div>`;
 
     return `
       <div class="drawerCard" style="margin-top:10px;">
-        <div class="t">Arquétipo BBB (agora)</div>
+        <div class="t">Narrativa BBB</div>
         <div class="c">
-          <div style="font-weight:900;">${escapeHtml(title)}</div>
-          ${comboHtml}
-          ${arcHtml}
-          <div class="small" style="margin-top:4px; opacity:.9;">Top 3 (semana ${wk})</div>
-          ${rows}
-          <div class="small" style="margin-top:8px; opacity:.75;">Obs: arquétipos são uma leitura automática do comportamento no simulador e podem mudar a cada semana.</div>
+          ${arcBody}
+          ${editorialHtml}
+          ${momentsHtml}
         </div>
       </div>
     `;
-  } catch { return ''; }
-})()}
-
-
-        <div class="drawerCard" style="margin-top:10px;">
+  } catch (e) {
+    try { console.error('[Narrativa BBB] erro ao gerar narrativa estruturada', e); } catch {}
+    const msg = (e && (e.message || e.toString)) ? (e.message || String(e)) : 'erro desconhecido';
+    return `
+      <div class="drawerCard" style="margin-top:10px;">
+        <div class="t">Narrativa BBB</div>
+        <div class="c">
+          <div class="small" style="opacity:.9;">Falha ao gerar a narrativa estruturada. Abra o console para ver detalhes.</div>
+          <div class="small" style="margin-top:6px; opacity:.7;">${escapeHtml(msg)}</div>
+        </div>
+      </div>
+    `;
+  }
+})()}        <div class="drawerCard" style="margin-top:10px;">
           <div class="t">Histórico (eventos em que apareceu)</div>
           <div class="c">${histHtml}</div>
         </div>
