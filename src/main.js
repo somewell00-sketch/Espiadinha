@@ -2943,6 +2943,26 @@ dayAdd(
     return forms[key] ?? forms.O ?? '';
   }
 
+  // Template simples para concordância de gênero dentro de strings.
+  // Uso:
+  // - {a:masc|fem|neutro} -> escolhe pelo gênero do participante A
+  // - {b:masc|fem|neutro} -> escolhe pelo gênero do participante B
+  // - {ab:masc|fem|neutro} -> escolhe pelo gênero de A (para pares, use neutro quando preferir)
+  function genderizeText(text, a, b) {
+    let s = String(text ?? '');
+    const rep = (who, formsStr) => {
+      const parts = String(formsStr || '').split('|');
+      const m = parts[0] ?? '';
+      const f = parts[1] ?? parts[0] ?? '';
+      const o = parts[2] ?? parts[1] ?? parts[0] ?? '';
+      return g(who, { M: m, F: f, O: o });
+    };
+    s = s.replace(/\{a:([^}]+)\}/g, (_, forms) => rep(a, forms));
+    s = s.replace(/\{b:([^}]+)\}/g, (_, forms) => rep(b, forms));
+    s = s.replace(/\{ab:([^}]+)\}/g, (_, forms) => rep(a, forms));
+    return s;
+  }
+
   // pronome sujeito para citar participantes no formato (He/She/They)
   function pronounTag(p) {
     const key = (p && p.gender) ? p.gender : 'O';
@@ -3393,6 +3413,7 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
         serenidade: rndInt(1, 10)
       },
       status: { alive: true, pop: 5.0, alvo: 0.0, strikes: 0, leaderCount: 0, anjoCount: 0, paredaoCount: 0, popWeek: {}, favPublic: false, favPermanent: false, room: null, weeksSinceWin: 0, weeksSinceParedao: 0, weeksSinceEvent: 0, popPrev: 5.0, popStableStreak: 0, decisionStreak: 0, didSomethingThisWeek: false, madeDecisionThisWeek: false, wonSomethingThisWeek: false, planta: false, plantStreak: 0, excluido: false, excluidoStreak: 0, narr: { invisDays: 0, pressureDays: 0, lastLabel: "" } },
+      flags: { betrayedBy: [], overplayed: false, isolated: false, confrontedLeader: false, voteExposed: false },
       secret: { gayScore: (gender === 'M' || gender === 'F') ? sampleGayScore() : null }
     };
     ensurePlayerAge(p);
@@ -3968,8 +3989,33 @@ if (d.strikes !== undefined) {
     const festa = (isLeaderPartyDay || isSponsorPartyDay);
     const festaType = isLeaderPartyDay ? "lider" : (isSponsorPartyDay ? "patrocinador" : null);
     const tension = d.key === "seg" || d.key === "ter";
+
+    // Perfil narrativo do dia (ritmo semanal)
+    // - estratégia explícita: sexta–domingo
+    // - pressão emocional: segunda–terça
+    // - leveza/convivência: quarta (festa) e quinta (pós-líder)
+    const dayProfileByKey = {
+      qua: { catMults: { strategy: 0.05, emotional: 0.35, conflict: 1.20, social: 1.25, romance: 1.35, attention: 1.25, neutral: 0.95, housefun: 1.60 }, mood: { tension: 0.55, paranoia: 0.35, leveza: 0.75 } },
+      qui: { catMults: { strategy: 0.20, emotional: 0.35, conflict: 0.85, social: 1.05, romance: 0.85, attention: 1.05, neutral: 1.15, housefun: 1.05 }, mood: { tension: 0.35, paranoia: 0.40, leveza: 0.45 } },
+      sex: { catMults: { strategy: 1.10, emotional: 0.55, conflict: 1.15, social: 1.00, romance: 0.95, attention: 1.00, neutral: 0.90, housefun: 0.95 }, mood: { tension: 0.55, paranoia: 0.55, leveza: 0.35 } },
+      sab: { catMults: { strategy: 1.20, emotional: 0.55, conflict: 1.20, social: 1.05, romance: 1.15, attention: 1.05, neutral: 0.85, housefun: 1.15 }, mood: { tension: 0.55, paranoia: 0.55, leveza: 0.55 } },
+      dom: { catMults: { strategy: 1.35, emotional: 0.65, conflict: 1.35, social: 0.85, romance: 0.85, attention: 1.10, neutral: 0.75, housefun: 0.65 }, mood: { tension: 0.75, paranoia: 0.65, leveza: 0.20 } },
+      seg: { catMults: { strategy: 0.12, emotional: 1.55, conflict: 1.35, social: 0.70, romance: 0.55, attention: 0.85, neutral: 0.70, housefun: 0.30 }, mood: { tension: 0.90, paranoia: 0.70, leveza: 0.10 } },
+      ter: { catMults: { strategy: 0.10, emotional: 1.65, conflict: 1.25, social: 0.75, romance: 0.55, attention: 0.85, neutral: 0.65, housefun: 0.25 }, mood: { tension: 0.95, paranoia: 0.75, leveza: 0.10 } }
+    };
+    const prof = dayProfileByKey[d.key] || { catMults: {}, mood: { tension: tension ? 0.8 : 0.4, paranoia: 0.4, leveza: festa ? 0.6 : 0.35 } };
+    const catMults = prof.catMults || {};
+    const mood = prof.mood || { tension: tension ? 0.8 : 0.4, paranoia: 0.4, leveza: festa ? 0.6 : 0.35 };
     const sponsor = (festaType === "patrocinador") ? ensureSponsorPartyObj() : null;
-    return { ...d, festa, festaType, sponsor, tension };
+    // Persiste um "clima" simples (o dia seguinte herda um pouco do anterior)
+    state.dayMood = state.dayMood || { tension: 0.4, paranoia: 0.35, leveza: 0.35 };
+    state.dayMood = {
+      tension: clamp(0.55 * Number(state.dayMood.tension ?? 0) + 0.45 * Number(mood.tension ?? 0), 0, 1),
+      paranoia: clamp(0.60 * Number(state.dayMood.paranoia ?? 0) + 0.40 * Number(mood.paranoia ?? 0), 0, 1),
+      leveza: clamp(0.55 * Number(state.dayMood.leveza ?? 0) + 0.45 * Number(mood.leveza ?? 0), 0, 1)
+    };
+
+    return { ...d, festa, festaType, sponsor, tension, mood: state.dayMood, catMults };
   }
 
   function pushLog(who, msg, meta) {
@@ -4305,8 +4351,8 @@ function applyEventBlock(e) {
   }
 
 
-  const peopleTxt = formatNamesInText(e.people);
-  const descTxt = formatNamesInText(e.desc);
+  const peopleTxt = genderizeText(formatNamesInText(e.people), e.a, e.b);
+  const descTxt = genderizeText(formatNamesInText(e.desc), e.a, e.b);
 
   const rejBase =
     tone === "neg" ? rnd(0.18, 0.45) :
@@ -4389,13 +4435,13 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
       "assiste tudo de camarote 🍿",
       "não compra briga nenhuma 🤷",
       "não cria laço algum 🪨",
-      "passa despercebido geral 👻",
+      "passa {a:despercebido|despercebida|despercebide} geral 👻",
       "entrega um dia morno 🌡️",
       "vive sem conflitos nem alianças 😶",
       "não serve nem pra irritar 😴",
       "evita tudo que rende VT 🚪",
       "sobrevive sem jogar 💤",
-      "parece já eliminado 🫥",
+      "parece já {a:eliminado|eliminada|eliminade} 🫥",
       "fica em silêncio absoluto 🤐",
       "ocupa espaço sem impacto 🧍",
       "não vira assunto de ninguém 🗒️",
@@ -4407,6 +4453,39 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
       "morno, não engatou",
       "neutro, presença baixa"
     ]
+  },
+
+  // Cotidiano leve/engraçado (não-estratégico)
+  housefun: {
+    desc: [
+      "faz uma receita e dá tudo errado na cozinha 🍳",
+      "derruba coisa no chão e vira piada interna 😂",
+      "se perde numa dança e todo mundo ri 🕺",
+      "faz imitação de alguém da casa e gera caos leve 🎭",
+      "inventa uma brincadeira boba e a casa entra na onda 🎲",
+      "conta uma história absurda e ninguém sabe se é verdade 🤥",
+      "faz um comentário aleatório que vira bordão do dia 🗯️",
+      "tenta limpar a casa e começa uma confusão de organização 🧼",
+      "erra o nome de alguém e rende risada desconfortável 😅",
+      "vira meme por um momento sem querer 📸",
+      "fica cantando baixinho e incomoda e diverte ao mesmo tempo 🎶",
+      "inventa apelidos e espalha pela casa 🏷️",
+      "faz careta na câmera e chama atenção da edição 📺",
+      "se empolga num jogo de cartas improvisado ♠️",
+      "se atrapalha carregando prato e quase derruba tudo 🥣",
+      "faz piada ruim e insiste até alguém rir 🤡",
+      "se fantasia com coisas aleatórias e vira cena pronta 🧦",
+      "puxa uma brincadeira de 'verdade ou consequência' improvisada 🎤",
+      "se mete numa coreografia improvisada e paga mico 🪩",
+      "ri de nervoso e contagia o resto da casa 😬"
+    ],
+    vt: [
+      "positivo, leve e engraçado",
+      "positivo, meme do dia",
+      "misto, vergonha alheia",
+      "positivo, respiro na casa"
+    ],
+    scope: "coletivo"
   },
 
   social: {
@@ -4553,7 +4632,7 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
       "chora sozinho no quarto 🛏️",
       "fica com olhar perdido 👁️",
       "fica em frangalhos 🧩",
-      "se sente excluído 😞",
+      "se sente {a:excluído|excluída|excluíde} 😞",
       "sente o peso do jogo ⚖️"
     ],
     rise: [
@@ -4686,13 +4765,26 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
     const festaBoost = ctx.festa ? 1.35 : 1.0;
     const tensionBoost = ctx.tension ? 1.15 : 1.0;
 
-    const wNeutral = 1.6 + p.attrs.rejeicao * 0.05;
-    const wSocial = p.attrs.social * 0.9;
-    const wConflict = p.attrs.conflito * 0.95 * festaBoost * tensionBoost;
-    const wStrategy = p.attrs.estrategia * 0.9 * (ctx.festa ? 0.9 : 1.0);
-    const wEmo = (10 - p.attrs.emocional) * 0.75 * (ctx.tension ? 1.1 : 1.0);
-    const wRomance = (p.attrs.social * 0.6 + p.attrs.emocional * 0.25) * (ctx.festa ? 1.4 : 0.9);
-    const wAttention = (p.attrs.social * 0.55 + p.attrs.estrategia * 0.25 + p.attrs.emocional * 0.1) * (ctx.festa ? 1.35 : 1.0);
+    const mood = ctx?.mood || { tension: ctx.tension ? 0.85 : 0.45, paranoia: 0.45, leveza: ctx.festa ? 0.65 : 0.35 };
+    const mults = ctx?.catMults || {};
+
+    const wNeutral0 = 1.6 + p.attrs.rejeicao * 0.05;
+    const wSocial0 = p.attrs.social * 0.9;
+    const wConflict0 = p.attrs.conflito * 0.95 * festaBoost * tensionBoost * (1.0 + 0.40 * (mood.tension ?? 0));
+    const wStrategy0 = p.attrs.estrategia * 0.9 * (ctx.festa ? 0.9 : 1.0) * (0.55 + 0.80 * (mood.paranoia ?? 0));
+    const wEmo0 = (10 - p.attrs.emocional) * 0.75 * (1.0 + 0.55 * (mood.tension ?? 0));
+    const wRomance0 = (p.attrs.social * 0.6 + p.attrs.emocional * 0.25) * (ctx.festa ? 1.4 : 0.9) * (0.65 + 0.70 * (mood.leveza ?? 0));
+    const wAttention0 = (p.attrs.social * 0.55 + p.attrs.estrategia * 0.25 + p.attrs.emocional * 0.1) * (ctx.festa ? 1.35 : 1.0);
+    const wHouseFun0 = (0.55 + p.attrs.social * 0.08 + (ctx.festa ? 0.55 : 0) + (mood.leveza ?? 0) * 0.8);
+
+    const wNeutral = wNeutral0 * (mults.neutral ?? 1);
+    const wSocial = wSocial0 * (mults.social ?? 1);
+    const wConflict = wConflict0 * (mults.conflict ?? 1);
+    const wStrategy = wStrategy0 * (mults.strategy ?? 1);
+    const wEmo = wEmo0 * (mults.emotional ?? 1);
+    const wRomance = wRomance0 * (mults.romance ?? 1);
+    const wAttention = wAttention0 * (mults.attention ?? 1);
+    const wHouseFun = wHouseFun0 * (mults.housefun ?? 1);
 
     const cat = pickWeighted([
       { item: "neutral", w: wNeutral },
@@ -4701,7 +4793,8 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
       { item: "strategy", w: wStrategy },
       { item: "emotional", w: wEmo },
       { item: "romance", w: wRomance },
-      { item: "attention", w: wAttention }
+      { item: "attention", w: wAttention },
+      { item: "housefun", w: wHouseFun }
     ]);
 
     
@@ -4727,6 +4820,26 @@ const POP_EVENT_MULT = 1.65;
         deltaA: { pop: popDelta(dPop) },
         deltaB: null,
         relDelta: 0
+      };
+    }
+
+    if (cat === "housefun") {
+      // evento leve e engraçado (não-estratégico): varia entre solo e dupla
+      const duo = (other && Math.random() < 0.45);
+      const dPopA = popDelta(0.08 + (ctx.festa ? 0.06 : 0) + rnd(-0.10, 0.12));
+      const dPopB = duo ? popDelta(0.05 + (ctx.festa ? 0.05 : 0) + rnd(-0.10, 0.10)) : 0;
+      const dRel = duo ? clamp(0.35 + rnd(-0.15, 0.25), 0.05, 0.9) : 0;
+      return {
+        theme,
+        people: duo ? `${p.name} e ${other.name}` : p.name,
+        desc: pickOne(EVENT_TEXTS.housefun.desc),
+        vt: pickOne(EVENT_TEXTS.housefun.vt),
+        scope: duo ? "coletivo" : "coletivo",
+        a: p,
+        b: duo ? other : null,
+        deltaA: { pop: dPopA, alvo: alvoDelta(-0.10 + rnd(-0.10, 0.08)) },
+        deltaB: duo ? { pop: dPopB, alvo: alvoDelta(-0.06 + rnd(-0.10, 0.08)) } : null,
+        relDelta: dRel
       };
     }
 
@@ -5701,6 +5814,75 @@ if (alive.length <= 4) return false;
 
 
 
+  // ===== Eventos com gatilho (confrontos/reações) =====
+  function maybeTriggeredConfrontations(ctx, alive) {
+    state.weekState = state.weekState || {};
+    state.weekState.triggered = state.weekState.triggered || {};
+
+    // 1) Sobrevivente do paredão confronta quem indicou (quarta/quinta)
+    if (!state.weekState.triggered.returnedVsLeader && (ctx.key === 'qua' || ctx.key === 'qui')) {
+      const leaderId = state.weekState.leaderId;
+      const indicadoId = state.weekState.indicadoLiderId;
+      const surv = Array.isArray(state.weekState.lastParedaoSurvivorIds) ? state.weekState.lastParedaoSurvivorIds : [];
+
+      if (leaderId && indicadoId && surv.includes(indicadoId)) {
+        const leader = alive.find(p => p.id === leaderId) || state.players.find(p => p.id === leaderId);
+        const survP = alive.find(p => p.id === indicadoId) || state.players.find(p => p.id === indicadoId);
+
+        if (leader && survP && Math.random() < (ctx.key === 'qua' ? 0.55 : 0.35)) {
+          state.weekState.triggered.returnedVsLeader = true;
+          survP.flags = survP.flags || {};
+          survP.flags.confrontedLeader = true;
+          applyEventBlock({
+            theme: ctx.festa ? 'party' : 'default',
+            people: `${survP.name} e ${leader.name}`,
+            desc: `volta do paredão com sangue nos olhos e cobra {a:ele|ela|elu} na cara por ter indicado`,
+            vt: "negativo, confronto com peso",
+            scope: "coletivo",
+            a: survP,
+            b: leader,
+            deltaA: { pop: 0.22, alvo: 0.18 },
+            deltaB: { pop: -0.10, alvo: 0.28 },
+            relDelta: -1.10
+          });
+          return true;
+        }
+      }
+    }
+
+    // 2) "Voto descoberto" (segunda/terça)
+    if (!state.weekState.triggered.voteExposed && (ctx.key === 'seg' || ctx.key === 'ter')) {
+      const votes = Array.isArray(state.weekState.lastCasaVotes) ? state.weekState.lastCasaVotes : [];
+      if (votes.length) {
+        const pairs = votes
+          .map(v => ({ from: alive.find(p => p.id === v.fromId), to: alive.find(p => p.id === v.toId) }))
+          .filter(x => x.from && x.to && x.from.id !== x.to.id);
+
+        if (pairs.length && Math.random() < (ctx.key === 'seg' ? 0.38 : 0.28)) {
+          const pick = pairs[Math.floor(Math.random() * pairs.length)];
+          state.weekState.triggered.voteExposed = true;
+          pick.to.flags = pick.to.flags || {};
+          pick.to.flags.voteExposed = true;
+          applyEventBlock({
+            theme: 'default',
+            people: `${pick.to.name} e ${pick.from.name}`,
+            desc: `descobre um voto e vai tirar satisfações com {b:cara de pau|cara de pau|cara de pau}`,
+            vt: "muito negativo, clima pesado",
+            scope: "coletivo",
+            a: pick.to,
+            b: pick.from,
+            deltaA: { pop: -0.05, alvo: 0.38 },
+            deltaB: { pop: -0.10, alvo: 0.32 },
+            relDelta: -1.25
+          });
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
   function generateDayEvents(ctx) {
     const alive = alivePlayers();
     if (!alive.length) return;
@@ -5718,6 +5900,9 @@ if (maybeQuitEvent(ctx)) return;
   if (ctx.festaType === "patrocinador") dayAdd(sponsorPartyBannerHtml());
   else dayAdd(partyBannerHtml());
 }
+
+    // 1 evento de gatilho por dia (quando aplicável)
+    maybeTriggeredConfrontations(ctx, alive);
 
     if (typeof maybeSpecialFightEvent === "function") {
       maybeSpecialFightEvent(ctx);
@@ -6869,6 +7054,10 @@ function doIndica() {
       .map(([id, count]) => ({ id, count }))
       .sort((a, b) => b.count - a.count);
 
+    // Guarda votos da casa (para possíveis eventos de "voto descoberto" em seg/ter)
+    state.weekState = state.weekState || {};
+    state.weekState.lastCasaVotes = votes.slice();
+
     function pickNom(excludeIds, slotLabel) {
       const remaining = counts.filter((x) => !excludeIds.has(x.id));
       if (!remaining.length) return null;
@@ -7349,6 +7538,15 @@ function snapshotPopForWeek(weekNumber) {
   let favoriteMsgHtml = "";
   const survivors = paredao.filter((p) => p.id !== eliminado.id);
 
+  // Marca sobreviventes do paredão (para eventos de reação/confronto na semana seguinte)
+  state.weekState = state.weekState || {};
+  state.weekState.lastParedaoSurvivorIds = survivors.map(s => s.id);
+  survivors.forEach((s) => {
+    s.status = s.status || {};
+    s.status.returnedFromParedao = true;
+    s.status.returnedFromParedaoWeek = state.week;
+  });
+
   // processa em ordem aleatória para evitar vieses
   survivors.sort(() => Math.random() - 0.5);
 
@@ -7741,7 +7939,7 @@ const INTRO_BOND_LINES = [
   "encaixam papo fácil e já viram dupla provável.",
   "se entendem rápido e trocam sinais de parceria.",
   "conectam na hora e combinam jogo sem falar muito.",
-  "batem química e começam colados pela casa.",
+  "batem química e começam grudados pela casa.",
   "acham pontos em comum e firmam primeira aliança.",
   "trocam confidências cedo e viram referência um pro outro.",
 ];
