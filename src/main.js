@@ -4352,8 +4352,20 @@ function applyEventBlock(e) {
   }
 
 
-  const peopleTxt = genderizeText(formatNamesInText(e.people), e.a, e.b);
-  const descTxt = genderizeText(formatNamesInText(e.desc), e.a, e.b);
+  // Permite templates com tokens simples de nome:
+  // - {A} = nome curto do participante A
+  // - {B} = nome curto do participante B (se existir)
+  const fillAB = (txt) => {
+    let s = String(txt ?? "");
+    const aN = e.a ? shortNameForEvents(e.a) : "";
+    const bN = e.b ? shortNameForEvents(e.b) : "";
+    s = s.replaceAll("{A}", aN);
+    s = s.replaceAll("{B}", bN);
+    return s;
+  };
+
+  const peopleTxt = genderizeText(formatNamesInText(fillAB(e.people)), e.a, e.b);
+  const descTxt = genderizeText(formatNamesInText(fillAB(e.desc)), e.a, e.b);
 
   const rejBase =
     tone === "neg" ? rnd(0.18, 0.45) :
@@ -4458,27 +4470,46 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
 
   // Cotidiano leve/engraçado (não-estratégico)
   housefun: {
-    desc: [
+    // Para não ficar "genérico" quando é em dupla, separa templates solo/duo.
+    descSolo: [
       "faz uma receita e dá tudo errado na cozinha 🍳",
-      "derruba coisa no chão e vira piada interna 😂",
+      "derruba uma bandeja no chão e vira piada interna 😂",
       "se perde numa dança e todo mundo ri 🕺",
-      "faz imitação de alguém da casa e gera caos leve 🎭",
-      "inventa uma brincadeira boba e a casa entra na onda 🎲",
+      "faz careta pra câmera e chama atenção da edição 📺",
       "conta uma história absurda e ninguém sabe se é verdade 🤥",
       "faz um comentário aleatório que vira bordão do dia 🗯️",
-      "tenta limpar a casa e começa uma confusão de organização 🧼",
+      "tenta arrumar a casa e começa uma confusão de organização 🧼",
       "erra o nome de alguém e rende risada desconfortável 😅",
       "vira meme por um momento sem querer 📸",
       "fica cantando baixinho e incomoda e diverte ao mesmo tempo 🎶",
       "inventa apelidos e espalha pela casa 🏷️",
-      "faz careta na câmera e chama atenção da edição 📺",
       "se empolga num jogo de cartas improvisado ♠️",
       "se atrapalha carregando prato e quase derruba tudo 🥣",
       "faz piada ruim e insiste até alguém rir 🤡",
       "se fantasia com coisas aleatórias e vira cena pronta 🧦",
       "puxa uma brincadeira de 'verdade ou consequência' improvisada 🎤",
       "se mete numa coreografia improvisada e paga mico 🪩",
-      "ri de nervoso e contagia o resto da casa 😬"
+      "ri de nervoso e contagia o resto da casa 😬",
+      "encasqueta com uma mania e a casa inteira comenta 🫢",
+      "fica conversando com a câmera como se fosse terapia 📹"
+    ],
+    descDuo: [
+      "puxa {B} pra uma brincadeira boba e a casa entra na onda 🎲",
+      "faz imitação de {B} e gera um caos leve 🎭",
+      "se empolga com {B} num jogo improvisado e os dois viram VT ♠️",
+      "tenta cozinhar com {B} e a dupla quase coloca fogo na cozinha 🔥",
+      "combina com {B} de aprontar e os dois acabam entregando tudo 😂",
+      "se mete com {B} numa coreografia improvisada e paga mico 🪩",
+      "puxa {B} pra conversar na área externa e o papo vira meme 📸",
+      "implica com {B} de brincadeira e vira piada da casa 🤡",
+      "começa uma disputa boba com {B} e ninguém entende como virou campeonato 🏆",
+      "faz uma 'entrevista' com {B} e a cena vira recorte 📺",
+      "perde a linha rindo com {B} e contagia o resto da casa 😬",
+      "tenta ensinar {B} a fazer algo simples e os dois se enrolam 🌀",
+      "fica escondendo objetos com {B} e a casa caça culpados 🔎",
+      "inventa um apelido pra {B} e ele pega na hora 🏷️",
+      "puxa {B} pra um desafio bobo e os dois juram que foi sério 🎤",
+      "faz parceria com {B} pra zoar e a edição agradece 🎬"
     ],
     vt: [
       "positivo, leve e engraçado",
@@ -4491,26 +4522,26 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
 
   social: {
   desc: [
-    "fazem resenha e criam conexão 💬",
-    "criam afinidade naturalmente ✨",
-    "riem juntos e se aproximam 😄",
-    "conversam e viram parceria 🤝",
-    "ficam colados o dia todo 👥",
-    "mantêm clima leve e cúmplice 🌈",
-    "começam uma amizade 🧵",
-    "trocam confidências no quarto 🛏️",
-    "se entendem sem esforço 🤍",
-    "viram companhia constante 👀",
-    "se defendem mutuamente 🛡️",
-    "mostram afinidade pra casa 👁️",
-    "fazem papo bobo virar laço 🤪",
-    "passam tempo demais juntos ⏳",
-    "agem como dupla antiga 🧩",
-    "se alinham no silêncio 👂",
-    "geram comentários pela casa 🗣️",
-    "viram fofoca inocente rapidinho 🫢",
-    "fazem cochichos circularem 🐍",
-    "viram assunto do dia 📢"
+    "puxa uma resenha com {B} e os dois criam conexão 💬",
+    "bate papo com {B} e a afinidade acontece naturalmente ✨",
+    "ri junto com {B} e a dupla se aproxima 😄",
+    "conversa com {B} e os dois viram parceria 🤝",
+    "passa o dia colado com {B} 👥",
+    "fica de risadinha com {B} e a casa sente o clima cúmplice 🌈",
+    "começa uma amizade com {B} 🧵",
+    "troca confidências com {B} no quarto 🛏️",
+    "se entende com {B} sem esforço 🤍",
+    "vira companhia constante de {B} 👀",
+    "defende {B} numa conversa e isso pega bem 🛡️",
+    "mostra afinidade com {B} e a casa comenta 👁️",
+    "faz um papo bobo com {B} virar laço 🤪",
+    "passa tempo demais com {B} e vira tópico ⏳",
+    "age com {B} como dupla antiga 🧩",
+    "se alinha com {B} no silêncio e no olhar 👂",
+    "gruda em {B} e gera comentário pela casa 🗣️",
+    "fica de cochicho com {B} e vira fofoca inocente 🫢",
+    "deixa os cochichos com {B} circularem 🐍",
+    "se aproxima de {B} e vira assunto do dia 📢"
   ],
   vt: [
     "positivo, rende torcida",
@@ -4523,32 +4554,32 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
 
  conflict: {
   desc: [
-    "começam treta pequena ⚡",
-    "trocam farpas do nada 🌵",
-    "entram em discussão desnecessária 🍽️",
-    "causam um bate-boca generalizado 🔊",
-    "se recusam a ceder numa discussão 🧱",
-    "brigam por conta de ego 🎈",
-    "fazem o clima da casa azedar 🍋",
-    "discutem por besteira 🤦",
-    "elevam o tom numa discussão 📢",
-    "trocam acusações na cara 🎯",
-    "instalam um climão pesado 😬",
-    "dizem coisas que não voltam 💥",
-    "tentam conversar e acabam brigando 🧨",
-    "reabrem treta velha 👻",
-    "trazem ressentimento à tona 🪨",
-    "lançam olhares atravessados 👀",
-    "levam tudo pro lado pessoal 💣",
-    "usam comentários como munição 🧨",
-    "deixam fofoca alimentar uma briga 🐍",
-    "inflamam tudo com versões distorcidas 🔥"
+    "cutuca {B} e começa uma treta pequena ⚡",
+    "solta uma farpa pra {B} do nada 🌵",
+    "entra numa discussão desnecessária com {B} 🍽️",
+    "discute com {B} e o bate-boca contamina a casa 🔊",
+    "não cede pra {B} e a conversa vira muro 🧱",
+    "bate de frente com {B} por puro ego 🎈",
+    "faz o clima azedar com {B} 🍋",
+    "briga com {B} por besteira 🤦",
+    "eleva o tom com {B} numa discussão 📢",
+    "joga acusação na cara de {B} 🎯",
+    "deixa um climão pesado com {B} 😬",
+    "fala com {B} coisas que não voltam 💥",
+    "tenta conversar com {B} e termina brigando 🧨",
+    "reabre uma treta velha com {B} 👻",
+    "traz ressentimento com {B} à tona 🪨",
+    "lança olhares atravessados pra {B} 👀",
+    "leva tudo pro lado pessoal com {B} 💣",
+    "usa um comentário de {B} como munição 🧨",
+    "deixa uma fofoca virar briga com {B} 🐍",
+    "inflama a situação com {B} com versões distorcidas 🔥"
   ],
   bigDesc: [
-    "protagonizam um barraco gigantesco 🔥",
-    "fazem a treta dividir a casa 🧨",
-    "viram marco pesado da convivência 🧱",
-    "tem um choque de personalidades 💥"
+    "explode com {B} num barraco gigantesco 🔥",
+    "faz a treta com {B} dividir a casa 🧨",
+    "marca o dia com um climão pesado com {B} 🧱",
+    "tem um choque de personalidades com {B} 💥"
   ],
   vt: [
     "negativo, treta rende e pesa",
@@ -4561,48 +4592,48 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
 
   strategy: {
     descSmart: [
-      "lê bem o jogo ♟️",
-      "faz jogada silenciosa 🧠",
-      "planta ideia certeira 🌱",
-      "articula voto com cuidado 🤫",
-      "mexe peças invisivelmente 🎭",
-      "pensa à frente 📊",
-      "coleta informação valiosa 👂",
-      "faz movimento limpo e eficiente 🪡",
-      "se posiciona melhor 🧩",
-      "faz jogo fino 🧠",
-      "testa lealdades discretamente 👁️",
-      "atua sem se expor 🛡️",
-      "acerta o timing ⏳",
-      "controla a narrativa discretamente 🧵",
-      "pega a hora certa 🕰️",
-      "usa fofoca como termômetro 🐍",
-      "ouve mais do que fala 👂",
-      "deixa outros se queimarem 🔥",
-      "joga com paciência 🐍",
-      "calcula riscos com frieza 🎯"
+      "lê bem o jogo com {B} e já combina o próximo passo ♟️",
+      "faz uma jogada silenciosa com {B} 🧠",
+      "planta uma ideia certeira em {B} 🌱",
+      "articula voto com {B} com cuidado 🤫",
+      "mexe as peças com {B} sem se expor 🎭",
+      "pensa à frente e alinha com {B} 📊",
+      "coleta informação com {B} e sai com mapa pronto 👂",
+      "faz um movimento limpo com {B} 🪡",
+      "se posiciona melhor com ajuda de {B} 🧩",
+      "faz jogo fino com {B} 🧠",
+      "testa lealdades com {B} discretamente 👁️",
+      "atua com {B} sem se expor 🛡️",
+      "acerta o timing e fecha com {B} ⏳",
+      "controla a narrativa com {B} discretamente 🧵",
+      "espera a hora certa e chama {B} 🕰️",
+      "usa fofoca com {B} como termômetro 🐍",
+      "ouve mais do que fala e deixa {B} entender 👂",
+      "deixa outros se queimarem e comenta com {B} 🔥",
+      "joga com paciência e mantém {B} por perto 🐍",
+      "calcula riscos com {B} com frieza 🎯"
     ],
     descMessy: [
-      "fala demais de jogo 🚨",
-      "passa recibo ao vivo 📝",
-      "tenta articular e se enrola 🌀",
-      "quer bancar gênio 🤡",
-      "deixa o jogo aberto demais 👣",
-      "mistura versões e confunde 🕸️",
-      "se contradiz na mesma frase 🧩",
-      "deixa ansiedade entregar tudo 😬",
-      "promete demais pra geral 💳",
-      "confunde aliados com papo torto 🤯",
-      "deixa estratégia virar fofoca 🐍",
-      "vaza o plano rápido 💨",
-      "fala com gente demais 📢",
-      "vê comentários voltarem distorcidos 🔄",
-      "vira alvo por falar demais 🎯",
-      "faz a jogada sair pela culatra 🪤",
-      "deixa fofoca expor o plano 🧨",
-      "perde confiança de geral 🚫",
-      "perde o controle da narrativa 📉",
-      "tenta explicar e piora 🧯"
+      "fala demais de jogo pra {B} e passa recibo 🚨",
+      "cobre {B} ao vivo e vira recibo 📝",
+      "tenta articular com {B} e se enrola 🌀",
+      "quer bancar gênio com {B} e paga mico 🤡",
+      "deixa o jogo aberto demais pra {B} 👣",
+      "mistura versões e confunde {B} 🕸️",
+      "se contradiz falando com {B} 🧩",
+      "deixa a ansiedade entregar tudo pra {B} 😬",
+      "promete demais pra {B} e pra geral 💳",
+      "confunde aliado e joga papo torto em {B} 🤯",
+      "deixa estratégia virar fofoca e cai no colo de {B} 🐍",
+      "vaza o plano pra {B} rápido demais 💨",
+      "fala com gente demais e {B} fica desconfiado 📢",
+      "vê comentário distorcido voltar pra {B} 🔄",
+      "vira alvo por falar demais com {B} 🎯",
+      "faz a jogada com {B} sair pela culatra 🪤",
+      "deixa uma fofoca expor o plano pra {B} 🧨",
+      "perde confiança de {B} e de geral 🚫",
+      "perde o controle da narrativa com {B} 📉",
+      "tenta explicar pra {B} e piora 🧯"
     ],
     vt: [
       "misto, inteligente mas pode soar armado",
@@ -4669,26 +4700,26 @@ const partyCls = e.theme === "party" ? (" party " + partyStyleClass()) : "";
 
   romance: {
   desc: [
-    "deixam clima no ar 💘",
-    "trocam olhares constantes 👁️",
-    "flertam sem disfarçar 🌹",
-    "fazem chamego suspeito 🍯",
-    "trocam toques frequentes 🫶",
-    "não desgrudam nem um minuto 👀",
-    "mostram química visível 😌",
-    "fazem romance despontar 🌙",
-    "forçam proximidade exagerada 😏",
-    "soltam risadinhas entregadoras 🤭",
-    "sentam colados no sofá 🛋️",
-    "mantêm conversa só entre eles 🫣",
-    "vivem um climinha constante 💞",
-    "aceleram a intimidade ⏩",
-    "viram proteção mútua 🛡️",
-    "criam tensão romântica 🔥",
-    "chegam no quase beijo 👄",
-    "fazem o mundo sumir ao redor 🌌",
-    "viram comentário pela casa 🗣️",
-    "viram fofoca rápida 🐍"
+    "deixa um clima no ar com {B} 💘",
+    "troca olhares constantes com {B} 👁️",
+    "flerta com {B} sem disfarçar 🌹",
+    "faz um chamego suspeito em {B} 🍯",
+    "troca toques frequentes com {B} 🫶",
+    "não desgruda de {B} nem um minuto 👀",
+    "mostra química visível com {B} 😌",
+    "deixa o romance com {B} despontar 🌙",
+    "força uma proximidade exagerada com {B} 😏",
+    "solta risadinha entregadora pra {B} 🤭",
+    "senta colado com {B} no sofá 🛋️",
+    "mantém conversa só com {B} e ignora o resto 🫣",
+    "vive um climinha constante com {B} 💞",
+    "acelera a intimidade com {B} ⏩",
+    "vira proteção mútua com {B} 🛡️",
+    "cria tensão romântica com {B} 🔥",
+    "chega no quase beijo com {B} 👄",
+    "faz o mundo sumir ao redor quando tá com {B} 🌌",
+    "vira comentário pela casa por causa de {B} 🗣️",
+    "vira fofoca rápida envolvendo {B} 🐍"
   ],
   vt: [
     "positivo, casal rende",
@@ -4836,7 +4867,7 @@ const POP_EVENT_MULT = 1.65;
         eid: duo ? "housefun_duo" : "housefun_solo",
         theme,
         people: duo ? `${p.name} e ${other.name}` : p.name,
-        desc: pickOne(EVENT_TEXTS.housefun.desc),
+        desc: pickOne(duo ? EVENT_TEXTS.housefun.descDuo : EVENT_TEXTS.housefun.descSolo),
         vt: pickOne(EVENT_TEXTS.housefun.vt),
         scope: duo ? "coletivo" : "coletivo",
         a: p,
@@ -5847,7 +5878,7 @@ if (alive.length <= 4) return false;
             eid: "trigger_returned_vs_leader",
             theme: ctx.festa ? 'party' : 'default',
             people: `${survP.name} e ${leader.name}`,
-            desc: `volta do paredão com sangue nos olhos e cobra {a:ele|ela|elu} na cara por ter indicado`,
+            desc: `volta do paredão com sangue nos olhos e cobra {B} na cara por ter indicado`,
             vt: "negativo, confronto com peso",
             scope: "coletivo",
             a: survP,
@@ -5878,7 +5909,7 @@ if (alive.length <= 4) return false;
             eid: "trigger_vote_exposed",
             theme: 'default',
             people: `${pick.to.name} e ${pick.from.name}`,
-            desc: `descobre um voto e vai tirar satisfações com {b:cara de pau|cara de pau|cara de pau}`,
+            desc: `{A} descobre que {B} votou {a:nele|nela|nelu} e vai tirar satisfação sem rodeios`,
             vt: "muito negativo, clima pesado",
             scope: "coletivo",
             a: pick.to,
