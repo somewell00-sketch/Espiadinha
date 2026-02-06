@@ -4719,7 +4719,7 @@ dayAdd(`
     scope: "coletivo"
   }
 };
-};
+
 
 
   function genEventForPlayer(p, ctx, alive) {
