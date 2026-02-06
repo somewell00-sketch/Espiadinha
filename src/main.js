@@ -8746,12 +8746,31 @@ const html = tweets.map((x) => `
       const attrs = p.attrs || {};
       const status = p.status || {};
 
-      // Pop por semana como mini barras
-      const weeks = Object.keys(status.popWeek || {}).map((x) => parseInt(x, 10)).filter((n) => Number.isFinite(n)).sort((a,b)=>a-b);
-      const bars = (weeks.length ? weeks : [state.week]).slice(-10).map((w) => {
-        const v = clamp(Number(status.popWeek?.[w] ?? status.pop ?? 0), 0, 10);
-        return `<div><span class="lbl">S${w}</span><span class="bar"><i style="width:${(v/10)*100}%"></i></span><span class="val">${fmt2(v)}</span></div>`;
+      // Popularidade: SEMANA 1 -> ÚLTIMA (mas para na semana em que saiu)
+      const lastWeek = getGlobalLastPopWeek();
+      const weeks = Array.from({ length: lastWeek }, (_, i) => i + 1);
+      const series = popSeriesForPlayer(p, lastWeek);
+
+      const bars = weeks.map((w, i) => {
+        const v = series[i];
+        const vv = (v == null) ? null : clamp(Number(v), 0, 10);
+        const aliveCell = (p?.status?.outWeek && w > Number(p.status.outWeek)) ? false : true;
+        return `
+          <div class="miniBarRow" style="opacity:${aliveCell ? 1 : 0.55};">
+            <span class="lbl">S${w}</span>
+            <span class="miniBar"><i style="width:${vv == null ? 0 : (vv/10)*100}%"></i></span>
+            <span class="val">${vv == null ? '—' : fmt2(vv)}</span>
+          </div>
+        `;
       }).join("");
+
+      const playerChart = renderPopLineChartSvg({
+        weeks,
+        seriesList: [{ label: displayName(p), series }],
+        width: 760,
+        height: 210,
+        showLegend: false
+      });
 
       // Histórico (eventos em que apareceu)
       const appears = state.log
@@ -8807,7 +8826,10 @@ const html = tweets.map((x) => `
           </div>
           <div class="drawerCard">
             <div class="t">Evolução de popularidade</div>
-            <div class="c"><div class="miniBars">${bars}</div></div>
+            <div class="c">
+              <div class="chartWrap" style="padding:0; margin:2px 0 10px 0;">${playerChart}</div>
+              <div class="miniBars">${bars}</div>
+            </div>
           </div>
         </div>
 
@@ -9291,14 +9313,125 @@ $("btnGenCast")?.addEventListener("click", () => {
   }
 
   function popHistoryLabel(p, maxWeeks = 6) {
-    const w = p.status.popWeek || {};
-    const keys = Object.keys(w)
-      .map((x) => parseInt(x, 10))
-      .filter((n) => Number.isFinite(n))
-      .sort((a, b) => a - b);
-    if (!keys.length) return "—";
-    const tail = keys.slice(-maxWeeks);
-    return tail.map((k) => `S${k}:${fmt2(w[String(k)] ?? 0)}`).join(" • ");
+    // Mostra SEMANA 1 -> ÚLTIMA SEMANA (mas para na semana em que saiu)
+    const w = p?.status?.popWeek || {};
+    const outWeek = Number(p?.status?.outWeek || 0) || null;
+
+    const globalLast = getGlobalLastPopWeek();
+    const last = outWeek ? Math.min(outWeek, globalLast) : globalLast;
+    if (!Number.isFinite(last) || last <= 0) return "—";
+
+    const parts = [];
+    for (let wk = 1; wk <= last; wk++) {
+      const vRaw = (w[String(wk)] != null) ? Number(w[String(wk)]) : null;
+      const v = Number.isFinite(vRaw) ? vRaw : null;
+      parts.push(`S${wk}:${v == null ? '—' : fmt2(v)}`);
+    }
+
+    // Se ficar MUITO longo, reduz visualmente (mas continua sendo todas as semanas)
+    // Render: a UI quebra linha automaticamente na célula.
+    if (parts.length > 18) {
+      // Exibe tudo, mas com separador mais curto para não virar um bloco gigante
+      return parts.join(" ");
+    }
+    return parts.join(" • ");
+  }
+
+  function getGlobalLastPopWeek() {
+    let last = 0;
+    for (const p of (state.players || [])) {
+      const w = p?.status?.popWeek || {};
+      for (const k of Object.keys(w)) {
+        const n = parseInt(k, 10);
+        if (Number.isFinite(n)) last = Math.max(last, n);
+      }
+    }
+    // fallback: em saves sem snapshot, usa a semana atual
+    last = Math.max(last, Number(state.week || 1));
+    return last;
+  }
+
+  function popSeriesForPlayer(p, lastWeek) {
+    const w = p?.status?.popWeek || {};
+    const outWeek = Number(p?.status?.outWeek || 0) || null;
+    const last = outWeek ? Math.min(outWeek, lastWeek) : lastWeek;
+    const series = [];
+    for (let wk = 1; wk <= lastWeek; wk++) {
+      if (wk > last) { series.push(null); continue; }
+      const vRaw = (w[String(wk)] != null) ? Number(w[String(wk)]) : null;
+      if (Number.isFinite(vRaw)) { series.push(clamp(vRaw, 0, 10)); continue; }
+
+      // se ainda não tem snapshot dessa semana, mas é a semana atual e o jogador está na casa, usa pop atual
+      if (wk === Number(state.week || 1) && p?.status?.alive) {
+        const cur = Number(p?.status?.pop ?? 0);
+        series.push(Number.isFinite(cur) ? clamp(cur, 0, 10) : null);
+        continue;
+      }
+      series.push(null);
+    }
+    return series;
+  }
+
+  function renderPopLineChartSvg({ weeks, seriesList, height = 220, width = 860, showLegend = false }) {
+    const padL = 34, padR = 16, padT = 14, padB = 28;
+    const W = Math.max(width, 620);
+    const H = Math.max(height, 200);
+    const iw = W - padL - padR;
+    const ih = H - padT - padB;
+    const xFor = (i) => padL + (weeks.length <= 1 ? 0 : (i / (weeks.length - 1)) * iw);
+    const yFor = (v) => padT + (1 - (v / 10)) * ih;
+
+    // linhas de grade (0, 5, 10)
+    const grid = [0, 5, 10].map((v) => {
+      const y = yFor(v);
+      return `<g class="chartAxis"><line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="currentColor" stroke-width="1" /></g>
+              <text x="${padL - 6}" y="${y + 4}" text-anchor="end" class="chartLabel" fill="currentColor">${v}</text>`;
+    }).join('');
+
+    // labels de semana (poucos para não poluir)
+    const step = Math.ceil(weeks.length / 10);
+    const xlabels = weeks.map((wk, i) => {
+      if (i % step !== 0 && i !== weeks.length - 1) return '';
+      const x = xFor(i);
+      return `<text x="${x}" y="${H - 10}" text-anchor="middle" class="chartLabel" fill="currentColor">S${wk}</text>`;
+    }).join('');
+
+    const paths = seriesList.map((s, idx) => {
+      const hue = (idx * 47) % 360;
+      const color = `hsl(${hue} 80% 70%)`;
+
+      // gera paths quebrando nos nulls
+      let d = '';
+      let penDown = false;
+      for (let i = 0; i < s.series.length; i++) {
+        const v = s.series[i];
+        if (v == null || !Number.isFinite(v)) { penDown = false; continue; }
+        const x = xFor(i);
+        const y = yFor(v);
+        if (!penDown) { d += `M ${x} ${y} `; penDown = true; }
+        else { d += `L ${x} ${y} `; }
+      }
+
+      const name = escapeHtml(String(s.label || '—'));
+      const path = `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />`;
+      const legend = showLegend ? `<span class="it" style="color:${color}"><span class="dot"></span>${name}</span>` : '';
+      return { path, legend };
+    });
+
+    const svg = `
+      <svg class="chartSvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="0" width="${W}" height="${H}" rx="14" ry="14" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.06)" />
+        ${grid}
+        ${paths.map(p => p.path).join('')}
+        ${xlabels}
+      </svg>
+    `;
+
+    const legendHtml = showLegend
+      ? `<div class="chartLegend">${paths.map(p => p.legend).join('')}</div>`
+      : '';
+
+    return svg + legendHtml;
   }
 
   function roleClassForPlayer(p) {
@@ -9976,6 +10109,40 @@ list.appendChild(tr);
         tr.appendChild(td);
         list.appendChild(tr);
       }
+    }
+
+    // ===== Popularidade: gráfico de comparação (todos) =====
+    const popCmp = $("popCompareChart");
+    if (popCmp) {
+      const lastWeek = getGlobalLastPopWeek();
+      const weeks = Array.from({ length: lastWeek }, (_, i) => i + 1);
+
+      // ordena para legend ficar mais útil: vivos primeiro, depois eliminados (mais recente -> mais antigo)
+      const orderedForChart = (state.players || []).slice().sort((a, b) => {
+        const aElim = (a?.status?.alive === false);
+        const bElim = (b?.status?.alive === false);
+        if (aElim !== bElim) return aElim ? 1 : -1;
+        if (aElim && bElim) {
+          const aw = Number(a?.status?.outWeek || 0);
+          const bw = Number(b?.status?.outWeek || 0);
+          if (aw !== bw) return bw - aw;
+        }
+        return String(displayName(a) || '').localeCompare(String(displayName(b) || ''), 'pt-BR', { sensitivity: 'base' });
+      });
+
+      const seriesList = orderedForChart.map((p) => ({
+        label: displayName(p),
+        series: popSeriesForPlayer(p, lastWeek)
+      }));
+
+      const showLegend = seriesList.length <= 18;
+      popCmp.innerHTML = renderPopLineChartSvg({
+        weeks,
+        seriesList,
+        width: Math.max(860, 40 + weeks.length * 32),
+        height: 220,
+        showLegend
+      }) + (!showLegend ? `<div class="small" style="margin-top:10px; opacity:.85;">Legenda escondida porque há muitos jogadores. Clique em alguém na tabela para ver o gráfico individual.</div>` : "");
     }
 
     // Relações
