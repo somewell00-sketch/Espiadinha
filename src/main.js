@@ -233,6 +233,102 @@ const ARCHETYPE_META = {
   caotico: { emoji: "🌪️" },
 };
 
+/* ===== Coerência editorial de arquétipos =====
+   Objetivo: evitar combinações incoerentes (ex.: Figurante + Símbolo da Temporada + Cresceu na Hora Certa).
+   1) Conflitos diretos entre famílias de arquétipos (ids do score).
+   2) Compatibilidade entre arco (bbbArc) e famílias.
+   3) Ajuste de score por "agência" (provas/poder/decisão) e por tendência (pop/atividade).
+*/
+const ARCHETYPE_CONFLICTS = {
+  // Quando um lado estiver muito alto, o outro deve perder espaço.
+  planta: ["estrategista", "justiceiro", "vilao", "caotico", "palestrinha", "gala"],
+  estrategista: ["planta"],
+  justiceiro: ["planta"],
+  sabio: ["caotico", "palestrinha"],
+  caotico: ["sabio"],
+  palestrinha: ["sabio"],
+  pipoqueiro: ["vilao", "justiceiro"], // isento vs confronto direto
+};
+
+const ARCHETYPE_ARC_BONUS = {
+  // Arc IDs de bbbArcFromHistory -> bônus/malus por família
+  redencao: { perseguidor: +10, sabio: +4, vilao: -10, planta: -6 },
+  ascensao: { estrategista: +8, perseguidor: +6, planta: -8 },
+  queda: { vilao: +6, caotico: +6, sabio: -6 },
+  estagnacao: { planta: +6, pipoqueiro: +4, estrategista: -4 },
+  montanha_russa: { caotico: +10, palestrinha: +6, sabio: -8 },
+  transformacao: { caotico: +4, estrategista: +3, planta: -3 },
+};
+
+// Para evitar "Figurante · Figurante": garante rótulos únicos na lista Top 3.
+function archLabelUniqueFor(id, seed, used) {
+  const pool = ARCHETYPE_POOLS[id] || [String(id || 'Arquétipo')];
+  // tenta algumas variações determinísticas até achar um label não repetido
+  for (let i = 0; i < Math.max(3, pool.length); i++) {
+    const label = pickDet(pool, `${seed}|u${i}`, pool[0]);
+    if (!used.has(label)) return label;
+  }
+  // fallback: adiciona sufixo para ficar único (último caso)
+  const base = pickDet(pool, String(seed || id), pool[0]);
+  let j = 2;
+  let out = base;
+  while (used.has(out) && j < 6) { out = `${base} ${j}`; j++; }
+  return out;
+}
+
+function applyArchetypeCoherence(p, wk, scores, ctx) {
+  // ctx traz sinais já calculados na semana (agência/atividade/swing/pop)
+  const agency = Number(ctx?.agency || 0);       // 0..1
+  const activityN = Number(ctx?.activityN || 0); // 0..1
+  const swingN = Number(ctx?.swingN || 0);       // 0..1
+  const popDelta = Number(ctx?.popDelta || 0);
+
+  // 1) Agência mata "planta" (mas sem zerar)
+  if (agency > 0) {
+    const down = Math.round(18 * agency + 8 * activityN);
+    scores.planta = clamp(scores.planta - down, 0, 100);
+    // agência favorece estrategista/justiceiro (dependendo do tipo)
+    scores.estrategista = clamp(scores.estrategista + Math.round(10 * agency), 0, 100);
+    if (ctx?.gaveImmunity) scores.justiceiro = clamp(scores.justiceiro + 10, 0, 100);
+  }
+
+  // 2) Oscilação grande dificilmente é "figurante"
+  if (swingN >= 0.55) {
+    scores.planta = clamp(scores.planta - Math.round(10 * (swingN - 0.5)), 0, 100);
+    scores.caotico = clamp(scores.caotico + Math.round(8 * (swingN - 0.5)), 0, 100);
+  }
+
+  // 3) Se está ganhando pop com risco, puxa para "perseguido"
+  if (popDelta > 0.25 && Number(ctx?.inParedao || 0) > 0) {
+    scores.perseguidor = clamp(scores.perseguidor + 10, 0, 100);
+    scores.planta = clamp(scores.planta - 6, 0, 100);
+  }
+
+  // 4) Bônus/malus por arco anterior (até wk-1), para refletir "arco completo"
+  // (arco do próprio wk depende do Top 3 atual, então usamos o anterior para não circular)
+  const arcId = String(ctx?.prevArcId || '');
+  const bonus = ARCHETYPE_ARC_BONUS[arcId];
+  if (bonus) {
+    for (const k of Object.keys(bonus)) {
+      if (scores[k] != null) scores[k] = clamp(Number(scores[k]) + Number(bonus[k]), 0, 100);
+    }
+  }
+
+  // 5) Conflitos: se um lado domina, reduz o outro (leve, para não "quebrar" o caos)
+  const sorted = Object.entries(scores).sort((a,b)=>Number(b[1])-Number(a[1]));
+  const topId = sorted[0]?.[0];
+  const topScore = Number(sorted[0]?.[1] || 0);
+  if (topId && topScore >= 70 && ARCHETYPE_CONFLICTS[topId]) {
+    for (const loser of ARCHETYPE_CONFLICTS[topId]) {
+      if (scores[loser] == null) continue;
+      scores[loser] = clamp(scores[loser] - Math.round((topScore - 60) * 0.35), 0, 100);
+    }
+  }
+
+  return scores;
+}
+
+
 function ensureArchetypeState(p) {
   if (!p) return;
   p.status = p.status || {};
@@ -699,17 +795,38 @@ if (exclStreak > 0) {
 }
 
 
+
+// Coerência editorial (arco completo / agência / compatibilidade)
+const prevArc = (typeof bbbArcFromHistory === "function") ? bbbArcFromHistory(p, wk - 1) : null;
+const agency = clamp((leaderWin ? 1 : 0) + (anjoWin ? 0.8 : 0) + (madeDecision ? 0.9 : 0), 0, 1);
+applyArchetypeCoherence(p, wk, scores, {
+  prevArcId: prevArc ? prevArc.id : '',
+  agency,
+  activityN,
+  swingN,
+  popDelta,
+  inParedao,
+  gaveImmunity
+});
+
+
     // top3
     const top = Object.entries(scores)
       .map(([id, v]) => ({ id, v }))
       .sort((a,b)=>b.v-a.v);
 
-    const top3 = top.slice(0, 3).map((x, i) => ({
-      id: x.id,
-      score: x.v,
-      label: archLabelFor(x.id, `${p.id}|${wk}|${x.id}|${i}`),
-      emoji: ARCHETYPE_META[x.id]?.emoji || "🎭"
-    }));
+    const usedLabels = new Set();
+    const top3 = top.slice(0, 3).map((x, i) => {
+      const seed = `${p.id}|${wk}|${x.id}|${i}`;
+      const label = archLabelUniqueFor(x.id, seed, usedLabels);
+      usedLabels.add(label);
+      return {
+        id: x.id,
+        score: x.v,
+        label,
+        emoji: ARCHETYPE_META[x.id]?.emoji || "🎭"
+      };
+    });
 
     const dom = top3[0] || { id: 'planta', score: 0, label: '—', emoji: '🎭' };
 
