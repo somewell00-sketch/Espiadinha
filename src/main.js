@@ -383,9 +383,12 @@ function bbbArcFromHistory(p, wk) {
   const keys = Object.keys(map).map(Number).filter(n=>Number.isFinite(n) && n>0 && n<=wk).sort((a,b)=>a-b);
   if (keys.length < 2) return { id: "inicio", title: "Início de jornada", subtitle: "", emoji: "🎬" };
 
-  const lastN = keys.slice(-4); // janela curta
+  // Janela um pouco maior para evitar que pequenas oscilações ou troca de dominante
+  // por 1 semana gerem "Montanha-russa" pra todo mundo.
+  const lastN = keys.slice(-6);
   const doms = lastN.map(k => map[String(k)]?.dominantId).filter(Boolean);
   const changes = doms.reduce((acc, cur, i) => acc + (i>0 && cur !== doms[i-1] ? 1 : 0), 0);
+  const changeRate = changes / Math.max(1, doms.length - 1);
 
   // tendência de popularidade
   const deltas = lastN.slice(1).map((k,i) => {
@@ -398,8 +401,23 @@ function bbbArcFromHistory(p, wk) {
   // heurísticas objetivas
   const up = avgDelta > 0.18;
   const down = avgDelta < -0.18;
-  const stable = Math.abs(avgDelta) <= 0.10 && avgAbs <= 0.18;
-  const volatile = avgAbs >= 0.35 || changes >= 3;
+  const stable = Math.abs(avgDelta) <= 0.10 && avgAbs <= 0.16;
+
+  // "Volátil" agora exige evidência mais forte:
+  // - ou variação alta de popularidade,
+  // - ou troca de dominante MUITO frequente (quase toda semana) numa janela maior,
+  // - ou ambos (moderados) ao mesmo tempo.
+  // Nota: no simulador, variações semanais de popularidade podem ser relativamente altas
+  // por causa dos bumps (ex.: -0.28/+0.28). Para não rotular TODO mundo como volátil,
+  // "Montanha-russa" exige sinal mais forte.
+  const volatile = (
+    // oscilação muito alta por si só
+    (avgAbs >= 0.70) ||
+    // troca de dominante quase toda semana, numa janela cheia
+    (changeRate >= 0.92 && doms.length >= 6) ||
+    // combinação: oscilação alta + trocas frequentes
+    (avgAbs >= 0.48 && changeRate >= 0.75)
+  );
 
   // redenção: estava em queda e agora sobe (2 últimas semanas positivas)
   const last2 = deltas.slice(-2);
