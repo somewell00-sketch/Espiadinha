@@ -9711,66 +9711,89 @@ $("btnGenCast")?.addEventListener("click", () => {
   }
 
   function renderPopLineChartSvg({ weeks, seriesList, height = 220, width = 860, showLegend = false }) {
-    const padL = 34, padR = 16, padT = 14, padB = 28;
-    const W = Math.max(width, 620);
-    const H = Math.max(height, 200);
-    const iw = W - padL - padR;
-    const ih = H - padT - padB;
-    const xFor = (i) => padL + (weeks.length <= 1 ? 0 : (i / (weeks.length - 1)) * iw);
-    const yFor = (v) => padT + (1 - (v / 10)) * ih;
+  const padL = 34, padR = 16, padT = 14, padB = 28;
+  const W = Math.max(width, 620);
+  const H = Math.max(height, 200);
+  const iw = W - padL - padR;
+  const ih = H - padT - padB;
+  const xFor = (i) => padL + (weeks.length <= 1 ? 0 : (i / (weeks.length - 1)) * iw);
+  const yFor = (v) => padT + (1 - (v / 10)) * ih;
 
-    // linhas de grade (0, 5, 10)
-    const grid = [0, 5, 10].map((v) => {
-      const y = yFor(v);
-      return `<g class="chartAxis"><line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="currentColor" stroke-width="1" /></g>
-              <text x="${padL - 6}" y="${y + 4}" text-anchor="end" class="chartLabel" fill="currentColor">${v}</text>`;
-    }).join('');
+  // cores automáticas com mais variedade (coloridas, acinzentadas, claras e escuras)
+  const autoColor = (idx) => {
+    // Golden angle distribui melhor os tons e evita cores muito parecidas conforme cresce
+    const golden = 137.50776405003785;
+    const hue = (idx * golden) % 360;
 
-    // labels de semana (poucos para não poluir)
-    const step = Math.ceil(weeks.length / 10);
-    const xlabels = weeks.map((wk, i) => {
-      if (i % step !== 0 && i !== weeks.length - 1) return '';
+    // estilos alternados pra variar saturação (vivo vs cinza) e luminosidade (claro vs escuro)
+    // ajuste livre: mexa nesses valores pra mais contraste ou mais “pastel”
+    const styles = [
+      { s: 90, l: 54 }, // vivo, médio
+      { s: 70, l: 44 }, // vivo, escuro
+      { s: 78, l: 70 }, // vivo, claro
+      { s: 28, l: 56 }, // acinzentado, médio
+      { s: 22, l: 40 }, // acinzentado, escuro
+      { s: 32, l: 76 }, // acinzentado, claro
+      { s: 95, l: 40 }, // vivo, bem escuro
+      { s: 18, l: 68 }, // bem “dusty”, claro
+    ];
+
+    const st = styles[idx % styles.length];
+    return `hsl(${hue} ${st.s}% ${st.l}%)`;
+  };
+
+  // linhas de grade (0, 5, 10)
+  const grid = [0, 5, 10].map((v) => {
+    const y = yFor(v);
+    return `<g class="chartAxis"><line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="currentColor" stroke-width="1" /></g>
+            <text x="${padL - 6}" y="${y + 4}" text-anchor="end" class="chartLabel" fill="currentColor">${v}</text>`;
+  }).join('');
+
+  // labels de semana (poucos para não poluir)
+  const step = Math.ceil(weeks.length / 10);
+  const xlabels = weeks.map((wk, i) => {
+    if (i % step !== 0 && i !== weeks.length - 1) return '';
+    const x = xFor(i);
+    return `<text x="${x}" y="${H - 10}" text-anchor="middle" class="chartLabel" fill="currentColor">S${wk}</text>`;
+  }).join('');
+
+  const paths = seriesList.map((s, idx) => {
+    const color = s?.color ? String(s.color) : autoColor(idx);
+
+    // gera paths quebrando nos nulls
+    let d = '';
+    let penDown = false;
+    for (let i = 0; i < s.series.length; i++) {
+      const v = s.series[i];
+      if (v == null || !Number.isFinite(v)) { penDown = false; continue; }
       const x = xFor(i);
-      return `<text x="${x}" y="${H - 10}" text-anchor="middle" class="chartLabel" fill="currentColor">S${wk}</text>`;
-    }).join('');
+      const y = yFor(v);
+      if (!penDown) { d += `M ${x} ${y} `; penDown = true; }
+      else { d += `L ${x} ${y} `; }
+    }
 
-    const paths = seriesList.map((s, idx) => {
-      const hue = (idx * 47) % 360;
-      const color = s?.color ? String(s.color) : `hsl(${hue} 80% 70%)`;
+    const name = escapeHtml(String(s.label || '—'));
+    const path = `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />`;
+    const legend = showLegend ? `<span class="it" style="color:${color}"><span class="dot"></span>${name}</span>` : '';
+    return { path, legend };
+  });
 
-      // gera paths quebrando nos nulls
-      let d = '';
-      let penDown = false;
-      for (let i = 0; i < s.series.length; i++) {
-        const v = s.series[i];
-        if (v == null || !Number.isFinite(v)) { penDown = false; continue; }
-        const x = xFor(i);
-        const y = yFor(v);
-        if (!penDown) { d += `M ${x} ${y} `; penDown = true; }
-        else { d += `L ${x} ${y} `; }
-      }
+  const svg = `
+    <svg class="chartSvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="${W}" height="${H}" rx="14" ry="14" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.06)" />
+      ${grid}
+      ${paths.map(p => p.path).join('')}
+      ${xlabels}
+    </svg>
+  `;
 
-      const name = escapeHtml(String(s.label || '—'));
-      const path = `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />`;
-      const legend = showLegend ? `<span class="it" style="color:${color}"><span class="dot"></span>${name}</span>` : '';
-      return { path, legend };
-    });
+  const legendHtml = showLegend
+    ? `<div class="chartLegend">${paths.map(p => p.legend).join('')}</div>`
+    : '';
 
-    const svg = `
-      <svg class="chartSvg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-        <rect x="0" y="0" width="${W}" height="${H}" rx="14" ry="14" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.06)" />
-        ${grid}
-        ${paths.map(p => p.path).join('')}
-        ${xlabels}
-      </svg>
-    `;
+  return svg + legendHtml;
+}
 
-    const legendHtml = showLegend
-      ? `<div class="chartLegend">${paths.map(p => p.legend).join('')}</div>`
-      : '';
-
-    return svg + legendHtml;
-  }
 
   function ensurePopTabSelection() {
     if (popTabSelectedIds && popTabSelectedIds.size) return;
