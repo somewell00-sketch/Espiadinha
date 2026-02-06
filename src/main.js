@@ -4356,12 +4356,13 @@ function applyEventBlock(e) {
   // Permite templates com tokens simples de nome:
   // - {A} = nome curto do participante A
   // - {B} = nome curto do participante B (se existir)
-  const fillAB = (txt) => {
+    const fillAB = (txt) => {
     let s = String(txt ?? "");
     const aN = e.a ? shortNameForEvents(e.a) : "";
     const bN = e.b ? shortNameForEvents(e.b) : "";
-    s = s.replaceAll("{A}", aN);
-    s = s.replaceAll("{B}", bN);
+    // Evita depender de replaceAll (pra rodar também em browsers mais antigos)
+    s = s.split("{A}").join(aN);
+    s = s.split("{B}").join(bN);
     return s;
   };
 
