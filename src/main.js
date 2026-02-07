@@ -1908,47 +1908,228 @@ function computeSeasonTitles() {
     return `Edição: ${bias}.`;
   };
 
-  // --- monta linhas narrativas (sem números) ---
+  // --- monta linhas narrativas (blocos variáveis; 2..5) ---
   const lines = [];
 
-  // 1) alvo central
-  if (alvo && alvo.targetScore >= 1.8) {
-    const extra = (alvo.nominationsTaken >= 1) ? ' e viu o nome colar de vez' : '';
-    lines.push(`${nm(alvo)} concentrou a atenção da casa${extra} nesta semana.`);
-  } else if (rendeu) {
-    lines.push(`${nm(rendeu)} acabou no centro do episódio mais vezes do que gostaria.`);
+  const ws = state.weekState || {};
+  const aliveNow = alivePlayers();
+
+  const pickOne = (arr) => arr[rndInt(0, arr.length - 1)];
+  const uniq = (arr) => Array.from(new Set(arr.filter(Boolean)));
+
+  // Pair signals (rivalidade/aliança) a partir da timeline da semana (sem inventar fatos)
+  const pairScore = new Map();    // key "a|b" (ordenado) => {score, aId, bId, kinds:Set}
+  const bumpPair = (aId, bId, pts, kind) => {
+    if (!aId || !bId) return;
+    const A = String(aId), B = String(bId);
+    if (A === B) return;
+    const key = (A < B) ? `${A}|${B}` : `${B}|${A}`;
+    const row = pairScore.get(key) || { score: 0, aId: (A < B) ? A : B, bId: (A < B) ? B : A, kinds: new Set() };
+    row.score += Number(pts || 0);
+    if (kind) row.kinds.add(String(kind));
+    pairScore.set(key, row);
+  };
+
+  for (const p of players) {
+    const tl = Array.isArray(p?.narrative?.timeline) ? p.narrative.timeline : [];
+    for (const e of tl) {
+      if (Number(e?.round) !== w) continue;
+      const t = String(e?.type || '');
+      const actorId = String(p.id);
+      const refTid = (e?.refs && e.refs.targetId != null) ? String(e.refs.targetId) : null;
+
+      if (refTid && byId.has(refTid)) {
+        if (t === 'conflict') bumpPair(actorId, refTid, 2.0, 'conflict');
+        if (t === 'betrayal' || t === 'friendship_betrayed') bumpPair(actorId, refTid, 2.6, 'betrayal');
+        if (t === 'nomination' || t === 'house_target' || t === 'target') bumpPair(actorId, refTid, 1.4, 'target');
+        if (t === 'save' || t === 'reconciliation' || t === 'friendship') bumpPair(actorId, refTid, 1.6, 'ally');
+      }
+    }
   }
 
-  // 2) movimentos (até 2)
-  const movers = [mover1, mover2].filter(Boolean).filter((r,i,a)=>a.findIndex(x=>x.p.id===r.p.id)===i);
+  const getPlayerById = (id) => state.players.find(x => String(x.id) === String(id));
+  const pairToPlayers = (row) => {
+    const a = getPlayerById(row.aId);
+    const b = getPlayerById(row.bId);
+    if (!a || !b) return null;
+    return [a, b];
+  };
+
+  // ====== CANDIDATOS (cada bloco tenta variar a forma) ======
+  const candidates = [];
+
+  const pushBlock = (id, text) => {
+    if (!text) return;
+    candidates.push({ id, text });
+  };
+
+  // (1) Alvo (se existir de verdade)
+  if (alvo && alvo.targetScore >= 1.8) {
+    const A = nm(alvo);
+    const took = (alvo.nominationsTaken >= 1);
+    pushBlock('alvo', pickOne([
+      `O jogo girou em torno de ${A} nesta semana.`,
+      `${A} terminou a semana no centro das atenções da casa.`,
+      `O nome de ${A} passou a pesar nas conversas da casa.`,
+      `A casa encontrou em ${A} um foco difícil de largar.`,
+      took ? `${A} virou o nome mais fácil de repetir quando o assunto era “jogo”.` : `${A} apareceu nas conversas mais vezes do que gostaria.`
+    ]));
+  }
+
+  // (2) Movimento (1 ou 2, mas com variação)
+  const movers = [mover1, mover2]
+    .filter(Boolean)
+    .filter((r, i, a) => a.findIndex(x => x.p.id === r.p.id) === i)
+    .filter(r => (r.actions || 0) >= 1.6);
+
   if (movers.length) {
     const a = nm(movers[0]);
     const b = movers.length > 1 ? nm(movers[1]) : null;
-    if (b) lines.push(`${a} e ${b} se movimentaram mais, puxando decisões, justificativas e aquele “clima de bastidor”.`);
-    else lines.push(`${a} se movimentou mais, puxando decisões e tentando controlar o rumo do jogo.`);
+    if (b) {
+      pushBlock('mov', pickOne([
+        `${a} e ${b} puxaram mais o ritmo do jogo, cada um do seu jeito.`,
+        `Boa parte dos movimentos da semana passou por ${a} e ${b}.`,
+        `${a} se mexeu, ${b} respondeu, e o bastidor agradeceu.`,
+        `Entre justificativas e conversa atravessada, ${a} e ${b} apareceram mais no tabuleiro.`
+      ]));
+    } else {
+      pushBlock('mov', pickOne([
+        `${a} se movimentou mais e puxou decisões importantes.`,
+        `Boa parte dos movimentos da semana passou por ${a}.`,
+        `${a} tentou controlar a narrativa e deixou marcas no jogo.`,
+        `As articulações de ${a} ajudaram a moldar a semana.`
+      ]));
+    }
   }
 
-  // 3) castigo/monstro como impacto
-  if (counts.monster > 0) {
-    // tenta achar quem mais teve monstro (enviado ou punido) na semana
+  // (3) Desgaste (quando faz sentido)
+  const worn = rows
+    .filter(r => r?.p?.status?.alive)
+    .filter(r => (r.p.status?.alvo ?? 0) >= 6 || (r.p.attrs?.rejeicao ?? 0) >= 7 || (r.vuln ?? 0) >= 1);
+
+  if (worn.length && Math.random() < 0.70) {
+    const wrow = pickTop(worn, r => (r.p.status?.alvo ?? 0) * 1.0 + (r.p.attrs?.rejeicao ?? 0) * 0.8 + (r.vuln ?? 0) * 1.4 + rnd(-0.2, 0.2));
+    const W = nm(wrow);
+    pushBlock('desg', pickOne([
+      `Ao longo da semana, ${W} foi ficando mais exposto do que parecia.`,
+      `As justificativas de ${W} começaram a pesar.`,
+      `${W} terminou a semana tendo que se explicar mais do que gostaria.`,
+      `${W} entrou no radar e não conseguiu sair sem arranhões.`
+    ]));
+  }
+
+  // (4) Rivalidade emergente
+  const pairRows = Array.from(pairScore.values()).sort((a,b)=> (b.score - a.score) + rnd(-0.02, 0.02));
+  const topRival = pairRows.find(r => r.score >= 2.4 && (r.kinds.has('conflict') || r.kinds.has('betrayal') || r.kinds.has('target')));
+  if (topRival) {
+    const pp = pairToPlayers(topRival);
+    if (pp) {
+      const A = simpleName(pp[0]), B = simpleName(pp[1]);
+      pushBlock('rival', pickOne([
+        `Uma rivalidade começou a se desenhar entre ${A} e ${B}.`,
+        `O clima entre ${A} e ${B} azedou de vez.`,
+        `A troca de farpas entre ${A} e ${B} deixou de ser pontual.`,
+        `${A} e ${B} começaram a disputar espaço no jogo, e a casa sentiu.`
+      ]));
+    }
+  }
+
+  // (5) Aliança/aproximação
+  const topAlly = pairRows.find(r => r.score >= 2.4 && r.kinds.has('ally') && !r.kinds.has('betrayal'));
+  if (topAlly && Math.random() < 0.65) {
+    const pp = pairToPlayers(topAlly);
+    if (pp) {
+      const A = simpleName(pp[0]), B = simpleName(pp[1]);
+      pushBlock('ally', pickOne([
+        `${A} e ${B} se aproximaram e passaram a agir mais juntos.`,
+        `Uma aliança silenciosa começou a se formar entre ${A} e ${B}.`,
+        `${A} e ${B} se entenderam melhor nesta semana e isso não passou despercebido.`,
+        `Entre um VT e outro, ${A} e ${B} foram se alinhando.`
+      ]));
+    }
+  }
+
+  // (6) Big Fone
+  if (ws.bigFone?.triggered) {
+    const answered = ws.bigFone?.answeredById ? getPlayerById(ws.bigFone.answeredById) : null;
+    const who = answered ? simpleName(answered) : null;
+    pushBlock('bf', pickOne([
+      who ? `O Big Fone tocou e ${who} atendeu, bagunçando o ritmo da casa.` : `O Big Fone tocou e embaralhou planos em andamento.`,
+      `A ligação inesperada do Big Fone mexeu com as estratégias.`,
+      `O Big Fone entrou no jogo e deixou gente se explicando.`
+    ]));
+  }
+
+  // (7) Monstro/castigo (só se rendeu)
+  if (counts.monster > 0 && Math.random() < 0.75) {
     const mon = pickTop(rows, r => r.monsters);
-    if (mon && mon.monsters > 0) lines.push(`O Monstro também deixou marcas: ${nm(mon)} apareceu nessa história e o assunto rendeu além do necessário.`);
-    else lines.push('O Monstro também deixou marcas e mexeu no convívio.');
+    if (mon && mon.monsters > 0) {
+      const M = nm(mon);
+      pushBlock('mon', pickOne([
+        `O Monstro da semana esticou tensões e fez o assunto render além do necessário.`,
+        `O castigo pegou ${M} no caminho e virou pauta mais vezes do que precisava.`,
+        `O Monstro colocou ${M} em evidência e a casa não largou o osso.`
+      ]));
+    } else {
+      pushBlock('mon', pickOne([
+        `O Monstro também deixou marcas e mexeu no convívio.`,
+        `O castigo da semana virou pauta em horas improváveis.`,
+        `Teve Monstro e, como sempre, alguém pagou o preço em dobro.`
+      ]));
+    }
   }
 
-  // 4) popularidade / virada
+  // (8) Virada de imagem (público)
   if (tag === 'publico') {
     const up = pickTop(rows, r => r.popEvents);
-    if (up && up.popEvents > 0) lines.push(`${nm(up)} ganhou destaque nas conversas aqui fora e mudou de patamar no olhar do público.`);
+    if (up && up.popEvents > 0) {
+      const U = nm(up);
+      pushBlock('virada', pickOne([
+        `${U} ganhou destaque aqui fora e mudou de patamar no olhar do público.`,
+        `A leitura do público virou um pouco a favor de ${U}.`,
+        `${U} saiu da semana com mais fôlego do que entrou.`
+      ]));
+    }
   }
 
-  // 5) explica viés
+  // (9) Clima (quase sempre; mas com variação)
+  pushBlock('clima', pickOne([
+    `O clima foi de desconfiança crescente.`,
+    `A casa viveu dias de conversa atravessada.`,
+    `A semana foi marcada por bastidores intensos.`,
+    `O jogo ficou mais silencioso, mas não menos tenso.`
+  ]));
+
+  // (10) Viés da edição (fecha, mas não é obrigatório)
   const bx = explainBias();
-  if (bx) lines.push(bx);
+  if (bx) pushBlock('ed', bx);
 
-  // fallback se ficou vazio (não deve, mas garante)
-  if (!lines.length) lines.push('Foi uma semana de respira e olha, com o jogo ainda se organizando por dentro.');
+  // ====== Seleção final: 2..5 blocos, com ordem variada (edição tende a fechar) ======
+  const seen = new Set();
+  const deduped = [];
+  for (const c of candidates) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    deduped.push(c);
+  }
 
+  const ed = deduped.filter(x => x.id === 'ed');
+  const nonEd = deduped.filter(x => x.id !== 'ed');
+
+  shuffle(nonEd);
+
+  const want = rndInt(2, 5);
+  const picked = nonEd.slice(0, Math.max(0, want - (ed.length ? 1 : 0)));
+  if (ed.length && (picked.length < want || Math.random() < 0.85)) picked.push(ed[0]);
+
+  const finalLines = picked.map(x => x.text).filter(Boolean);
+  while (finalLines.length < 2 && nonEd.length > finalLines.length) {
+    finalLines.push(nonEd[finalLines.length].text);
+  }
+
+  if (!finalLines.length) finalLines.push('Foi uma semana de respira e olha, com o jogo ainda se organizando por dentro.');
+
+  finalLines.forEach(s => lines.push(s));
   return {
     week: w,
     title,
