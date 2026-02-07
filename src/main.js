@@ -1754,46 +1754,211 @@ function computeSeasonTitles() {
   }
 
   function computeWeekThemeSummary(weekNum) {
-    const w = Number(weekNum || state.week || 1);
-    const players = Array.isArray(state.players) ? state.players : [];
-    const counts = { betrayal: 0, conflict: 0, target: 0, pop: 0, nomination: 0, monster: 0 };
+  const w = Number(weekNum || state.week || 1);
+  const players = Array.isArray(state.players) ? state.players : [];
 
-    for (const p of players) {
-      const tl = Array.isArray(p?.narrative?.timeline) ? p.narrative.timeline : [];
-      for (const e of tl) {
-        if (Number(e?.round) !== w) continue;
-        const t = String(e?.type || '');
-        if (t === 'betrayal' || t === 'friendship_betrayed') counts.betrayal++;
-        else if (t === 'conflict') counts.conflict++;
-        else if (t === 'house_target' || t === 'target') counts.target++;
-        else if (t === 'pop_surge' || t === 'pop_drop') counts.pop++;
-        else if (t === 'nomination') counts.nomination++;
-        else if (t === 'monster_sent') counts.monster++;
+  // --- coleta sinais da semana (sem inventar fatos) ---
+  const counts = { betrayal: 0, conflict: 0, target: 0, pop: 0, nomination: 0, monster: 0, wins: 0, saves: 0, vuln: 0, recon: 0 };
+
+  // por jogador
+  const byId = new Map();
+  for (const p of players) {
+    if (!p || p.id == null) continue;
+    byId.set(String(p.id), {
+      p,
+      actions: 0,        // "se movimentou"
+      exposure: 0,       // "rendeu VT"
+      targetScore: 0,    // "virou alvo"
+      nominationsMade: 0,
+      nominationsTaken: 0,
+      conflicts: 0,
+      betrayals: 0,
+      monsters: 0,
+      wins: 0,
+      saves: 0,
+      popEvents: 0,
+      vuln: 0,
+      recon: 0
+    });
+  }
+
+  const bumpExposure = (id, wgt) => {
+    const row = byId.get(String(id));
+    if (!row) return;
+    row.exposure += Number(wgt || 1);
+  };
+
+  const bumpAction = (id, pts) => {
+    const row = byId.get(String(id));
+    if (!row) return;
+    row.actions += Number(pts || 1);
+  };
+
+  const bumpTarget = (id, pts) => {
+    const row = byId.get(String(id));
+    if (!row) return;
+    row.targetScore += Number(pts || 1);
+  };
+
+  // percorre timelines e agrega (usa weight quando existir)
+  for (const p of players) {
+    const tl = Array.isArray(p?.narrative?.timeline) ? p.narrative.timeline : [];
+    for (const e of tl) {
+      if (Number(e?.round) !== w) continue;
+      const t = String(e?.type || '');
+      const actorId = String(p.id);
+      const wgt = clamp(Number(e?.weight ?? 1), 1, 3);
+
+      bumpExposure(actorId, wgt);
+
+      // eventos e contagens globais
+      if (t === 'betrayal' || t === 'friendship_betrayed') { counts.betrayal++; byId.get(actorId).betrayals++; bumpAction(actorId, 2.0); }
+      else if (t === 'conflict') { counts.conflict++; byId.get(actorId).conflicts++; bumpAction(actorId, 1.2); }
+      else if (t === 'house_target' || t === 'target') { counts.target++; bumpTarget(actorId, 2.2); }
+      else if (t === 'pop_surge' || t === 'pop_drop') { counts.pop++; byId.get(actorId).popEvents++; bumpAction(actorId, 0.6); }
+      else if (t === 'nomination') { counts.nomination++; byId.get(actorId).nominationsMade++; bumpAction(actorId, 2.0); }
+      else if (t === 'monster_sent') { counts.monster++; byId.get(actorId).monsters++; bumpAction(actorId, 1.6); }
+      else if (t === 'monster_punished') { counts.monster++; byId.get(actorId).monsters++; bumpTarget(actorId, 0.9); }
+      else if (t === 'win_hoh' || t === 'win_veto') { counts.wins++; byId.get(actorId).wins++; bumpAction(actorId, 1.8); }
+      else if (t === 'save') { counts.saves++; byId.get(actorId).saves++; bumpAction(actorId, 1.2); }
+      else if (t === 'vulnerability') { counts.vuln++; byId.get(actorId).vuln++; bumpAction(actorId, 0.8); }
+      else if (t === 'reconciliation') { counts.recon++; byId.get(actorId).recon++; bumpAction(actorId, 0.6); }
+
+      // se o evento aponta um alvo (refs.targetId), soma no alvo
+      const refTid = (e?.refs && e.refs.targetId != null) ? String(e.refs.targetId) : null;
+      if (refTid && byId.has(refTid)) {
+        if (t === 'nomination') { byId.get(refTid).nominationsTaken++; bumpTarget(refTid, 1.8); }
+        else if (t === 'monster_sent') { bumpTarget(refTid, 1.2); }
+        else if (t === 'betrayal' || t === 'friendship_betrayed') { bumpTarget(refTid, 0.8); }
+        else if (t === 'conflict') { bumpTarget(refTid, 0.7); }
+      }
+    }
+  }
+
+  // --- define o título/tema dominante ---
+  let title = 'Semana Morna';
+  let tag = 'morna';
+  if (counts.betrayal >= 2) { title = 'Semana da Traição'; tag = 'traicao'; }
+  else if (counts.conflict + counts.target >= 4) { title = 'Semana do Confronto'; tag = 'treta'; }
+  else if (counts.target >= 3 || counts.nomination >= 2) { title = 'Semana do Alvo'; tag = 'alvo'; }
+  else if (counts.pop >= 4) { title = 'Semana da Virada do Público'; tag = 'publico'; }
+  else if (counts.monster >= 2) { title = 'Semana do Castigo'; tag = 'castigo'; }
+
+  // --- picks (quem foi alvo / quem se mexeu / quem rendeu) ---
+  const rows = Array.from(byId.values());
+
+  const pickTop = (arr, keyFn) => {
+    const a = arr.slice().sort((x, y) => (keyFn(y) - keyFn(x)) + rnd(-0.01, 0.01));
+    return a[0] || null;
+  };
+
+  const alvo = pickTop(rows, r => r.targetScore);
+  const mover1 = pickTop(rows, r => r.actions);
+  const mover2 = pickTop(rows.filter(r => !mover1 || r.p.id !== mover1.p.id), r => r.actions);
+  const rendeu = pickTop(rows, r => r.exposure);
+
+  const nm = (r) => r && r.p ? simpleName(r.p) : '—';
+
+  // --- viés da edição + "por quê" ---
+  const bias = state.weekState?.editBias || null;
+
+  const explainBias = () => {
+    if (!bias) return '';
+    // romance: tenta achar par de crush mútuo (se existir)
+    if (bias === 'romance') {
+      try {
+        const alive = alivePlayers();
+        let bestPair = null;
+        for (let i=0;i<alive.length;i++){
+          for (let j=i+1;j<alive.length;j++){
+            const A = alive[i], B = alive[j];
+            const ab = classifyRelationScore(relGet(A.id, B.id));
+            const ba = classifyRelationScore(relGet(B.id, A.id));
+            if (ab === 'crush' && ba === 'crush') { bestPair = [A,B]; break; }
+          }
+          if (bestPair) break;
+        }
+        if (bestPair) return `A edição apostou no romance, destacando a aproximação entre ${simpleName(bestPair[0])} e ${simpleName(bestPair[1])}.`;
+        // fallback: usa vulnerabilidade/amizade
+        if (counts.vuln + counts.recon >= 2) return 'A edição apostou no romance, puxando VT de proximidade e coração mole para contrastar com o clima do jogo.';
+        return 'A edição apostou no romance, tentando dar um respiro no meio da tensão.';
+      } catch {
+        return 'A edição apostou no romance, tentando dar um respiro no meio da tensão.';
       }
     }
 
-    let title = 'Semana Morna';
-    let tag = 'morna';
-    if (counts.betrayal >= 2) { title = 'Semana da Traição'; tag = 'traicao'; }
-    else if (counts.conflict + counts.target >= 4) { title = 'Semana do Confronto'; tag = 'treta'; }
-    else if (counts.target >= 3 || counts.nomination >= 2) { title = 'Semana do Alvo'; tag = 'alvo'; }
-    else if (counts.pop >= 4) { title = 'Semana da Virada do Público'; tag = 'publico'; }
-    else if (counts.monster >= 2) { title = 'Semana do Castigo'; tag = 'castigo'; }
+    if (bias === 'treta') {
+      if (counts.conflict + counts.target >= 2) return 'A edição foi de treta: assunto que aparece uma vez volta, e volta mais alto.';
+      return 'A edição tentou esquentar o clima, mesmo sem grande ajuda da casa.';
+    }
 
-    const bias = state.weekState?.editBias;
-    const biasLabel = bias ? `Edição: ${bias}` : '';
-    const bullets = [
-      counts.betrayal ? `Traições/rachas: ${counts.betrayal}` : null,
-      (counts.conflict + counts.target) ? `Climões e alvos: ${counts.conflict + counts.target}` : null,
-      counts.pop ? `Oscilações de popularidade: ${counts.pop}` : null,
-      counts.nomination ? `Movimentos de indicação: ${counts.nomination}` : null,
-      counts.monster ? `Castigos/Monstro rendendo: ${counts.monster}` : null,
-      biasLabel || null
-    ].filter(Boolean).slice(0, 4);
+    if (bias === 'estrategia') {
+      return `A edição puxou estratégia: bastidor, justificativa e gente tentando controlar a narrativa.`;
+    }
 
-    return { week: w, title, tag, bullets, counts };
+    if (bias === 'comedia') {
+      return `A edição foi de comédia: mais “BBB raiz” e menos discurso bonito.`;
+    }
+
+    if (bias === 'justica') {
+      if (tag === 'alvo' || tag === 'treta') return 'A edição foi de “justiça”: quem apertou demais precisou se explicar depois.';
+      return 'A edição foi de “justiça”: destaque para quem tentou se justificar e quem pagou o preço.';
+    }
+
+    return `Edição: ${bias}.`;
+  };
+
+  // --- monta linhas narrativas (sem números) ---
+  const lines = [];
+
+  // 1) alvo central
+  if (alvo && alvo.targetScore >= 1.8) {
+    const extra = (alvo.nominationsTaken >= 1) ? ' e viu o nome colar de vez' : '';
+    lines.push(`${nm(alvo)} concentrou a atenção da casa${extra} nesta semana.`);
+  } else if (rendeu) {
+    lines.push(`${nm(rendeu)} acabou no centro do episódio mais vezes do que gostaria.`);
   }
 
+  // 2) movimentos (até 2)
+  const movers = [mover1, mover2].filter(Boolean).filter((r,i,a)=>a.findIndex(x=>x.p.id===r.p.id)===i);
+  if (movers.length) {
+    const a = nm(movers[0]);
+    const b = movers.length > 1 ? nm(movers[1]) : null;
+    if (b) lines.push(`${a} e ${b} se movimentaram mais, puxando decisões, justificativas e aquele “clima de bastidor”.`);
+    else lines.push(`${a} se movimentou mais, puxando decisões e tentando controlar o rumo do jogo.`);
+  }
+
+  // 3) castigo/monstro como impacto
+  if (counts.monster > 0) {
+    // tenta achar quem mais teve monstro (enviado ou punido) na semana
+    const mon = pickTop(rows, r => r.monsters);
+    if (mon && mon.monsters > 0) lines.push(`O Monstro também deixou marcas: ${nm(mon)} apareceu nessa história e o assunto rendeu além do necessário.`);
+    else lines.push('O Monstro também deixou marcas e mexeu no convívio.');
+  }
+
+  // 4) popularidade / virada
+  if (tag === 'publico') {
+    const up = pickTop(rows, r => r.popEvents);
+    if (up && up.popEvents > 0) lines.push(`${nm(up)} ganhou destaque nas conversas aqui fora e mudou de patamar no olhar do público.`);
+  }
+
+  // 5) explica viés
+  const bx = explainBias();
+  if (bx) lines.push(bx);
+
+  // fallback se ficou vazio (não deve, mas garante)
+  if (!lines.length) lines.push('Foi uma semana de respira e olha, com o jogo ainda se organizando por dentro.');
+
+  return {
+    week: w,
+    title,
+    tag,
+    counts,
+    // mantém bullets por compat, mas agora são “humanos”
+    bullets: [],
+    narrative: { lines }
+  };
+}
 
   // Títulos de arco narrativo: pools em português + seleção determinística (variedade sem ficar aleatório a cada render)
   const ARC_TITLE_POOLS = {
@@ -8827,7 +8992,7 @@ function snapshotPopForWeek(weekNumber) {
     state.narrative.daily = {}; // simples e seguro
   } catch { /* ignora */ }
 
-  // Resumo editorial da semana (tema dominante + contagens)
+  // Resumo editorial da semana (narrativo)
   try {
     if (typeof computeWeekThemeSummary === 'function') {
       const recap = computeWeekThemeSummary(state.week);
@@ -8835,12 +9000,15 @@ function snapshotPopForWeek(weekNumber) {
       state.edit.weekRecaps.push(recap);
       if (state.edit.weekRecaps.length > 80) state.edit.weekRecaps = state.edit.weekRecaps.slice(-80);
 
-      const bullets = (recap.bullets || []).map(b => `<li style="margin:2px 0;">${escapeHtml(String(b))}</li>`).join('');
+      const lines = (recap?.narrative?.lines || []).slice(0, 6).map((s) =>
+        `<div style="margin-top:6px;">${escapeHtml(String(s))}</div>`
+      ).join('');
+
       gameAdd(`
         <div class="gameCard" style="flex-direction:column; align-items:flex-start; gap:6px;">
           <div style="font-size:12px; opacity:.92;">Resumo da semana ${recap.week}</div>
           <div style="font-size:14px; font-weight:900; letter-spacing:.2px;">${escapeHtml(recap.title)}</div>
-          ${bullets ? `<ul style="margin:4px 0 0 18px; padding:0; font-size:12px; opacity:.95; line-height:1.25;">${bullets}</ul>` : ''}
+          ${lines ? `<div style="font-size:12px; opacity:.95; line-height:1.35;">${lines}</div>` : ''}
         </div>
       `);
     }
