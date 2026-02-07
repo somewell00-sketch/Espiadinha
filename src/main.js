@@ -1488,7 +1488,189 @@ function computeSeasonTitles() {
       if (cur == null) A.narrative.stats.biggestMoveRound = R;
     }
 
+    // Camada de edição: registra ecos (memória curta) para fazer o assunto voltar nos dias seguintes
+    try { if (typeof maybeEchoFromNarrative === 'function') maybeEchoFromNarrative(type, A, B, R, weight); } catch { /* ignora */ }
     return idxA;
+  }
+
+  /* ===== Camada de "edição": ecos (memória curta) + tema semanal =====
+     Objetivo: fazer acontecimentos grandes reverberarem por 2–4 dias.
+     Não altera as regras centrais (prova/voto), só injeta eventos narrativos e leves deltas.
+  */
+
+  function ensureEditState() {
+    state.edit = state.edit || {};
+    state.edit.echo = Array.isArray(state.edit.echo) ? state.edit.echo : [];
+    state.edit.weekRecaps = Array.isArray(state.edit.weekRecaps) ? state.edit.weekRecaps : [];
+  }
+
+  function pushEcho({ kind, aId, bId = null, week, days = 3, strength = 1 } = {}) {
+    ensureEditState();
+    if (!kind || !aId) return;
+    state.edit.echo.push({
+      kind,
+      aId,
+      bId,
+      week: Number(week || state.week || 1),
+      daysLeft: clamp(Number(days || 3), 1, 5),
+      strength: clamp(Number(strength || 1), 1, 3)
+    });
+    if (state.edit.echo.length > 60) state.edit.echo = state.edit.echo.slice(-60);
+  }
+
+  // Gatilho automático: quando um evento narrativo relevante acontece, cria "eco".
+  function maybeEchoFromNarrative(type, A, B, R, weight = 1) {
+    if (!A || !A.id) return;
+    const t = String(type || '');
+    if (t === 'betrayal' || t === 'friendship_betrayed') pushEcho({ kind: 'betrayal', aId: A.id, bId: B?.id ?? null, week: R, days: 4, strength: Math.max(2, weight) });
+    if (t === 'conflict') pushEcho({ kind: 'conflict', aId: A.id, bId: B?.id ?? null, week: R, days: 3, strength: Math.max(1, weight) });
+    if (t === 'house_target') pushEcho({ kind: 'target', aId: A.id, bId: null, week: R, days: 3, strength: Math.max(1, weight) });
+    if (t === 'monster_sent') pushEcho({ kind: 'monster', aId: A.id, bId: B?.id ?? null, week: R, days: 3, strength: Math.max(1, weight) });
+    if (t === 'nomination') pushEcho({ kind: 'nomination', aId: A.id, bId: B?.id ?? null, week: R, days: 2, strength: Math.max(1, weight) });
+  }
+
+  // Injeta 0–2 ecos por dia (antes da fila/aleatório), para dar continuidade.
+  function consumeDailyEchos(ctx, alive) {
+    ensureEditState();
+    const dayKey = String(ctx?.key || '');
+    if (!alive || !alive.length) return;
+
+    // Não ecoa em dia de prova grande (para não poluir) — exceto seg/dom/qua/ter que precisam de pauta.
+    const allow = (dayKey === 'seg' || dayKey === 'dom' || dayKey === 'qua' || dayKey === 'ter');
+    if (!allow && Math.random() < 0.60) return;
+
+    const aliveSet = new Set(alive.map(p => p.id));
+    const w = Number(state.week || 1);
+    const pool = state.edit.echo
+      .filter(e => Number(e.week) === w && Number(e.daysLeft || 0) > 0)
+      .filter(e => aliveSet.has(e.aId) && (!e.bId || aliveSet.has(e.bId)));
+    if (!pool.length) return;
+
+    const picks = pool.slice().reverse().sort((a,b)=> (b.strength - a.strength));
+    const n = clamp(rndInt(0, 2), 0, 2);
+    let made = 0;
+    for (const e of picks) {
+      if (made >= n) break;
+      if (Math.random() > (0.55 + 0.10 * (e.strength - 1))) continue;
+
+      const A = alive.find(p => p.id === e.aId);
+      const B = e.bId ? alive.find(p => p.id === e.bId) : null;
+      if (!A) continue;
+
+      if (e.kind === 'betrayal' && B) {
+        applyEventBlock({
+          eid: 'echo_betrayal',
+          theme: ctx.festa ? 'party' : 'default',
+          people: `${A.name} e ${B.name}`,
+          desc: `{A} volta no assunto do voto e alfineta {B} de novo, deixando o clima pesado`,
+          vt: 'negativo, eco de traição',
+          scope: 'coletivo',
+          a: A,
+          b: B,
+          deltaA: { alvo: 0.20, pop: rnd(-0.05, 0.10) },
+          deltaB: { alvo: 0.18, pop: rnd(-0.10, 0.05) },
+          relDelta: -0.60
+        });
+      } else if (e.kind === 'conflict' && B) {
+        applyEventBlock({
+          eid: 'echo_conflict',
+          theme: ctx.festa ? 'party' : 'default',
+          people: `${A.name} e ${B.name}`,
+          desc: `{A} e {B} seguem se estranhando e a casa percebe que isso ainda vai render`,
+          vt: 'negativo, climão',
+          scope: 'coletivo',
+          a: A,
+          b: B,
+          deltaA: { alvo: 0.12, pop: rnd(-0.05, 0.08) },
+          deltaB: { alvo: 0.12, pop: rnd(-0.05, 0.08) },
+          relDelta: -0.45
+        });
+      } else if (e.kind === 'target') {
+        applyEventBlock({
+          eid: 'echo_target',
+          theme: 'default',
+          people: `${A.name}`,
+          desc: `{A} sente o peso da casa e comenta que está sendo perseguido, reacendendo o papo de paredão`,
+          vt: 'tenso, paranoia',
+          scope: 'coletivo',
+          a: A,
+          b: null,
+          deltaA: { alvo: 0.22, pop: rnd(-0.08, 0.10) }
+        });
+      } else if (e.kind === 'monster' && B) {
+        applyEventBlock({
+          eid: 'echo_monster',
+          theme: 'default',
+          people: `${A.name} e ${B.name}`,
+          desc: `{A} joga na cara de {B} que o Monstro foi exagero e a treta volta a circular pela casa`,
+          vt: 'negativo, rancinho',
+          scope: 'coletivo',
+          a: A,
+          b: B,
+          deltaA: { alvo: 0.10, pop: rnd(-0.04, 0.06) },
+          deltaB: { alvo: 0.10, pop: rnd(-0.06, 0.04) },
+          relDelta: -0.35
+        });
+      } else if (e.kind === 'nomination' && B) {
+        applyEventBlock({
+          eid: 'echo_nomination',
+          theme: 'default',
+          people: `${B.name}`,
+          desc: `{A} comenta que a indicação em {B} foi necessária e a casa volta a discutir esse alvo`,
+          vt: 'tenso, pauta',
+          scope: 'coletivo',
+          a: A,
+          b: B,
+          deltaA: { alvo: 0.06, pop: rnd(-0.02, 0.06) },
+          deltaB: { alvo: 0.10, pop: rnd(-0.06, 0.04) },
+          relDelta: -0.20
+        });
+      }
+
+      e.daysLeft = Math.max(0, Number(e.daysLeft || 0) - 1);
+      made++;
+    }
+  }
+
+  function computeWeekThemeSummary(weekNum) {
+    const w = Number(weekNum || state.week || 1);
+    const players = Array.isArray(state.players) ? state.players : [];
+    const counts = { betrayal: 0, conflict: 0, target: 0, pop: 0, nomination: 0, monster: 0 };
+
+    for (const p of players) {
+      const tl = Array.isArray(p?.narrative?.timeline) ? p.narrative.timeline : [];
+      for (const e of tl) {
+        if (Number(e?.round) !== w) continue;
+        const t = String(e?.type || '');
+        if (t === 'betrayal' || t === 'friendship_betrayed') counts.betrayal++;
+        else if (t === 'conflict') counts.conflict++;
+        else if (t === 'house_target' || t === 'target') counts.target++;
+        else if (t === 'pop_surge' || t === 'pop_drop') counts.pop++;
+        else if (t === 'nomination') counts.nomination++;
+        else if (t === 'monster_sent') counts.monster++;
+      }
+    }
+
+    let title = 'Semana Morna';
+    let tag = 'morna';
+    if (counts.betrayal >= 2) { title = 'Semana da Traição'; tag = 'traicao'; }
+    else if (counts.conflict + counts.target >= 4) { title = 'Semana do Confronto'; tag = 'treta'; }
+    else if (counts.target >= 3 || counts.nomination >= 2) { title = 'Semana do Alvo'; tag = 'alvo'; }
+    else if (counts.pop >= 4) { title = 'Semana da Virada do Público'; tag = 'publico'; }
+    else if (counts.monster >= 2) { title = 'Semana do Castigo'; tag = 'castigo'; }
+
+    const bias = state.weekState?.editBias;
+    const biasLabel = bias ? `Edição: ${bias}` : '';
+    const bullets = [
+      counts.betrayal ? `Traições/rachas: ${counts.betrayal}` : null,
+      (counts.conflict + counts.target) ? `Climões e alvos: ${counts.conflict + counts.target}` : null,
+      counts.pop ? `Oscilações de popularidade: ${counts.pop}` : null,
+      counts.nomination ? `Movimentos de indicação: ${counts.nomination}` : null,
+      counts.monster ? `Castigos/Monstro rendendo: ${counts.monster}` : null,
+      biasLabel || null
+    ].filter(Boolean).slice(0, 4);
+
+    return { week: w, title, tag, bullets, counts };
   }
 
 
@@ -2566,7 +2748,19 @@ if (mom <= -3) candidates.push({ p, recent: null, kind: 'collapse', base: 1.7, e
     // Filtro contextual por dia (prova/eliminação/paredão etc.)
     const normFiltered = allowedTopics ? norm.filter(x => allowedTopics.has(x.topic)) : norm;
 
-    normFiltered.sort((a,b)=>b.base-a.base);
+    // Viés da edição: puxa o feed para um "tom" (sem bloquear completamente outros temas)
+    const bias = (ws?.editBias || state.weekState?.editBias || null);
+    const biasMult = (topic) => {
+      if (!bias) return 1;
+      if (bias === 'treta') return (topic === 'betrayal' || topic === 'house_target' || topic === 'target' || topic === 'close_call') ? 1.35 : 1;
+      if (bias === 'estrategia') return (topic === 'target' || topic === 'house_target' || topic === 'betrayal' || topic === 'mastermind') ? 1.25 : 1;
+      if (bias === 'comedia') return (topic === 'pop_surge' || topic === 'pop_drop' || topic === 'social_hub') ? 1.15 : 1;
+      if (bias === 'romance') return (topic === 'social_hub' || topic === 'growth') ? 1.12 : 1;
+      if (bias === 'justica') return (topic === 'eliminated' || topic === 'close_call') ? 1.20 : 1;
+      return 1;
+    };
+
+    normFiltered.sort((a,b)=> (b.base * biasMult(b.topic)) - (a.base * biasMult(a.topic)));
 
     const picked = [];
     const usedPlayers = new Set();
@@ -3631,6 +3825,9 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
 
   function resetWeekState() {
     const prevLeaderId = state.weekState?.leaderId ?? null;
+    // Viés da edição (influencia seleção de VT/tweets e a sensação de "semana")
+    const EDIT_BIASES = ["treta", "estrategia", "comedia", "romance", "justica"];
+    const editBias = pickOne(EDIT_BIASES);
     state.weekState = {
       leaderId: null,
       lastLeaderId: prevLeaderId,
@@ -3655,6 +3852,7 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
       fandomCoalition: null,
       vipIds: [],
       xepaIds: [],
+      editBias,
       popStart: Object.fromEntries((state.players||[]).map(p=>[p.id, Number(p.status?.pop ?? 5.0)])),
       _narrNomIdx: {},
       _narrTargeted: []
@@ -6360,6 +6558,35 @@ for (const p of featured) {
     state.weekState = state.weekState || {};
     state.weekState.triggered = state.weekState.triggered || {};
 
+    // 0) Sincerão (segunda): pelo menos 1 confronto "obrigatório" por semana
+    if (!state.weekState.triggered.sincerao && ctx.key === 'seg' && alive && alive.length >= 2) {
+      // escolhe um alvo quente (alto alvo/rejeição) e alguém com perfil de confronto
+      const sortedByAlvo = alive.slice().sort((a,b)=> (Number(b.status?.alvo||0) + Number(b.attrs?.rejeicao||0)*0.15) - (Number(a.status?.alvo||0) + Number(a.attrs?.rejeicao||0)*0.15));
+      const target = sortedByAlvo[0];
+      const aggressor = alive
+        .filter(p => p.id !== target.id)
+        .slice()
+        .sort((a,b)=> (b.attrs.conflito*1.2 + b.attrs.estrategia*0.6 + rnd(-0.8,0.8)) - (a.attrs.conflito*1.2 + a.attrs.estrategia*0.6 + rnd(-0.8,0.8)))[0];
+
+      if (target && aggressor) {
+        state.weekState.triggered.sincerao = true;
+        applyEventBlock({
+          eid: 'trigger_sincerao',
+          theme: 'default',
+          people: `${aggressor.name} e ${target.name}`,
+          desc: `{A} puxa {B} no sincerão e faz acusações diretas, expondo o jogo e inflamando a casa`,
+          vt: 'muito negativo, sincerão',
+          scope: 'coletivo',
+          a: aggressor,
+          b: target,
+          deltaA: { pop: rnd(-0.10, 0.18), alvo: 0.10 },
+          deltaB: { pop: rnd(-0.18, 0.10), alvo: 0.26 },
+          relDelta: -1.10
+        });
+        return true;
+      }
+    }
+
     // 1) Sobrevivente do paredão confronta quem indicou (quarta/quinta)
     if (!state.weekState.triggered.returnedVsLeader && (ctx.key === 'qua' || ctx.key === 'qui')) {
       const leaderId = state.weekState.leaderId;
@@ -6644,6 +6871,9 @@ if (maybeQuitEvent(ctx)) return;
   else dayAdd(partyBannerHtml());
 }
 
+    // Camada de edição: ecos do que aconteceu (assunto volta por alguns dias)
+    try { if (typeof consumeDailyEchos === 'function') consumeDailyEchos(ctx, alive); } catch { /* ignora */ }
+
     // 1 evento de gatilho por dia (quando aplicável)
     maybeTriggeredConfrontations(ctx, alive);
 
@@ -6658,6 +6888,46 @@ if (maybeQuitEvent(ctx)) return;
     if (typeof maybeUnbreakableFriendship === "function") {
       maybeUnbreakableFriendship(ctx);
     }
+
+    // Domingo (formação): garante pelo menos um mini-bloco de campanha/paranoia
+    try {
+      state.weekState = state.weekState || {};
+      state.weekState.triggered = state.weekState.triggered || {};
+      if (ctx.key === 'dom' && !state.weekState.triggered.campaign && alive.length >= 3) {
+        state.weekState.triggered.campaign = true;
+        state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
+
+        const a = pickOne(alive);
+        const b = pickOne(alive.filter(p => p.id !== a.id));
+        const c = pickOne(alive.filter(p => p.id !== a.id && p.id !== b.id));
+
+        state.eventQueue.push({
+          eid: 'campaign_strategy',
+          theme: 'default',
+          people: `${a.name} e ${b.name}`,
+          desc: `{A} chama {B} pra um canto e tenta fechar voto, dizendo que o paredão vai ser decisivo`,
+          vt: 'estratégia, paranoia',
+          scope: 'coletivo',
+          a, b,
+          deltaA: { pop: rnd(-0.03, 0.06), alvo: 0.08 },
+          deltaB: { pop: rnd(-0.03, 0.06), alvo: 0.06 },
+          relDelta: rnd(0.25, 0.85)
+        });
+
+        state.eventQueue.push({
+          eid: 'campaign_plea',
+          theme: 'default',
+          people: `${c.name} e ${a.name}`,
+          desc: `{A} procura {B} e faz um apelo emotivo para não ser alvo, prometendo fidelidade`,
+          vt: 'emocional, campanha',
+          scope: 'coletivo',
+          a: c, b: a,
+          deltaA: { pop: rnd(-0.05, 0.10), alvo: 0.10 },
+          deltaB: { pop: rnd(-0.02, 0.06), alvo: 0.04 },
+          relDelta: rnd(0.15, 0.70)
+        });
+      }
+    } catch { /* ignora */ }
 
     const cap = clamp(Math.round(rnd(2, 5) + (ctx.festa ? 1 : 0) + (ctx.tension ? 1 : 0)), 2, 6);
 
@@ -8423,6 +8693,25 @@ function snapshotPopForWeek(weekNumber) {
   try {
     state.narrative = state.narrative || {};
     state.narrative.daily = {}; // simples e seguro
+  } catch { /* ignora */ }
+
+  // Resumo editorial da semana (tema dominante + contagens)
+  try {
+    if (typeof computeWeekThemeSummary === 'function') {
+      const recap = computeWeekThemeSummary(state.week);
+      ensureEditState();
+      state.edit.weekRecaps.push(recap);
+      if (state.edit.weekRecaps.length > 80) state.edit.weekRecaps = state.edit.weekRecaps.slice(-80);
+
+      const bullets = (recap.bullets || []).map(b => `<li style="margin:2px 0;">${escapeHtml(String(b))}</li>`).join('');
+      gameAdd(`
+        <div class="gameCard" style="flex-direction:column; align-items:flex-start; gap:6px;">
+          <div style="font-size:12px; opacity:.92;">Resumo da semana ${recap.week}</div>
+          <div style="font-size:14px; font-weight:900; letter-spacing:.2px;">${escapeHtml(recap.title)}</div>
+          ${bullets ? `<ul style="margin:4px 0 0 18px; padding:0; font-size:12px; opacity:.95; line-height:1.25;">${bullets}</ul>` : ''}
+        </div>
+      `);
+    }
   } catch { /* ignora */ }
   resetWeekState();
 
