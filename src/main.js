@@ -1502,7 +1502,107 @@ function computeSeasonTitles() {
     state.edit = state.edit || {};
     state.edit.echo = Array.isArray(state.edit.echo) ? state.edit.echo : [];
     state.edit.weekRecaps = Array.isArray(state.edit.weekRecaps) ? state.edit.weekRecaps : [];
+    // Meta de edição: memória anti-repetição por semana/par
+    state.edit.echoMeta = (state.edit.echoMeta && typeof state.edit.echoMeta === 'object') ? state.edit.echoMeta : { recentByKey: {}, countByKey: {} };
   }
+
+  // ===== ECO (texto) =====
+  // 3 intenções: justificativa / incômodo / ataque-backlash
+  // Tom híbrido: narração + leve ironia (sem virar piada).
+  const ECO_NARR_TEMPLATES = {
+    justify: [
+      "{A} volta a defender o voto em {B}, tentando encerrar o assunto",
+      "{A} insiste que mirar em {B} foi uma decisão estratégica",
+      "Ao falar de novo sobre {B}, {A} soa mais na defensiva",
+      "{A} reforça o discurso sobre {B}, mesmo sem unanimidade",
+      "{A} tenta explicar por que {B} era o nome certo",
+      "{A} volta ao assunto {B}, como quem quer fechar a conta",
+      "{A} sustenta que a escolha de {B} não foi pessoal",
+      "{A} repete que {B} era o caminho mais seguro no jogo",
+      "{A} tenta organizar a narrativa sobre o voto em {B}",
+      "{A} reafirma a decisão envolvendo {B}, sem muito apoio",
+      "{A} justifica o movimento contra {B}, mas o clima não alivia",
+      "{A} insiste na lógica do voto em {B}",
+      "{A} tenta deixar claro por que {B} entrou no radar",
+      "{A} puxa de novo o argumento contra {B}"
+    ],
+    pressure: [
+      "O nome de {B} segue circulando pela casa",
+      "A indicação em {B} ainda pesa no clima",
+      "Mesmo dias depois, {B} continua sendo assunto",
+      "A casa volta a comentar o alvo em {B}",
+      "O jogo não larga o nome de {B}",
+      "A história envolvendo {B} ainda não esfriou",
+      "Ninguém assume, mas {B} segue no radar",
+      "O assunto {B} insiste em reaparecer nas conversas",
+      "A casa parece presa no mesmo tema: {B}",
+      "O clima em torno de {B} continua estranho",
+      "A indicação em {B} segue rendendo comentário",
+      "{B} continua sendo citado, mesmo sem confronto direto",
+      "A casa não consegue virar a página sobre {B}",
+      "O alvo em {B} não desaparece"
+    ],
+    backlash: [
+      "Ao insistir no assunto {B}, {A} começa a se desgastar",
+      "A fala de {A} sobre {B} não cai bem",
+      "{A} tenta justificar {B}, mas compra desgaste",
+      "A insistência de {A} em {B} incomoda a casa",
+      "{A} se expõe ao voltar ao tema {B}",
+      "O discurso de {A} sobre {B} começa a ser questionado",
+      "{A} fala de {B} de novo e o clima pesa",
+      "{A} parece mais preocupado em se explicar do que jogar",
+      "A casa passa a desconfiar da narrativa de {A}",
+      "{A} reforça o alvo em {B} e se complica",
+      "{A} não consegue largar o assunto {B}",
+      "O argumento de {A} sobre {B} perde força"
+    ]
+  };
+
+  function echoKey(kind, aId, bId, week) {
+    return `w${Number(week || state.week || 1)}:${String(kind||'')}:${String(aId||'')}:${String(bId||'')}`;
+  }
+
+  function pickEchoTemplate(intent, key) {
+    ensureEditState();
+    const meta = state.edit.echoMeta;
+    const rec = meta.recentByKey[key] = Array.isArray(meta.recentByKey[key]) ? meta.recentByKey[key] : [];
+    const poolAll = (ECO_NARR_TEMPLATES[intent] || []);
+    if (!poolAll.length) return "";
+    const pool = poolAll.filter(t => !rec.includes(t));
+    const chosen = pickOne(pool.length ? pool : poolAll);
+    rec.push(chosen);
+    if (rec.length > 5) rec.splice(0, rec.length - 5);
+    return chosen;
+  }
+
+  function echoIntentForStep(step) {
+    const s = Number(step || 1);
+    if (s <= 1) return "justify";
+    if (s === 2) return "pressure";
+    return "backlash";
+  }
+
+  function buildEchoText({ kind, A, B, week, step } = {}) {
+    const intent = echoIntentForStep(step);
+    const key = echoKey(kind, A?.id, B?.id, week);
+    let tpl = pickEchoTemplate(intent, key);
+
+    if (!B && tpl.includes("{B}")) {
+      tpl = intent === "backlash"
+        ? "{A} fala demais tentando se justificar, e isso começa a pegar mal"
+        : "{A} sente que o clima não virou e o assunto continua rondando";
+    }
+
+    try {
+      return fill(tpl, {
+        A: escapeHtml(shortNameForEvents(A) || ''),
+        B: escapeHtml(shortNameForEvents(B) || '')
+      });
+    } catch {
+      return String(tpl || '').replaceAll('{A}', shortNameForEvents(A) || '').replaceAll('{B}', shortNameForEvents(B) || '');
+    }
+  }
+
 
   function pushEcho({ kind, aId, bId = null, week, days = 3, strength = 1 } = {}) {
     ensureEditState();
@@ -1590,8 +1690,18 @@ function computeSeasonTitles() {
           eid: 'echo_target',
           theme: 'default',
           people: `${A.name}`,
-          desc: `{A} sente o peso da casa e comenta que está sendo perseguido, reacendendo o papo de paredão`,
-          vt: 'tenso, paranoia',
+          desc: (() => {
+            try {
+              ensureEditState();
+              const k = echoKey('target', A.id, null, w);
+              const step = (Number(state.edit.echoMeta.countByKey[k] || 0) + 1);
+              state.edit.echoMeta.countByKey[k] = step;
+              return buildEchoText({ kind: 'target', A, B: null, week: w, step });
+            } catch {
+              return `${shortNameForEvents(A)} sente que virou assunto na casa de novo`;
+            }
+          })(),
+          vt: 'tenso, pauta',
           scope: 'coletivo',
           a: A,
           b: null,
@@ -1615,15 +1725,26 @@ function computeSeasonTitles() {
         applyEventBlock({
           eid: 'echo_nomination',
           theme: 'default',
-          people: `${B.name}`,
-          desc: `{A} comenta que a indicação em {B} foi necessária e a casa volta a discutir esse alvo`,
+          people: `${A.name} e ${B.name}`,
+          desc: (() => {
+            try {
+              ensureEditState();
+              const k = echoKey('nomination', A.id, B.id, w);
+              const step = (Number(state.edit.echoMeta.countByKey[k] || 0) + 1);
+              state.edit.echoMeta.countByKey[k] = step;
+              return buildEchoText({ kind: 'nomination', A, B, week: w, step });
+            } catch {
+              return `${shortNameForEvents(A)} volta no assunto da indicação em ${shortNameForEvents(B)}`;
+            }
+          })(),
           vt: 'tenso, pauta',
           scope: 'coletivo',
           a: A,
           b: B,
           deltaA: { alvo: 0.06, pop: rnd(-0.02, 0.06) },
           deltaB: { alvo: 0.10, pop: rnd(-0.06, 0.04) },
-          relDelta: -0.20
+          relDelta: -0.20,
+          directed: true
         });
       }
 
@@ -6570,20 +6691,13 @@ for (const p of featured) {
 
       if (target && aggressor) {
         state.weekState.triggered.sincerao = true;
-        applyEventBlock({
-          eid: 'trigger_sincerao',
-          theme: 'default',
-          people: `${aggressor.name} e ${target.name}`,
-          desc: `{A} puxa {B} no sincerão e faz acusações diretas, expondo o jogo e inflamando a casa`,
-          vt: 'muito negativo, sincerão',
-          scope: 'coletivo',
-          a: aggressor,
-          b: target,
-          deltaA: { pop: rnd(-0.10, 0.18), alvo: 0.10 },
-          deltaB: { pop: rnd(-0.18, 0.10), alvo: 0.26 },
-          relDelta: -1.10
-        });
-        return true;
+        // não joga como convivência: guarda para o bloco do Sincerão (fim da segunda)
+        state.weekState.sinceraoForced = {
+          aggressorId: aggressor.id,
+          targetId: target.id,
+          week: Number(state.week || 1)
+        };
+        return false;
       }
     }
 
@@ -6901,31 +7015,49 @@ if (maybeQuitEvent(ctx)) return;
         const b = pickOne(alive.filter(p => p.id !== a.id));
         const c = pickOne(alive.filter(p => p.id !== a.id && p.id !== b.id));
 
+        
+        const stratDesc = pickOne([
+          `{A} chama {B} pra um canto e tenta fechar voto, dizendo que o paredão vai definir a semana`,
+          `{A} sonda {B} com cuidado e tenta montar um plano antes que a casa decida por eles`,
+          `{A} combina com {B} um movimento 'seguro'… mas ninguém sabe se é mesmo`,
+          `{A} puxa {B} pra conversa e tenta alinhar o discurso pra não se complicar no ao vivo`
+        ]);
+
+        const pleaDesc = pickOne([
+          `{A} procura {B} e faz um apelo emotivo pra não virar alvo, prometendo fidelidade`,
+          `{A} chega em {B} com aquele papo de 'tô contigo'… bem na véspera do paredão`,
+          `{A} tenta ganhar {B} no carinho, porque na matemática não tá confortável`,
+          `{A} pede pra {B} segurar a onda e não comprar a narrativa da casa`
+        ]);
+
         state.eventQueue.push({
           eid: 'campaign_strategy',
           theme: 'default',
           people: `${a.name} e ${b.name}`,
-          desc: `{A} chama {B} pra um canto e tenta fechar voto, dizendo que o paredão vai ser decisivo`,
+          desc: stratDesc,
           vt: 'estratégia, paranoia',
           scope: 'coletivo',
           a, b,
           deltaA: { pop: rnd(-0.03, 0.06), alvo: 0.08 },
           deltaB: { pop: rnd(-0.03, 0.06), alvo: 0.06 },
-          relDelta: rnd(0.25, 0.85)
+          relDelta: rnd(0.25, 0.85),
+          directed: true
         });
 
         state.eventQueue.push({
           eid: 'campaign_plea',
           theme: 'default',
           people: `${c.name} e ${a.name}`,
-          desc: `{A} procura {B} e faz um apelo emotivo para não ser alvo, prometendo fidelidade`,
+          desc: pleaDesc,
           vt: 'emocional, campanha',
           scope: 'coletivo',
           a: c, b: a,
           deltaA: { pop: rnd(-0.05, 0.10), alvo: 0.10 },
           deltaB: { pop: rnd(-0.02, 0.06), alvo: 0.04 },
-          relDelta: rnd(0.15, 0.70)
+          relDelta: rnd(0.15, 0.70),
+          directed: true
         });
+
       }
     } catch { /* ignora */ }
 
@@ -9527,6 +9659,45 @@ const alive = (typeof alivePlayers === "function") ? alivePlayers() : [];
      <div class="gameSinceraoSub">${escapeHtml(labels[type] || "Dinâmica")}</div>
    </div>`
 );
+
+  // Confronto obrigatório da semana (entra aqui, no bloco do Sincerão, não na convivência)
+  try {
+    state.weekState = state.weekState || {};
+    const forced = state.weekState.sinceraoForced;
+    if (forced && Number(forced.week || state.week || 1) === Number(state.week || 1)) {
+      const ag = alive.find(p => p.id === forced.aggressorId) || null;
+      const tg = alive.find(p => p.id === forced.targetId) || null;
+      if (ag && tg && ag.id !== tg.id) {
+        // texto híbrido: narração + leve ironia
+        const agN = displayName(ag);
+        const tgN = displayName(tg);
+        const line = pickOne([
+          `puxa ${tgN} no sincerão e não alivia, deixando tudo mais exposto`,
+          `cobra ${tgN} ao vivo e o clima pesa na hora`,
+          `bate de frente com ${tgN} e a casa percebe que isso não morreu`,
+          `vai direto em ${tgN} e o argumento vira pauta pra semana inteira`
+        ]);
+        sinceraoLogGame(agN, line, "neu");
+
+        // consequências diretas
+        ag.status.didSomethingThisWeek = true;
+        ag.status.hadConflictThisWeek = true;
+        ag.status.madeDecisionThisWeek = true;
+        tg.status.didSomethingThisWeek = true;
+        tg.status.hadConflictThisWeek = true;
+
+        // relação piora e alvo sobe (sem exagerar a matemática)
+        relAdd(tg.id, ag.id, -1.10);
+        bump(ag, { pop: rnd(-0.10, 0.18), alvo: 0.10 });
+        bump(tg, { pop: rnd(-0.18, 0.10), alvo: 0.26 });
+
+        try { applyNarrativeEvent({ type: 'conflict', actorId: ag.id, targetId: tg.id, round: state.week }); } catch {}
+      }
+      // consome
+      delete state.weekState.sinceraoForced;
+    }
+  } catch { /* ignora */ }
+
 
   const order = alive.slice();
   for (let i = order.length - 1; i > 0; i--) {
