@@ -206,7 +206,10 @@ const POP_VOTE = {
 
 const ARCHETYPE_POOLS = {
   perseguidor: ["Perseguido", "Mocinho", "Vítima", "Herói", "Injustiçado", "Sobrevivente"],
-  vilao: ["Vilão", "Antagonista", "Manipulador", "Cobra", "Jogador Sujo"],
+  // 😈 vilão: leitura moral (rejeição + atrito + frieza + queda de pop)
+  vilao: ["Vilão", "Vilã", "Vilãe", "Jogo Sujo", "Queimado"],
+  // 🐍 antagonista/cobra: leitura estratégica (puxa conflito, mas pode até ser admirado)
+  antagonista: ["Antagonista", "Cobra", "Manipulador", "Jogador Frio", "Articulador Sombrio"],
   planta: ["Planta", "Inexpressivo", "Invisível", "Figurante", "Encostado"],
   estrategista: ["Estrategista", "Jogador", "Cerebral", "Calculista", "Frio"],
   alivio: ["Alívio Cômico", "Bobo da Corte", "Meme", "Engraçado", "Figura"],
@@ -222,6 +225,7 @@ const ARCHETYPE_POOLS = {
 const ARCHETYPE_META = {
   perseguidor: { emoji: "🎯" },
   vilao: { emoji: "😈" },
+  antagonista: { emoji: "🐍" },
   planta: { emoji: "🪴" },
   estrategista: { emoji: "♟️" },
   alivio: { emoji: "🤡" },
@@ -232,102 +236,6 @@ const ARCHETYPE_META = {
   sabio: { emoji: "🧠" },
   caotico: { emoji: "🌪️" },
 };
-
-/* ===== Coerência editorial de arquétipos =====
-   Objetivo: evitar combinações incoerentes (ex.: Figurante + Símbolo da Temporada + Cresceu na Hora Certa).
-   1) Conflitos diretos entre famílias de arquétipos (ids do score).
-   2) Compatibilidade entre arco (bbbArc) e famílias.
-   3) Ajuste de score por "agência" (provas/poder/decisão) e por tendência (pop/atividade).
-*/
-const ARCHETYPE_CONFLICTS = {
-  // Quando um lado estiver muito alto, o outro deve perder espaço.
-  planta: ["estrategista", "justiceiro", "vilao", "caotico", "palestrinha", "gala"],
-  estrategista: ["planta"],
-  justiceiro: ["planta"],
-  sabio: ["caotico", "palestrinha"],
-  caotico: ["sabio"],
-  palestrinha: ["sabio"],
-  pipoqueiro: ["vilao", "justiceiro"], // isento vs confronto direto
-};
-
-const ARCHETYPE_ARC_BONUS = {
-  // Arc IDs de bbbArcFromHistory -> bônus/malus por família
-  redencao: { perseguidor: +10, sabio: +4, vilao: -10, planta: -6 },
-  ascensao: { estrategista: +8, perseguidor: +6, planta: -8 },
-  queda: { vilao: +6, caotico: +6, sabio: -6 },
-  estagnacao: { planta: +6, pipoqueiro: +4, estrategista: -4 },
-  montanha_russa: { caotico: +10, palestrinha: +6, sabio: -8 },
-  transformacao: { caotico: +4, estrategista: +3, planta: -3 },
-};
-
-// Para evitar "Figurante · Figurante": garante rótulos únicos na lista Top 3.
-function archLabelUniqueFor(id, seed, used) {
-  const pool = ARCHETYPE_POOLS[id] || [String(id || 'Arquétipo')];
-  // tenta algumas variações determinísticas até achar um label não repetido
-  for (let i = 0; i < Math.max(3, pool.length); i++) {
-    const label = pickDet(pool, `${seed}|u${i}`, pool[0]);
-    if (!used.has(label)) return label;
-  }
-  // fallback: adiciona sufixo para ficar único (último caso)
-  const base = pickDet(pool, String(seed || id), pool[0]);
-  let j = 2;
-  let out = base;
-  while (used.has(out) && j < 6) { out = `${base} ${j}`; j++; }
-  return out;
-}
-
-function applyArchetypeCoherence(p, wk, scores, ctx) {
-  // ctx traz sinais já calculados na semana (agência/atividade/swing/pop)
-  const agency = Number(ctx?.agency || 0);       // 0..1
-  const activityN = Number(ctx?.activityN || 0); // 0..1
-  const swingN = Number(ctx?.swingN || 0);       // 0..1
-  const popDelta = Number(ctx?.popDelta || 0);
-
-  // 1) Agência mata "planta" (mas sem zerar)
-  if (agency > 0) {
-    const down = Math.round(18 * agency + 8 * activityN);
-    scores.planta = clamp(scores.planta - down, 0, 100);
-    // agência favorece estrategista/justiceiro (dependendo do tipo)
-    scores.estrategista = clamp(scores.estrategista + Math.round(10 * agency), 0, 100);
-    if (ctx?.gaveImmunity) scores.justiceiro = clamp(scores.justiceiro + 10, 0, 100);
-  }
-
-  // 2) Oscilação grande dificilmente é "figurante"
-  if (swingN >= 0.55) {
-    scores.planta = clamp(scores.planta - Math.round(10 * (swingN - 0.5)), 0, 100);
-    scores.caotico = clamp(scores.caotico + Math.round(8 * (swingN - 0.5)), 0, 100);
-  }
-
-  // 3) Se está ganhando pop com risco, puxa para "perseguido"
-  if (popDelta > 0.25 && Number(ctx?.inParedao || 0) > 0) {
-    scores.perseguidor = clamp(scores.perseguidor + 10, 0, 100);
-    scores.planta = clamp(scores.planta - 6, 0, 100);
-  }
-
-  // 4) Bônus/malus por arco anterior (até wk-1), para refletir "arco completo"
-  // (arco do próprio wk depende do Top 3 atual, então usamos o anterior para não circular)
-  const arcId = String(ctx?.prevArcId || '');
-  const bonus = ARCHETYPE_ARC_BONUS[arcId];
-  if (bonus) {
-    for (const k of Object.keys(bonus)) {
-      if (scores[k] != null) scores[k] = clamp(Number(scores[k]) + Number(bonus[k]), 0, 100);
-    }
-  }
-
-  // 5) Conflitos: se um lado domina, reduz o outro (leve, para não "quebrar" o caos)
-  const sorted = Object.entries(scores).sort((a,b)=>Number(b[1])-Number(a[1]));
-  const topId = sorted[0]?.[0];
-  const topScore = Number(sorted[0]?.[1] || 0);
-  if (topId && topScore >= 70 && ARCHETYPE_CONFLICTS[topId]) {
-    for (const loser of ARCHETYPE_CONFLICTS[topId]) {
-      if (scores[loser] == null) continue;
-      scores[loser] = clamp(scores[loser] - Math.round((topScore - 60) * 0.35), 0, 100);
-    }
-  }
-
-  return scores;
-}
-
 
 function ensureArchetypeState(p) {
   if (!p) return;
@@ -752,8 +660,11 @@ function snapshotArchetypesForWeek(weekNumber) {
       // 🎯 Perseguido: recebe votos/indicações, vai ao paredão e (muitas vezes) cresce com isso.
       perseguidor: S(100 * (0.42 * votesRecN + 0.22 * nomN + 0.18 * inParedao + 0.14 * posDeltaN + 0.04 * (1 - leaderWin))),
 
-      // 😈 Vilão: toma decisões de jogo impopulares, tem atritos e perde pop.
-      vilao: S(100 * (0.28 * madeDecision + 0.22 * leaderWin + 0.18 * enemyN + 0.18 * negDeltaN + 0.14 * voteAgainstMajority)),
+      // 🐍 Antagonista/Cobra: articula e compra briga, mas nem sempre "queima" com o público.
+      antagonista: S(100 * (0.24 * madeDecision + 0.18 * leaderWin + 0.18 * enemyN + 0.16 * activityN + 0.14 * voteAgainstMajority + 0.10 * (1 - votesRecN))),
+
+      // 😈 Vilão: leitura moral (frieza + atrito + queda de pop). Mais raro e exige persistência.
+      vilao: S(100 * (0.26 * madeDecision + 0.18 * leaderWin + 0.20 * enemyN + 0.22 * negDeltaN + 0.14 * voteAgainstMajority)),
 
       // 🪴 Planta: baixa ação/impacto, quase não aparece e não move pop.
       planta: S(100 * (0.40 * (1 - didSomething) + 0.20 * (1 - activityN) + 0.18 * (1 - swingN) + 0.12 * (1 - votesRecN) + 0.10 * (1 - nomN))),
@@ -794,20 +705,45 @@ if (exclStreak > 0) {
   if (popDelta > 0.20) scores.perseguidor = clamp(scores.perseguidor + 6, 0, 100);
 }
 
+// ===== Vilania persistente (por edição) =====
+// Ideia: conflito pontual NÃO vira vilão. Para o rótulo "vilão" ganhar força,
+// precisa persistir (streak) e vir acompanhado de queda de popularidade.
+// Antagonista é mais comum: compra briga e articula, mas pode ser admirado.
+p.status.bbbNarrative = p.status.bbbNarrative || { history: [] };
+p.status.bbbNarrative.villainStreak = Number(p.status.bbbNarrative.villainStreak ?? 0);
+p.status.bbbNarrative.villainMaxStreak = Number(p.status.bbbNarrative.villainMaxStreak ?? 0);
+p.status.bbbNarrative.antagonistStreak = Number(p.status.bbbNarrative.antagonistStreak ?? 0);
+p.status.bbbNarrative.antagonistMaxStreak = Number(p.status.bbbNarrative.antagonistMaxStreak ?? 0);
 
+const villainGate = (
+  scores.vilao >= 62 &&
+  negDeltaN >= 0.18 &&
+  enemyN >= 0.12 &&
+  (madeDecision || leaderWin)
+);
+const antagonistGate = (
+  scores.antagonista >= 60 &&
+  enemyN >= 0.12 &&
+  (madeDecision || leaderWin || voteAgainstMajority) &&
+  // antagonista não exige queda grande de pop
+  negDeltaN <= 0.55
+);
 
-// Coerência editorial (arco completo / agência / compatibilidade)
-const prevArc = (typeof bbbArcFromHistory === "function") ? bbbArcFromHistory(p, wk - 1) : null;
-const agency = clamp((leaderWin ? 1 : 0) + (anjoWin ? 0.8 : 0) + (madeDecision ? 0.9 : 0), 0, 1);
-applyArchetypeCoherence(p, wk, scores, {
-  prevArcId: prevArc ? prevArc.id : '',
-  agency,
-  activityN,
-  swingN,
-  popDelta,
-  inParedao,
-  gaveImmunity
-});
+// atualiza streaks (com leve decaimento)
+if (villainGate) p.status.bbbNarrative.villainStreak += 1;
+else p.status.bbbNarrative.villainStreak = Math.max(0, p.status.bbbNarrative.villainStreak - 1);
+
+if (antagonistGate) p.status.bbbNarrative.antagonistStreak += 1;
+else p.status.bbbNarrative.antagonistStreak = Math.max(0, p.status.bbbNarrative.antagonistStreak - 1);
+
+p.status.bbbNarrative.villainMaxStreak = Math.max(p.status.bbbNarrative.villainMaxStreak, p.status.bbbNarrative.villainStreak);
+p.status.bbbNarrative.antagonistMaxStreak = Math.max(p.status.bbbNarrative.antagonistMaxStreak, p.status.bbbNarrative.antagonistStreak);
+
+// bônus de coerência: streak reforça leitura
+const vBonus = clamp(p.status.bbbNarrative.villainStreak, 0, 6);
+const aBonus = clamp(p.status.bbbNarrative.antagonistStreak, 0, 6);
+if (vBonus > 0) scores.vilao = clamp(scores.vilao + (4 * vBonus), 0, 100);
+if (aBonus > 0) scores.antagonista = clamp(scores.antagonista + (3 * aBonus), 0, 100);
 
 
     // top3
@@ -815,18 +751,12 @@ applyArchetypeCoherence(p, wk, scores, {
       .map(([id, v]) => ({ id, v }))
       .sort((a,b)=>b.v-a.v);
 
-    const usedLabels = new Set();
-    const top3 = top.slice(0, 3).map((x, i) => {
-      const seed = `${p.id}|${wk}|${x.id}|${i}`;
-      const label = archLabelUniqueFor(x.id, seed, usedLabels);
-      usedLabels.add(label);
-      return {
-        id: x.id,
-        score: x.v,
-        label,
-        emoji: ARCHETYPE_META[x.id]?.emoji || "🎭"
-      };
-    });
+    const top3 = top.slice(0, 3).map((x, i) => ({
+      id: x.id,
+      score: x.v,
+      label: archLabelFor(x.id, `${p.id}|${wk}|${x.id}|${i}`),
+      emoji: ARCHETYPE_META[x.id]?.emoji || "🎭"
+    }));
 
     const dom = top3[0] || { id: 'planta', score: 0, label: '—', emoji: '🎭' };
 
@@ -947,6 +877,49 @@ function computeSeasonTitles() {
     return { avg, start, end, growth, range, swing, n: vals.length };
   };
 
+  // ===== Calibração: 0–1 vilão forte por edição =====
+  // A leitura "Vilão" (moral) só deve estourar quando há persistência + queda de popularidade.
+  // O resto fica como "Antagonista" (cobra/estratégico/polêmico), que pode ter torcida.
+  const avgScoreAcrossWeeks = (p, key) => {
+    const w = weeksFor(p);
+    if (!w.length) return 0;
+    let sum = 0, n = 0;
+    for (const wk of w) {
+      const s = snapAt(p, wk);
+      const v = Number(s?.scores?.[key] ?? NaN);
+      if (!Number.isFinite(v)) continue;
+      sum += v; n += 1;
+    }
+    return n ? (sum / n) : 0;
+  };
+
+  const villainStrength = (p) => {
+    const st = p?.status?.bbbNarrative || {};
+    const maxStreak = Number(st.villainMaxStreak ?? st.villainStreak ?? 0);
+    const avgVilao = avgScoreAcrossWeeks(p, 'vilao');
+    const ps = popStats(p);
+    // Fórmula simples e robusta:
+    // - streak pesa muito (persistência)
+    // - vilão médio ao longo da temporada
+    // - crescimento de pop alto reduz força (evita "vilão querido")
+    const penalty = ps.growth > 1.2 ? 18 : (ps.growth > 0.6 ? 10 : 0);
+    return (maxStreak * 18) + (avgVilao * 0.9) - penalty;
+  };
+
+  let seasonVillainId = null;
+  let seasonVillainStrength = -Infinity;
+  for (const p of (state.players || [])) {
+    const st = p?.status?.bbbNarrative || {};
+    const maxStreak = Number(st.villainMaxStreak ?? st.villainStreak ?? 0);
+    const avgVilao = avgScoreAcrossWeeks(p, 'vilao');
+    const str = villainStrength(p);
+    if (maxStreak < 3 || avgVilao < 68) continue; // gate: exige persistência + leitura alta
+    if (str > seasonVillainStrength) { seasonVillainStrength = str; seasonVillainId = String(p.id); }
+  }
+  // Se ninguém passar o gate, a edição fica sem "vilão forte".
+
+  const isSeasonVillain = (p) => (seasonVillainId != null && String(p?.id) === String(seasonVillainId));
+
   const dominantChanges = (p) => {
     const w = weeksFor(p);
     let prev = null, changes = 0;
@@ -1056,7 +1029,15 @@ function computeSeasonTitles() {
     if (place === 2 && ps.avg >= 6.6 && ps.growth >= 1.8) return { emoji:"🥈", title:Quase, reason:"Cresceu no fim e bateu na trave." };
     if (hasIn(arc, ["queda"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Ameaça Final", reason:"Chegou forte, mas caiu na reta decisiva." };
     if (dom === "strategist" || hasIn(blend, ["Estrategista","Jogador"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Finalista Estratégico", reason:"Jogou com cabeça e quase levou." };
-    if (dom === "vilao" || hasIn(blend, ["Vilão","Antagonista","Cobra","Manipulador"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Vilão de Elite", reason:"A casa temeu. O público decidiu." };
+    // Vilão forte: no máximo 1 por edição (calibrado acima). Se não for o "vilão da edição",
+    // tratamos como antagonista/cobra (pode ter torcida).
+    if (dom === "vilao" || hasIn(blend, ["Vilão","Vilã","Vilãe","Jogo Sujo","Queimado"])) {
+      if (isSeasonVillain(p)) return { emoji: place===2 ? "🥈" : "🥉", title:"Vilão de Elite", reason:"A casa temeu. O público decidiu." };
+      return { emoji: place===2 ? "🥈" : "🥉", title:"Antagonista de Elite", reason:"Comprou brigas e ditou enredos sem virar unanimidade." };
+    }
+    if (dom === "antagonista" || hasIn(blend, ["Antagonista","Cobra","Manipulador","Frio","Sombrio"])) {
+      return { emoji: place===2 ? "🥈" : "🥉", title:"Antagonista de Elite", reason:"Comprou brigas e ditou enredos sem virar unanimidade." };
+    }
     if (dom === "perseguido" || hasIn(blend, ["Perseguido","Vítima","Injustiçado"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Finalista Resiliente", reason:"Foi alvo, resistiu e chegou até o fim." };
     if (dom === "sage" || hasIn(blend, ["Sábio","Conselheiro","Mentor"])) return { emoji: place===2 ? "🥈" : "🥉", title:"O Conselho do Pódio", reason:"Estabilidade e influência até o fim." };
     if (dom === "galamusa" || hasIn(blend, ["Galã","Musa","Crush"])) return { emoji: place===2 ? "🥈" : "🥉", title:"Coração da Temporada", reason:"Carisma e conexões levaram longe." };
@@ -1078,7 +1059,10 @@ function computeSeasonTitles() {
     if (hasIn(arc, ["explodiu no fim","ascen","reden"])) return { emoji:"🚫", title:"Sonho Interrompido", reason:"Cresceu na reta final, mas caiu na porta." };
     if (ps.avg >= 6.8) return { emoji:"🚫", title:"Queda do Favorito", reason:"Chegou como favorito e caiu no último corte." };
     if (dom === "strategist" || hasIn(blend, ["Estrategista","Jogador"])) return { emoji:"🚫", title:"Xeque-mate Antes da Final", reason:"Faltou só uma rodada para fechar a conta." };
-    if (dom === "vilao" || hasIn(blend, ["Vilão","Antagonista"])) return { emoji:"🚫", title:`${Vilo} Punid${g(p,{M:"o",F:"a",O:"e"})} na Porta`, reason:"A leitura virou no último instante." };
+    if (dom === "vilao" || hasIn(blend, ["Vilão","Vilã","Vilãe","Jogo Sujo","Queimado"])) {
+      if (isSeasonVillain(p)) return { emoji:"🚫", title:`${Vilo} Punid${g(p,{M:"o",F:"a",O:"e"})} na Porta`, reason:"A leitura virou no último instante." };
+      return { emoji:"🐍", title:"Antagonista Cortado na Porta", reason:"Virou alvo por conflito, mas não carregou a edição como vilão." };
+    }
     if (dom === "perseguido" || hasIn(blend, ["Perseguido","Injustiçado"])) return { emoji:"🚫", title:"A Grande Injustiça", reason:"Saiu quando já tinha torcida e narrativa." };
     if (hasIn(String(snap?.comboTitle||""), ["Casal","Romance"])) return { emoji:"🚫", title:"Romance Barrado", reason:"A história não chegou ao último capítulo." };
     if (dom === "comic" || hasIn(blend, ["Bobo da Corte","Meme"])) return { emoji:"🚫", title:"O Último Plot Twist", reason:"Parecia escapar sempre, até não escapar." };
@@ -1094,7 +1078,11 @@ function computeSeasonTitles() {
     const Primeiro = g(p,{M:"Primeiro",F:"Primeira",O:"Primeire"});
     const Vilo = g(p,{M:"Vilão",F:"Vilã",O:"Vilãe"});
 
-    if (dom === "vilao" || hasIn(blend, ["Vilão","Antagonista"])) return { emoji:"❌", title:"Aposta Errada", reason:`Entrou como ${Vilo} e caiu cedo.` };
+    if (dom === "vilao" || hasIn(blend, ["Vilão","Vilã","Vilãe","Jogo Sujo","Queimado"])) {
+      if (isSeasonVillain(p)) return { emoji:"❌", title:"Aposta Errada", reason:`Entrou como ${Vilo} e caiu cedo.` };
+      return { emoji:"🐍", title:"Antagonista que Queimou", reason:"Comprou briga cedo e a casa leu como risco." };
+    }
+    if (dom === "antagonista" || hasIn(blend, ["Antagonista","Cobra","Manipulador"])) return { emoji:"🐍", title:"Antagonista que Queimou", reason:"Comprou briga cedo e a casa leu como risco." };
     if (dom === "chaotic" || hasIn(blend, ["Caótico","Imprevisível"])) return { emoji:"❌", title:"Movimento Prematuro", reason:"O primeiro choque da temporada." };
     if (dom === "planta" || hasIn(blend, ["Planta","Figurante","Invisível"])) return { emoji:"❌", title:`${Primeiro} Sacrifício`, reason:"A casa escolheu o caminho mais fácil." };
     if (dom === "perseguido" || hasIn(blend, ["Perseguido","Vítima"])) return { emoji:"❌", title:"Não Teve Chance", reason:"Virou alvo antes de construir base." };
