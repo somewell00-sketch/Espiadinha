@@ -3775,22 +3775,28 @@ function resolveInitialsNickname(firstName) {
   const raw = String(firstName ?? "").trim();
   if (!raw) return "";
 
-  // pega só a primeira palavra (ex: "Ana Paula" -> "Ana")
+  // usa apenas o primeiro nome (Ana Paula → Ana)
   const base = raw.split(/\s+/)[0];
 
-  // normaliza (remove acentos) e remove caracteres que não sejam letra
+  // versão limpa só para contagem
   const clean = normalizeNameKey(base).replace(/[^a-z]/g, "");
   const len = clean.length;
   if (!len) return "";
 
   let n = 2;
-  if (len <= 3) n = 2;            // não especificado, mas mantém coerência
-  else if (len === 4 || len === 5) n = 2;
+  if (len === 4 || len === 5) n = 2;
   else if (len === 6) n = (Math.random() < 0.5 ? 2 : 3);
-  else n = (Math.random() < 0.5 ? 3 : 4);
+  else if (len >= 7) n = (Math.random() < 0.5 ? 3 : 4);
 
-  return clean.slice(0, Math.min(n, len));
+  // monta o apelido a partir do nome original
+  let nick = base.slice(0, Math.min(n, base.length));
+
+  // garante Primeira Letra Maiúscula
+  nick = nick.charAt(0).toUpperCase() + nick.slice(1);
+
+  return nick;
 }
+
 
 function resolveDisplayName(p) {
   if (!p) return "";
