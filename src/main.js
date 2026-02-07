@@ -222,13 +222,45 @@ const ARCHETYPE_POOLS = {
   caotico: ["Caótico", "Imprevisível", "Agente do Caos", "Do nada"],
 
   // ⭐ queridinho: popularidade muito alta e persistente (edição do público)
-  queridinho: ["Queridinho", "Favorito do Público", "Popstar", "Fã-clube", "Amado"],
+  queridinho: [
+    { M: "Queridinho", F: "Queridinha", O: "Queridinhe" },
+    { M: "Favorito do Público", F: "Favorita do Público", O: "Favorite do Público" },
+    { M: "Popstar", F: "Popstar", O: "Popstar" },
+    { M: "Fã-clube", F: "Fã-clube", O: "Fã-clube" },
+    { M: "Amado", F: "Amada", O: "Amade" }
+  ],
+  // ⚡ amado e odiado: pop alta + rejeição alta ao mesmo tempo (polarização)
+  amado_odiado: [
+    { M: "Amado e Odiado", F: "Amada e Odiada", O: "Amade e Odiade" },
+    "Polarizador",
+    "Divide Torcidas",
+    "Ame ou Odeie",
+    "Pauta da Semana"
+  ],
   // 🚫 rejeitado: rejeição persistente (alvo recorrente)
-  rejeitado: ["Rejeitado", "Cancelado", "Alvo do Público", "Rejeição Alta", "Queimado"],
+  rejeitado: [
+    { M: "Rejeitado", F: "Rejeitada", O: "Rejeitade" },
+    { M: "Cancelado", F: "Cancelada", O: "Cancelade" },
+    "Alvo do Público",
+    "Rejeição Alta",
+    "Queimado"
+  ],
   // 🧨 inimigo público: rivalidade com muitos adversários
-  inimigo_publico: ["Inimigo Público", "Alvo da Casa", "Persona Non Grata", "Nêmesis", "O Mais Visado"],
+  inimigo_publico: [
+    "Inimigo Público",
+    "Alvo da Casa",
+    "Persona Non Grata",
+    "Nêmesis",
+    "O Mais Visado"
+  ],
   // 💖 crush coletivo: 3+ pessoas consideram crush
-  crush_coletivo: ["Crush Coletivo", "Coração da Casa", "Desejado", "Crush Unânime", "Ídolo Romântico"],
+  crush_coletivo: [
+    "Crush Coletivo",
+    "Coração da Casa",
+    "Desejado",
+    "Crush Unânime",
+    "Ídolo Romântico"
+  ],
 };
 
 const ARCHETYPE_META = {
@@ -246,6 +278,7 @@ const ARCHETYPE_META = {
   caotico: { emoji: "🌪️" },
 
   queridinho: { emoji: "⭐" },
+  amado_odiado: { emoji: "⚡" },
   rejeitado: { emoji: "🚫" },
   inimigo_publico: { emoji: "🧨" },
   crush_coletivo: { emoji: "💖" },
@@ -257,10 +290,21 @@ function ensureArchetypeState(p) {
   p.status.archetypeWeek = p.status.archetypeWeek || {};
 }
 
-function archLabelFor(id, seed) {
+function archLabelFor(p, id, seed) {
   const pool = ARCHETYPE_POOLS[id] || [String(id || 'Arquétipo')];
   // pickDet existe no arquivo e é determinístico.
-  return pickDet(pool, String(seed || id), pool[0]);
+  const picked = pickDet(pool, String(seed || id), pool[0]);
+  // Permite itens genderizados no pool (ex.: {M:"Queridinho",F:"Queridinha",O:"Queridinhe"})
+  if (picked && typeof picked === 'object' && !Array.isArray(picked)) {
+    try {
+      return g(p, picked);
+    } catch {
+      // fallback: primeira string disponível
+      const any = picked.M || picked.F || picked.O;
+      return String(any || id || 'Arquétipo');
+    }
+  }
+  return String(picked ?? id ?? 'Arquétipo');
 }
 
 function getWeekSnap(weekNumber) {
@@ -729,6 +773,9 @@ function snapshotArchetypesForWeek(weekNumber) {
       // ⭐ Queridinho: pop muito alta e consistente (edita a leitura pública)
       queridinho: S(100 * (0.60 * popLevelN + 0.20 * soc.avg + 0.12 * friendN + 0.08 * (1 - votesRecN))),
 
+      // ⚡ Amado e Odiado: popularidade alta, mas com rejeição alta também (divide torcidas)
+      amado_odiado: S(100 * (0.38 * popLevelN + 0.32 * votesRecN + 0.20 * enemyN + 0.10 * swingN)),
+
       // 🚫 Rejeitado: recebe muitos votos e perde pop, com atrito social
       rejeitado: S(100 * (0.52 * votesRecN + 0.28 * negDeltaN + 0.20 * enemyN)),
 
@@ -791,16 +838,29 @@ if (vBonus > 0) scores.vilao = clamp(scores.vilao + (4 * vBonus), 0, 100);
 if (aBonus > 0) scores.antagonista = clamp(scores.antagonista + (3 * aBonus), 0, 100);
 
     // ===== Gates dos novos arquétipos =====
+    // Rejeição em "contagem bruta" (pedido: 4 ou mais)
+    const rejeicaoBrutaAlta = (votesTo >= 4);
+
     const isQueridinho = (p.status.popHighStreak >= 3);
     const isRejeitado = (p.status.rejectionStreak >= 3);
+    const isAmadoOdiado = (isQueridinho && (rejeicaoBrutaAlta || isRejeitado));
     const isInimigoPublico = (Number(soc.rivals ?? 0) >= 3);
     const isCrushColetivo = (Number(soc.crush ?? 0) >= 3);
 
     // Bônus e travas (corrige "pop 9–10 virar planta/encostado")
-    if (isQueridinho) {
-  scores.queridinho = clamp(Math.max(scores.queridinho, 78) + 18, 0, 100);
-  scores.planta = Math.min(scores.planta, 35);
-}
+    // Se é "amado e odiado", não pode ser lido como queridinho puro.
+    if (isAmadoOdiado) {
+      scores.amado_odiado = clamp(Math.max(scores.amado_odiado, 76) + 16, 0, 100);
+      // empurra leitura de polarização, não de "planta"
+      scores.planta = Math.min(scores.planta, 38);
+      scores.queridinho = Math.min(scores.queridinho, 68);
+      // tende a reforçar vilão/palestrinha quando divide torcidas
+      scores.palestrinha = clamp(scores.palestrinha + 6, 0, 100);
+      scores.vilao = clamp(scores.vilao + 4, 0, 100);
+    } else if (isQueridinho) {
+      scores.queridinho = clamp(Math.max(scores.queridinho, 78) + 18, 0, 100);
+      scores.planta = Math.min(scores.planta, 35);
+    }
     if (isRejeitado) {
   scores.rejeitado = clamp(Math.max(scores.rejeitado, 72) + 14, 0, 100);
   // reforça leituras de isolamento negativo / alvo recorrente
@@ -820,13 +880,17 @@ if (aBonus > 0) scores.antagonista = clamp(scores.antagonista + (3 * aBonus), 0,
     // Persistência de favorito: streak de queridinho + Top 2 da semana => favorito permanente
     p.status.favoritePermanent = !!p.status.favoritePermanent;
     const isTop2Pop = top2PopIds.includes(String(p.id));
-    if (isQueridinho && isTop2Pop) {
-  p.status.favoritePermanent = true;
-}
+    // Favorito permanente: só se for queridinho "limpo" (sem rejeição alta)
+    if (isQueridinho && isTop2Pop && !isAmadoOdiado && !rejeicaoBrutaAlta) {
+      p.status.favoritePermanent = true;
+    }
+    // Se virou polarizador, nunca marca como favorito permanente
+    if (isAmadoOdiado) p.status.favoritePermanent = false;
+
     if (p.status.favoritePermanent) {
-  scores.queridinho = clamp(scores.queridinho + 10, 0, 100);
-  scores.planta = Math.min(scores.planta, 25);
-}
+      scores.queridinho = clamp(scores.queridinho + 10, 0, 100);
+      scores.planta = Math.min(scores.planta, 25);
+    }
 
 
     // top3
@@ -837,7 +901,7 @@ if (aBonus > 0) scores.antagonista = clamp(scores.antagonista + (3 * aBonus), 0,
     const top3 = top.slice(0, 3).map((x, i) => ({
       id: x.id,
       score: x.v,
-      label: archLabelFor(x.id, `${p.id}|${wk}|${x.id}|${i}`),
+      label: archLabelFor(p, x.id, `${p.id}|${wk}|${x.id}|${i}`),
       emoji: ARCHETYPE_META[x.id]?.emoji || "🎭"
     }));
 
