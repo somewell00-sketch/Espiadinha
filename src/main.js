@@ -2144,29 +2144,24 @@ function computeSeasonTitles() {
   // Títulos de arco narrativo: pools em português + seleção determinística (variedade sem ficar aleatório a cada render)
   const ARC_TITLE_POOLS = {
     survivor: [
-      "O Resistente",
+      "Sobrevivente do Caos",
       "Sempre por um Fio",
-      "A Fênix do Jogo",
+      "O Resistente",
       "Escapista",
-      "Sobreviveu no Detalhe",
-      "O Indestrutível",
-      "O Que Nunca Cai"
+      "Sobreviveu no Detalhe"
     ],
     strategist: [
-      "O Articulador",
+      "Articulador Invisível",
       "Xadrezista",
-      "Jogando nas Sombras",
       "Mente do Jogo",
-      "O Arquiteto do Jogo",
-      "O Que Puxa os Fios"
+      "Narrativa Forçada",
+      "Protagonismo em Saturação"
     ],
     villain: [
-      "O Vilão da Temporada",
+      "Campo de Batalha",
+      "Desgaste por Embate",
       "Figura Polêmica",
-      "Jogando com Fogo",
-      "O Queimado",
-      "Jogo Sujo",
-      "Sem Medo do Cancelamento"
+      "Jogando com Fogo"
     ],
     comp: [
       "Trator",
@@ -2194,10 +2189,16 @@ function computeSeasonTitles() {
       "O Nome da Torcida"
     ],
     fav_flash: [
+      "Fenômeno de Momento",
+      "Hype sem Continuidade",
+      "Explosão Passageira",
+      "Torcida Volátil"
+    ],
+    power_flash: [
       "Vitórias sem Capital",
-      "Hype do Dia",
-      "Assunto do Twitter",
-      "Brilho Passageiro"
+      "Domínio Relâmpago",
+      "Poder sem Lastro",
+      "Autoridade de Momento"
     ],
     fav_late: [
       "Virada Popular",
@@ -2331,6 +2332,82 @@ function computeSeasonTitles() {
     ]
   };
 
+
+  // Escrita editorial dos arcos (sem o conector "também"): 1 lead interpretativo + 1 support ancorado no jogo
+  const ARC_LEADS = {
+    power: [
+      "Construiu força rapidamente, mas não conseguiu sustentá-la ao longo da temporada.",
+      "Impressionou pelo desempenho, sem transformar isso em domínio contínuo.",
+      "Teve impacto imediato no jogo, sem consolidar controle."
+    ],
+    popularity: [
+      "Chamou atenção em um recorte específico da temporada, sem sustentar protagonismo.",
+      "Teve visibilidade intensa, porém concentrada.",
+      "A leitura sobre ele oscilou sem se firmar."
+    ],
+    exposure: [
+      "Assumiu centralidade demais e pagou o preço por isso.",
+      "Tentou conduzir a narrativa do jogo.",
+      "A exposição constante acabou se tornando um problema."
+    ],
+    conflict: [
+      "Teve a trajetória marcada por atritos constantes.",
+      "Viveu o jogo em clima de confronto.",
+      "O conflito acabou se tornando parte central da sua leitura."
+    ],
+    survival: [
+      "Passou pela temporada sob pressão recorrente.",
+      "O jogo se desenrolou em situação constante de risco.",
+      "A permanência exigiu resistência contínua."
+    ],
+    fade: [
+      "Foi perdendo espaço ao longo da temporada.",
+      "Outras narrativas ganharam força ao seu redor.",
+      "Terminou o jogo mais ausente do que central."
+    ],
+    social: [
+      "Construiu caminho pelas relações e pela leitura da casa.",
+      "Soube circular e se adaptar ao ambiente.",
+      "Ganhou espaço pela conexão com as pessoas."
+    ]
+  };
+
+  const ARC_SUPPORTS = {
+    wins: [
+      "As vitórias iniciais geraram impacto, mas não blindagem.",
+      "Mesmo vencendo provas, a influência não se manteve.",
+      "O desempenho criou respeito sem proteção duradoura."
+    ],
+    social: [
+      "A articulação social não acompanhou o restante do jogo.",
+      "A falta de sustentação coletiva limitou o alcance das jogadas.",
+      "As relações não se consolidaram o suficiente."
+    ],
+    conflict: [
+      "O atrito constante minou alianças possíveis.",
+      "Os embates sucessivos geraram desgaste.",
+      "O confronto recorrente isolou sua posição."
+    ],
+    risk: [
+      "Os riscos repetidos deixaram pouca margem para erro.",
+      "A pressão acumulada moldou a trajetória.",
+      "Cada semana exigiu sobrevivência no detalhe."
+    ],
+    exposure: [
+      "O excesso de justificativas enfraqueceu a narrativa.",
+      "A centralidade cobrou seu preço.",
+      "A tentativa de controle virou desgaste."
+    ],
+    fade: [
+      "Aos poucos, deixou de ser referência no jogo.",
+      "Terminou sem protagonismo nos momentos finais.",
+      "A presença foi se diluindo com o tempo."
+    ]
+  };
+
+  const pickArcLine = (arr, seed, fallback) => pickDet(arr, seed, fallback);
+
+
   const hashStr = (str) => {
     // hash simples e estável (djb2)
     let h = 5381;
@@ -2344,7 +2421,6 @@ function computeSeasonTitles() {
     const idx = hashStr(seed) % arr.length;
     return arr[idx];
   };
-
   const pickArcTitle = (p, totalRounds) => {
     const n = p?.narrative || {};
     const rep = n.reputation || {};
@@ -2352,66 +2428,99 @@ function computeSeasonTitles() {
     const stats = n.stats || {};
     const id = String(p?.id ?? '');
 
-    // sinais fortes fora de reputação: ⭐ torcida, planta e rejeição
+    const score = (k) => Number(rep?.[k] ?? 0);
+
+    // sinais especiais
     const favKind = (typeof favoriteKindFromHistory === 'function') ? favoriteKindFromHistory(p, totalRounds) : null;
     const isPlant = !!(p?.status?.planta && Number(p?.status?.plantStreak ?? 0) >= 2);
     const rejectionPct = Number(stats?.rejectionPeak ?? NaN);
 
-    const score = (k) => Number(rep?.[k] ?? 0);
+    const hasWinStreak = Number(n?.streaks?.win ?? 0) >= 2;
+    const hasDangerStreak = Number(n?.streaks?.danger ?? 0) >= 2;
+    const betrayals = Number(stats?.betrayalsDone ?? 0);
 
-    // Eixos (prioridade pelo impacto narrativo)
-    const axes = [];
+    // eixos "macro" (para texto)
+    const hasComp = (score('compBeast') >= 7) || hasWinStreak;
+    const hasSurvival = (score('underdog') >= 7) || Number(themes?.survivor?.score ?? 0) >= 2 || hasDangerStreak;
+    const hasStrategy = (score('strategist') >= 7);
+    const hasSocial = (score('social') >= 7);
+    const hasConflict = (score('villain') >= 7) || Number(themes?.collapse?.score ?? 0) >= 2 || Number(themes?.chaos?.score ?? 0) >= 2;
+    const isIsolated = Number(themes?.lone_wolf?.score ?? 0) >= 2;
 
-    // (0) arcos mais "especiais" (aparecem pouco, mas quando aparecem definem tudo)
-    if (Number.isFinite(rejectionPct) && rejectionPct >= 55) axes.push('rejected');
-    if (favKind) axes.push(favKind);
-    if (isPlant) axes.push('plant');
+    // ===== Escolha de título (prioridade: específico > genérico) =====
+    let main = 'neutral';
 
-    if (score('underdog') >= 7 || Number(themes?.survivor?.score ?? 0) >= 2 || Number(n?.streaks?.danger ?? 0) >= 2) axes.push('survivor');
-    if (score('social') >= 7) axes.push('social');
-    if (score('compBeast') >= 7 || Number(n?.streaks?.win ?? 0) >= 2) axes.push('comp');
-    if (score('strategist') >= 7) axes.push('strategist');
-    if (score('villain') >= 7 || Number(themes?.collapse?.score ?? 0) >= 2) axes.push('villain');
-    if (Number(themes?.lone_wolf?.score ?? 0) >= 2) axes.push('isolated');
-    if (Number(themes?.chaos?.score ?? 0) >= 2) axes.push('chaos');
+    if (Number.isFinite(rejectionPct) && rejectionPct >= 55) main = 'rejected';
+    else if (isPlant) main = 'plant';
+    else if (favKind) main = favKind;
 
-    // fallback: pilar mais alto (entre os 6 básicos)
-    if (!axes.length) {
-      const pillars = [
-        { id: 'strategist', v: score('strategist') },
-        { id: 'underdog', v: score('underdog') },
-        { id: 'compBeast', v: score('compBeast') },
-        { id: 'villain', v: score('villain') },
-        { id: 'loyal', v: score('loyal') },
-        { id: 'social', v: score('social') }
-      ].sort((a,b)=>b.v-a.v);
-      const top = pillars[0]?.id;
-      axes.push(top === 'compBeast' ? 'comp' : (top === 'underdog' ? 'survivor' : (top || 'neutral')));
+    // título editorial mais específico quando há combinação clara
+    // (1) pico de torcida + vitórias => não é "brilho", é poder mal convertido
+    if (main === 'fav_flash' && hasComp) main = 'power_flash';
+    // (2) pico de torcida + pressão constante => sobrevivência define mais que hype
+    if (main === 'fav_flash' && !hasComp && hasSurvival) main = 'survival';
+    // (3) favoritismo longo + muito conflito => vira polarização
+    if (main === 'fav_long' && hasConflict) main = 'fav_mixed';
+
+    // se não veio de torcida/planta/rejeição, cai nos pilares
+    if (main === 'neutral') {
+      if (hasSurvival) main = 'survival';
+      else if (hasComp) main = 'comp';
+      else if (hasStrategy) main = 'strategist';
+      else if (hasConflict) main = 'villain';
+      else if (hasSocial) main = 'social';
+      else if (isIsolated) main = 'isolated';
+      else if (Number(themes?.chaos?.score ?? 0) >= 2) main = 'chaos';
     }
 
-    const main = axes[0] || 'neutral';
-
-    // Modificadores (subtítulo) — só se acrescentar algo claro
+    // secundário para suportar o texto (2º eixo, sem o conector "também")
     const mods = [];
-    if (main !== 'comp' && (score('compBeast') >= 6 || Number(n?.streaks?.win ?? 0) >= 2)) mods.push('comp');
-    if (main !== 'survivor' && (score('underdog') >= 6 || Number(n?.streaks?.danger ?? 0) >= 2)) mods.push('survivor');
-    if (main !== 'villain' && (score('villain') >= 6 || Number(stats?.betrayalsDone ?? 0) >= 2)) mods.push('villain');
-    if (main !== 'strategist' && (score('strategist') >= 6)) mods.push('strategist');
-    if (main !== 'social' && (score('social') >= 6)) mods.push('social');
-    if (Number(themes?.lone_wolf?.score ?? 0) >= 2) mods.push('isolated');
+    if (main !== 'comp' && hasComp) mods.push('comp');
+    if (main !== 'survival' && hasSurvival) mods.push('survival');
+    if (main !== 'villain' && hasConflict) mods.push('villain');
+    if (main !== 'strategist' && hasStrategy) mods.push('strategist');
+    if (main !== 'social' && hasSocial) mods.push('social');
+    if (isIsolated) mods.push('isolated');
 
-    // Escolhe um modificador "mais diferente" do eixo principal
     const secondary = mods.find(m => m && m !== main) || null;
 
+    // ===== Texto (lead + support) =====
+    const leadCat = (() => {
+      if (main === 'rejected') return 'conflict';
+      if (main === 'plant') return 'fade';
+      if (main === 'fav_long' || main === 'fav_flash' || main === 'fav_late' || main === 'fav_fallen' || main === 'fav_mixed') return 'popularity';
+      if (main === 'power_flash') return 'power';
+      if (main === 'comp') return 'power';
+      if (main === 'survival') return 'survival';
+      if (main === 'strategist') return 'exposure';
+      if (main === 'social') return 'social';
+      if (main === 'villain' || main === 'chaos') return 'conflict';
+      if (main === 'isolated') return 'fade';
+      return 'popularity';
+    })();
+
+    const supportCat = (() => {
+      if (secondary === 'comp') return 'wins';
+      if (secondary === 'survival') return 'risk';
+      if (secondary === 'villain' || secondary === 'chaos') return 'conflict';
+      if (secondary === 'strategist') return 'exposure';
+      if (secondary === 'social') return 'social';
+      if (main === 'comp') return 'wins';
+      if (main === 'survival') return 'risk';
+      if (main === 'villain') return 'conflict';
+      if (main === 'plant') return 'fade';
+      return 'social';
+    })();
+
     const title = pickDet(ARC_TITLE_POOLS[main] || ARC_TITLE_POOLS.neutral, `${id}|${main}|title`, "Figura Imprevisível");
-    const baseSub = pickDet(ARC_SUBTITLE_POOLS[main] || ARC_SUBTITLE_POOLS.neutral, `${id}|${main}|subtitle`, "teve uma trajetória com picos pontuais");
-    const secSub = secondary
-      ? pickDet(ARC_SUBTITLE_POOLS[secondary] || ARC_SUBTITLE_POOLS.neutral, `${id}|${main}|${secondary}|subtitle`, '')
-      : '';
+    const lead = pickArcLine(ARC_LEADS[leadCat] || ARC_LEADS.popularity, `${id}|${main}|lead`, "Teve uma trajetória marcante, com altos e baixos.");
+    const support = pickArcLine(ARC_SUPPORTS[supportCat] || ARC_SUPPORTS.social, `${id}|${main}|support`, "O jogo foi se desenhando por escolhas e consequências.");
 
-    const subtitle = secSub ? `${baseSub}. Também: ${secSub}.` : `${baseSub}.`;
+    const subtitle = `${lead} ${support}`;
 
-    return { title, subtitle: subtitle || null, axis: main, secondary };
+    return { title, subtitle, axis: main, secondary };
+  };
+
   };
 
   function buildPlayerArc(playerId, totalRounds) {
