@@ -2512,7 +2512,22 @@ function computeSeasonTitles() {
       return 'social';
     })();
 
-    const title = pickDet(ARC_TITLE_POOLS[main] || ARC_TITLE_POOLS.neutral, `${id}|${main}|title`, "Figura Imprevisível");
+    
+    let title = pickDet(ARC_TITLE_POOLS[main] || ARC_TITLE_POOLS.neutral, `${id}|${main}|title`, "Figura Imprevisível");
+
+    // Bloqueio editorial: títulos de fandom não podem coexistir com vitórias/desempenho
+    const FANDOM_TITLES = ["Fandom Intermitente", "Amado e Odiado"];
+    const forbidsFandom = (supportCat === 'wins' || leadCat === 'power');
+
+    if (forbidsFandom && FANDOM_TITLES.includes(title)) {
+      const safePool = (ARC_TITLE_POOLS.power_flash || []).concat(
+        ARC_TITLE_POOLS.comp || [],
+        ARC_TITLE_POOLS.neutral || []
+      ).filter(t => !FANDOM_TITLES.includes(t));
+
+      title = pickDet(safePool, `${id}|${main}|retitle`, title);
+    }
+
     const lead = pickArcLine(ARC_LEADS[leadCat] || ARC_LEADS.popularity, `${id}|${main}|lead`, "Teve uma trajetória marcante, com altos e baixos.");
     const support = pickArcLine(ARC_SUPPORTS[supportCat] || ARC_SUPPORTS.social, `${id}|${main}|support`, "O jogo foi se desenhando por escolhas e consequências.");
 
@@ -2521,7 +2536,7 @@ function computeSeasonTitles() {
     return { title, subtitle, axis: main, secondary };
   };
 
-
+  };
 
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
