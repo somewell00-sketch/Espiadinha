@@ -10740,23 +10740,87 @@ const html = tweets.map((x) => `
       : '';
 
     // --- Leitura da semana (micro) ---
+    // Estrutura fixa (sempre): Leitura da semana → Personagem → Descrição.
+    // - Se houver combo, ele vira o Personagem.
+    // - Se não houver, o Personagem deriva do arquétipo dominante.
     let editorialHtml = '';
     if (hasSnap) {
       const dom = snap.top3[0] || {};
-      const domTitle = `${dom.emoji || '🎭'} ${dom.label || dom.id || 'Arquétipo'}`;
+
+      function weeklyPersonaFromDominant(domId, domLabel) {
+        const id = String(domId || '').trim();
+        // Nome do "personagem semanal" (pode ser genderizado)
+        const title = (() => {
+          switch (id) {
+            case 'queridinho': return g(p, { M: 'O Queridinho da Semana', F: 'A Queridinha da Semana', O: 'O Queridinhe da Semana' });
+            case 'amado_odiado': return g(p, { M: 'A Pauta da Semana', F: 'A Pauta da Semana', O: 'A Pauta da Semana' });
+            case 'rejeitado': return g(p, { M: 'O Alvo da Semana', F: 'A Alvo da Semana', O: 'O Alvo da Semana' });
+            case 'inimigo_publico': return g(p, { M: 'O Inimigo Público', F: 'A Inimiga Pública', O: 'O Inimigo Público' });
+            case 'crush_coletivo': return g(p, { M: 'O Crush da Casa', F: 'A Crush da Casa', O: 'O Crush da Casa' });
+            case 'vilao': return g(p, { M: 'O Vilão da Semana', F: 'A Vilã da Semana', O: 'O Vilão da Semana' });
+            case 'antagonista': return g(p, { M: 'O Antagonista', F: 'A Antagonista', O: 'O Antagonista' });
+            case 'perseguidor': return g(p, { M: 'O Caçador de Alvos', F: 'A Caçadora de Alvos', O: 'O Caçador de Alvos' });
+            case 'planta': return g(p, { M: 'A Planta da Semana', F: 'A Planta da Semana', O: 'A Planta da Semana' });
+            case 'estrategista': return g(p, { M: 'O Xadrez da Casa', F: 'O Xadrez da Casa', O: 'O Xadrez da Casa' });
+            case 'alivio': return g(p, { M: 'O Alívio do Episódio', F: 'O Alívio do Episódio', O: 'O Alívio do Episódio' });
+            case 'palestrinha': return g(p, { M: 'O Comentador da Casa', F: 'A Comentadora da Casa', O: 'O Comentador da Casa' });
+            case 'pipoqueiro': return g(p, { M: 'O Pipoqueiro', F: 'A Pipoqueira', O: 'O Pipoqueire' });
+            case 'justiceiro': return g(p, { M: 'O Juiz da Casa', F: 'A Juíza da Casa', O: 'O Juiz da Casa' });
+            case 'sabio': return g(p, { M: 'O Cérebro', F: 'O Cérebro', O: 'O Cérebro' });
+            case 'caotico': return g(p, { M: 'O Caos', F: 'O Caos', O: 'O Caos' });
+            case 'gala': return g(p, { M: 'O Galã do Episódio', F: 'A Galã do Episódio', O: 'O Galã do Episódio' });
+            default:
+              // fallback: usa o rótulo já genderizado do arquétipo (melhor do que vazio)
+              return String(domLabel || id || 'Personagem');
+          }
+        })();
+
+        const desc = (() => {
+          switch (id) {
+            case 'queridinho': return 'Em alta contínua, com proteção natural da torcida.';
+            case 'amado_odiado': return 'Popular e controverso ao mesmo tempo. A casa e o público se dividem.';
+            case 'rejeitado': return 'Leitura de isolamento negativo e alvo recorrente. Qualquer erro vira munição.';
+            case 'inimigo_publico': return 'Muitos adversários ao mesmo tempo. Vira referência do conflito da casa.';
+            case 'crush_coletivo': return 'Magnetismo social e atenção romântica. Afeta alianças e votos.';
+            case 'vilao': return 'Movimenta o jogo com atrito. Ganha espaço, mas paga o preço na imagem.';
+            case 'antagonista': return 'Compra briga, provoca reações e força reposicionamentos na casa.';
+            case 'perseguidor': return 'Mira definida e insistência estratégica. Pressiona até virar prioridade de voto.';
+            case 'planta': return 'Presença baixa e poucas ações marcantes na semana.';
+            case 'estrategista': return 'Leitura fria e calculada. Cada passo parece planejado.';
+            case 'alivio': return 'Querido e leve, mas com risco de não ser levado a sério no jogo.';
+            case 'palestrinha': return 'Assume o papel de voz moral ou analista. Pode irritar ou convencer.';
+            case 'pipoqueiro': return 'Oscila, evita se comprometer e muda de lado quando convém.';
+            case 'justiceiro': return 'Age por senso de justiça e cobra coerência dos outros.';
+            case 'sabio': return 'Observa, entende o clima e entrega leitura de jogo com precisão.';
+            case 'caotico': return 'Imprevisível, intensifica a semana e espalha efeito dominó.';
+            case 'gala': return 'Apelo romântico e presença forte em cenas de afeto/ship.';
+            default: return '';
+          }
+        })();
+
+        return { title, desc };
+      }
 
       // Micro: contextualiza a semana sem repetir arco e sem reembalar o Top 3.
+      const domTitle = `${dom.emoji || '🎭'} ${dom.label || dom.id || 'Arquétipo'}`;
       const comboTitle = snap.comboTitle ? `${snap.comboEmoji || '🎭'} ${snap.comboTitle}` : '';
       const comboSub = snap.comboSubtitle || '';
       const duplaLine = snap.duplaWithId ? `${snap.duplaEmoji || '💞'} Dupla com ${snap.duplaWithName || '—'}` : '';
 
+      const persona = comboTitle
+        ? { title: comboTitle, desc: comboSub }
+        : (() => {
+            const out = weeklyPersonaFromDominant(dom.id, dom.label);
+            const em = dom.emoji || '🎭';
+            return { title: `${em} ${out.title}`, desc: out.desc };
+          })();
+
       editorialHtml = `
         <div style="margin-top:12px;">
-          <div class="small" style="font-weight:900;">Leitura da semana (semana ${wk})</div>
-          <div class="small" style="margin-top:6px; opacity:.9;">Dominante: <strong>${escapeHtml(domTitle)}</strong></div>
-          ${comboTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Personagem</div>
-            <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(comboTitle)}</div>
-            ${comboSub ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(comboSub)}</div>` : ''}` : ''}
+          <div class="small" style="font-weight:900;">Leitura da semana</div>
+          <div class="small" style="margin-top:8px; font-weight:900;">Personagem</div>
+          <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(persona.title || domTitle)}</div>
+          ${persona.desc ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(persona.desc)}</div>` : ''}
           ${duplaLine ? `<div class="small" style="margin-top:6px; opacity:.92;">${escapeHtml(duplaLine)}</div>` : ''}
           <div class="small" style="margin-top:10px; opacity:.72;">Obs: leitura automática do simulador e pode variar semanalmente.</div>
         </div>
