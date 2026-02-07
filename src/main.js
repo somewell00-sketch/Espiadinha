@@ -8508,9 +8508,9 @@ function doIndica() {
     const tally = new Map();
 
     // ===== VOTO EM BLOCOS (médio): quase sempre 2 blocos claros, mas alguns votam sozinhos =====
-    const PROB_FOLLOW_BLOCK = 0.78;
-    const PROB_SOLO_BASE = 0.22;
-    const REL_MIN_JOIN = 0.35;
+    const PROB_FOLLOW_BLOCK = 0.92;
+    const PROB_SOLO_BASE = 0.08;
+    const REL_MIN_JOIN = 0.20;
 
     const bf = state.weekState?.bigFone || {};
     const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
