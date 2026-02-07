@@ -8481,7 +8481,7 @@ function doIndica() {
       const threat = c.attrs.provas * 0.45 + c.attrs.estrategia * 0.35 + c.status.pop * 0.5;
       const r = relGet(voter.id, c.id);
       const relShield = r * 0.45;
-      const noise = rnd(-1.2, 1.2);
+      const noise = rnd(-0.3, 0.3);
       const score = (dislike - shield) * 0.8 + threat * 0.35 - relShield + noise;
       return { item: c, w: clamp(score + 5, 0.2, 30) };
     });
@@ -8510,7 +8510,7 @@ function doIndica() {
     // ===== VOTO EM BLOCOS (médio): quase sempre 2 blocos claros, mas alguns votam sozinhos =====
     const PROB_FOLLOW_BLOCK = 0.92;
     const PROB_SOLO_BASE = 0.08;
-    const REL_MIN_JOIN = 0.20;
+    const REL_MIN_JOIN = 0.10;
 
     const bf = state.weekState?.bigFone || {};
     const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
