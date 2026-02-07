@@ -3537,11 +3537,89 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
     return p;
   }
 
-  const FIRST_NAMES = {
-    M: ["João","Lucas","Pedro","Gabriel","Rafael","Matheus", "Cosmo", "Cosme","Felipe","Bruno","Diego", "Raimundo", "André","Thiago","Victor","Daniel","Eduardo","Caio","Henrique","Guilherme","Leonardo","Marcos","Igor","Vinícius","Renan","Alex","Fábio","Samuel","Arthur","Murilo","Rodrigo","Leandro","Cristiano","Douglas","Jefferson","Alan","Wesley","Otávio","Nicolas","Davi","Ramon","Yuri","Heitor","Bernardo","Luan","Kauã","Enzo","Ícaro","Apolo", "Bento", "Caleb", "Dante", "Elias", "Fausto", "Gael", "Hélio", "Isaac", "Jonas", "Kael", "Levi", "Mael", "Noah", "Otto", "Pietro", "Quirino", "Ravi", "Silas", "Téo", "Uriel", "Valentim", "Xavier", "Zion", "Thales", "Dom", "Zeca", "Iago", "Kenji", "Malik", "Amir", "Siddhartha", "Bjorn", "Lars", "Dimitri", "Mateo", "Kwan", "Zayn", "Otto", "Hugo", "Estevão", "Zoran", "Akar", "Thorfinn", "Soren", "Milan", "Klaus", "Kleber", "Jean", "Alberto", "Maximiliano", "Gilberto", "Pyong", "Hadson", "Nizam", "Luigi", "Maycon", "Junior", "Elieser", "Jonas", "Adrilles", "Cézar", "Ilmar", "Mahmoud", "Alistair", "Viggo", "Soren", "Kenji", "Malik", "Zayn", "Dimitri", "Lars", "Hamza", "Hiroshi" ],
-    F: ["Maria","Ana","Ana Paula","Ana Clara","Ana Maria","Edvânia", "Leidiane", "Josefa","Raimunda", "Beatriz","Juliana","Mariana","Camila","Fernanda","Gabriela","Larissa","Renata","Patrícia","Daniela","Carolina","Aline","Bruna","Natália","Vanessa","Paula","Jéssica","Priscila","Simone","Adriana","Flávia","Bianca","Tatiane","Luana","Raquel","Débora","Michele","Sandra","Elisa","Helena","Sofia","Clara","Laura","Amanda","Isabela","Letícia","Joana","Rita","Lúcia","Márcia","Tereza","Milena","Yara", "Aurora", "Bela", "Cecília", "Dora", "Eloá", "Flora", "Gaia", "Hilda", "Íris", "Jade", "Kiara", "Luna", "Maya", "Nina", "Olívia", "Pérola", "Quitéria", "Rosa", "Soraia", "Tarsila", "Ursula", "Valentina", "Ximena", "Zoe", "Aisha", "Malika", "Yasmin", "Inez", "Maite", "Nala", "Zahra", "Araci", "Indira", "Kira", "Amélie", "Svetlana", "Yoko", "Freya", "Astrid", "Elena", "Zuleica", "Ayana", "Selene", "Dafne", "Ingrid", "Amara", "Sabrina", "Grazielli", "Iris", "Ieda", "Emilly", "Vivian", "Gleici", "Thelma", "Juliette", "Karoline", "Giovanna", "Alane", "Deniziane", "Raquele", "Wanessa", "Yasmin", "Domitila", "Kamilla", "Andressa", "Fabiana", "Anamara", "Francine", "Gyselle", "Amélie", "Aisha", "Svetlana", "Yoko", "Ingrid", "Zahra", "Freya", "Indira", "Chiara", "Nala"],
-    O: ["Alex","Ariel","Luca","Noa","Dani","Sam","Chris","Kim","Taylor","Ariel", "Robin", "Morgan", "Jordan", "Casey", "Sky", "Charlie", "Dakota", "Sasha", "Ren", "Mika", "Manu", "Val", "Jundi", "Derya", "Bia", "Ali", "Guri", "Lumi", "Jade", "River", "Phoenix", "Sol", "Blue", "Íris", "Paz", "Zion", "Noam", "Arin", "Kiran", "Akira"]
-  };
+ const FIRST_NAMES = {
+  M: [
+    "João","Lucas","Pedro","Gabriel","Rafael","Matheus","Cosmo","Cosme","Felipe",
+    "Bruno","Diego","Raimundo","André","Thiago","Victor","Daniel","Eduardo","Caio",
+    "Henrique","Guilherme","Leonardo","Marcos","Igor","Vinícius","Renan","Alex",
+    "Fábio","Samuel","Arthur","Murilo","Rodrigo","Leandro","Cristiano","Douglas",
+    "Jefferson","Alan",  "João","Lucas","Pedro","Gabriel","Rafael","Matheus","Cosmo","Cosme","Felipe",
+    "Bruno","Diego","Raimundo","André","Thiago","Victor","Daniel","Eduardo","Caio",
+    "Henrique","Guilherme","Leonardo","Marcos","Igor","Vinícius","Renan","Alex",
+    "Fábio","Samuel","Arthur","Murilo","Rodrigo","Leandro","Cristiano","Douglas",
+    "Jefferson","Alan", "Wesley","Otávio","Nicolas","Davi","Ramon","Yuri","Heitor",
+    "Bernardo","Luan","Kauã","Enzo","Ícaro","Apolo","Bento","Caleb","Dante","Elias",
+    "Fausto","Gael","Hélio","Isaac","Jonas","Kael","Levi","Mael","Noah","Otto",
+    "Pietro","Quirino","Ravi","Silas","Téo","Uriel","Valentim","Xavier","Zion",
+    "Thales","Dom","Zeca","Iago","Kenji","Malik","Amir","Siddhartha","Bjorn","Lars",
+    "Dimitri","Mateo","Kwan","Zayn","Hugo","Estevão","Zoran","Akar","Thorfinn",
+    "Soren","Milan","Klaus","Kleber","Jean","Alberto","Maximiliano","Gilberto",
+    "Pyong","Hadson","Nizam","Luigi","Maycon","Junior","Elieser","Adrilles",
+    "Cézar","Ilmar","Mahmoud","Alistair","Viggo","Hamza","Hiroshi","Antônio","José",
+    "Francisco","Paulo","Ricardo","Fernando","Marcelo","Gustavo","Luiz","Manoel",
+    "Roberto","Cláudio","Maurício","Sérgio","Alexandre","Benício","Joaquim",
+    "Lorenzo","Augusto","Breno","Caetano","Ciro","Danilo","Denis","Erick","Everton",
+    "Fabrício","Frederico","Geraldo","Hudson","Júlio","Lázaro","Luciano","Márcio",
+    "Mário","Natan","Nelson","Orlando","Patrício","Renato","Rogério","Ronaldo",
+    "Sandro","Tarcísio","Valter","Wagner","Waldir","Wilson","Yago",  "Ademir","Ailton","Airton","Aldair","Aloísio","Amaro","Anselmo","Ari",
+  "Arnaldo","Baltazar","Benito","Cassiano","Cícero","Djalma","Edivaldo",
+  "Edmilson","Elias","Ezequiel","Genival","Getúlio","Ismael","Ivair","Janderson",
+  "Jeferson","Joilson","Josué","Laércio","Moacir","Nilson","Odair","Osmar",
+  "Reginaldo","Rivaldo","Sebastião","Teobaldo","Ubirajara","Valdir","Vanderlei",
+  "Washington","Wilton","Zelito", "Adryan","Andrey","Brayan","Cleyton","Deivid","Dhiego",
+  "Edyson","Elivelton","Everton","Hendrick","Jhonatan",
+  "Jhony","Kleber","Maicon","Maycon","Rayan","Weslley",
+  "Willian","Ygor"
+  ],
+
+  F: [
+    "Maria","Ana","Ana Paula","Ana Clara","Ana Maria","Edvânia","Leidiane",
+    "Josefa","Raimunda","Beatriz","Juliana","Mariana","Camila","Fernanda",
+    "Gabriela","Larissa","Renata","Patrícia","Daniela","Carolina","Aline",
+    "Bruna","Natália","Vanessa","Paula","Jéssica","Priscila","Simone","Adriana",
+    "Flávia","Bianca","Tatiane","Luana","Raquel","Débora","Michele","Sandra",
+    "Elisa","Helena","Sofia","Clara","Laura","Amanda","Isabela",  "Maria","Ana","Ana Paula","Ana Clara","Ana Maria","Edvânia","Leidiane",
+    "Josefa","Raimunda","Beatriz","Juliana","Mariana","Camila","Fernanda",
+    "Gabriela","Larissa","Renata","Patrícia","Daniela","Carolina","Aline",
+    "Bruna","Natália","Vanessa","Paula","Jéssica","Priscila","Simone","Adriana",
+    "Flávia","Bianca","Tatiane","Luana","Raquel","Débora","Michele","Sandra",
+    "Elisa","Helena","Sofia","Clara","Laura","Amanda","Isabela", "Letícia",
+    "Joana","Rita","Lúcia","Márcia","Tereza","Milena","Yara","Aurora","Bela",
+    "Cecília","Dora","Eloá","Flora","Gaia","Hilda","Íris","Jade","Kiara","Luna",
+    "Maya","Nina","Olívia","Pérola","Quitéria","Rosa","Soraia","Tarsila",
+    "Ursula","Valentina","Ximena","Zoe","Aisha","Malika","Yasmin","Inez",
+    "Maite","Nala","Zahra","Araci","Indira","Kira","Amélie","Svetlana","Yoko",
+    "Freya","Astrid","Elena","Zuleica","Ayana","Selene","Dafne","Ingrid","Amara",
+    "Sabrina","Grazielli","Iris","Ieda","Emilly","Vivian","Gleici","Thelma",
+    "Juliette","Karoline","Giovanna","Alane","Deniziane","Raquele","Wanessa",
+    "Domitila","Kamilla","Andressa","Fabiana","Anamara","Francine","Gyselle",
+    "Chiara","Alice","Heloísa","Manuela","Lorena","Isadora","Lívia","Clarice",
+    "Lavínia","Esther","Sarah","Aparecida","Fátima","Sônia","Eliana","Tânia",
+    "Vera","Sueli","Neusa","Iracema","Terezinha","Marlene","Lourdes",
+    "Angélica","Cássia","Cristiane","Dayane","Emanuelle","Ester","Fabíola",
+    "Gisela","Heloise","Iara","Ivone","Janaina","Karina","Kelly","Lidiane",
+    "Lílian","Maitê","Marcelly","Mirella","Nádia","Naiara","Paloma","Rebeca",
+    "Sthefany","Taís","Thaline", "Adélia","Aldenora","Alcione","Alzira","Analice","Cida","Conceição",
+  "Creusa","Doralice","Efigênia","Elizângela","Eulália","Francisca",
+  "Genilda","Geralda","Ilza","Jandira","Judite","Leonor","Lindalva",
+  "Luzia","Madalena","Nair","Neide","Odete","Raimunda","Sebastiana",
+  "Socorro","Tainá","Telma","Valdineia","Zilda", "Francielly", "Franciele","Francineide","Francinalva",
+  "Adrielly","Andrielly","Brunelly","Camilly","Carolayne",
+  "Daiany","Deisiane","Elizangela","Elizane","Emanuelle",
+  "Gabriele","Giselly","Jheniffer","Jhessica","Jullyane",
+  "Kessya","Kethleen","Laiany","Luany","Mayara",
+  "Nayara","Nathally","Rafaelly","Rayane","Renally",
+  "Tainara","Thainá","Wellyda","Yasmyne"
+  ],
+
+  O: [
+    "Alex","Ariel","Luca","Noa","Dani","Sam","Chris","Kim","Taylor","Robin",
+    "Morgan","Jordan","Casey","Sky","Charlie","Dakota","Sasha","Ren","Mika",
+    "Manu","Val","Jundi","Derya","Bia","Ali","Guri","Lumi","Jade","River",
+    "Phoenix","Sol","Blue","Íris","Paz","Zion","Noam","Arin","Kiran","Akira",
+	  "Arielly","Dany","Gaby","Jhey","Rany","Sany","Welly"
+  ]
+};
   const SURNAMES = ["Silva","Santos","Oliveira","Pereira","Do Brás", "Renault", "Do Vigor", "Costa","Rodrigues","Alves","Lima","Gomes","Ribeiro","Carvalho","Araujo","Rocha","Martins","Lopes","Soares","Fernandes","Vieira","Barros","Freitas","Nogueira","Teixeira","Guedes","Pacheco","Farias","Cunha","Batista","Rangel","Macedo","Tavares","Moreira","Montenegro","Figueiredo","Amaral","Peixoto","Vasconcelos","Antunes","Neves","Torres","Braga","Abreu","Correia","Paiva","Seixas","Fonseca","Lacerda","Valente","Portela","Azevedo","Siqueira","Bittencourt","Magalhães","Guimarães","Mattos","Pimentel","Salgado","Rezende","Barreto","Coelho","Rios","Toledo","Beltrão","Medeiros","Dantas","Queiroz","Caldas","Camargo","Ferraz","Brandão","Franco","Nascimento","Assunção","Coutinho","Lins","Sarmento","Albuquerque","Mendonça","Viana","Drumond","Seabra","Loyola","Arruda","Pires","Falcão","Goulart","Azeredo","Leal","Maciel","Sampaio","Bezerra","Cardoso","Rabelo","Furtado","Quintana","Abranches","Pinheiro","Mascarenhas","Godoy","Maluf","Tanaka", "Nakamura", "Sato", "Yamamoto", "Haddad", "Mansur", "Said", "Bakir", "Fontes", "Prado", "Vargas", "Luz", "Moraes", "Duarte", "Cavalcanti", "Brito", "Villa-Lobos", "Kruger", "Schmidt", "Hoffman", "Garrido", "Ortega", "Castillo", "Bernardi", "Rossi", "Ferrari", "Fontana", "Abravanel", "Zanin", "Xavier", "Tupinambá", "Guajajara", "Pankararu", "Kovalski", "Novak", "Popov", "O'Connor", "Sullivan", "Müller", "Dubois", "Lefebvre", "Ricci", "Bianchi", "Hwang", "Chen", "Gupta", "Singh", "Hernandez", "Flores", "Siqueiros", "Tavares", "Moniz", "Massafera", "Stefanelli", "Damasceno", "Freire", "Conká", "Picon", "Viggiano", "Scarpeline", "Gagliano", "Khouri", "Grostein", "Gasparotto", "Werneck", "Stagliano", "Brum", "Naccache", "Mader", "Zular", "Henneberg", "Eirado", "Pizane", "Nogueira", "Azevedo", "Mello", "Kovalski", "Popov", "Sullivan", "Müller", "Dubois", "Ricci", "Hwang", "Chen", "Gupta", "Sanção"];
 
   // ===== Apelidos =====
@@ -3679,45 +3757,78 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
     "mika": ["Mimi", "Miki"]
 };
 
-  function normalizeNameKey(s) {
-    return String(s ?? "")
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase().trim();
+ function normalizeNameKey(s) {
+  return String(s ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().trim();
+}
+
+function resolveNicknameForFirstName(firstName) {
+  const key = normalizeNameKey(firstName);
+  const arr = NICKNAME_OVERRIDES[key];
+  if (arr && arr.length) return pickOne(arr);
+  return "";
+}
+
+// gera apelido por iniciais (prefixo) conforme tamanho do nome
+function resolveInitialsNickname(firstName) {
+  const raw = String(firstName ?? "").trim();
+  if (!raw) return "";
+
+  // pega só a primeira palavra (ex: "Ana Paula" -> "Ana")
+  const base = raw.split(/\s+/)[0];
+
+  // normaliza (remove acentos) e remove caracteres que não sejam letra
+  const clean = normalizeNameKey(base).replace(/[^a-z]/g, "");
+  const len = clean.length;
+  if (!len) return "";
+
+  let n = 2;
+  if (len <= 3) n = 2;            // não especificado, mas mantém coerência
+  else if (len === 4 || len === 5) n = 2;
+  else if (len === 6) n = (Math.random() < 0.5 ? 2 : 3);
+  else n = (Math.random() < 0.5 ? 3 : 4);
+
+  return clean.slice(0, Math.min(n, len));
+}
+
+function resolveDisplayName(p) {
+  if (!p) return "";
+
+  const manual = String(p.nickname ?? "").trim();
+  if (manual) { p._autoNick = ""; return manual; }
+
+  // se já tem um apelido gerado, mantém estável
+  const stable = String(p._autoNick ?? "").trim();
+  if (stable) return stable;
+
+  const first = String(p.firstName ?? p.name ?? "").trim();
+  if (!first) return "";
+
+  // chance pequena de apelido livre (não vinculado ao nome)
+  if (Math.random() < 0.02) {
+    const free = pickOne(FREE_NICKNAMES);
+    const chosenFree = (free || first);
+    p._autoNick = chosenFree;
+    return chosenFree;
   }
 
-  function resolveNicknameForFirstName(firstName) {
-    const key = normalizeNameKey(firstName);
-    const arr = NICKNAME_OVERRIDES[key];
-    if (arr && arr.length) return pickOne(arr);
-    return "";
+  // 30%: apelido por iniciais para QUALQUER nome
+  if (Math.random() < 0.30) {
+    const ini = resolveInitialsNickname(first);
+    const chosenIni = ini || first;
+    p._autoNick = chosenIni;
+    return chosenIni;
   }
 
-  function resolveDisplayName(p) {
-    if (!p) return "";
-    const manual = String(p.nickname ?? "").trim();
-    if (manual) { p._autoNick = ""; return manual; }
+  // 50%: se tiver apelidos predefinidos, usa metade das vezes
+  const derived = resolveNicknameForFirstName(first);
+  const chosen = (derived && Math.random() < 0.50) ? derived : first;
 
-    // se já tem um apelido gerado, mantém estável
-    const stable = String(p._autoNick ?? "").trim();
-    if (stable) return stable;
+  p._autoNick = chosen;
+  return chosen;
+}
 
-    const first = String(p.firstName ?? p.name ?? "").trim();
-
-    // chance pequena de apelido livre (não vinculado ao nome)
-    if (Math.random() < 0.02) {
-      const free = pickOne(FREE_NICKNAMES);
-      const chosenFree = (free || first);
-      p._autoNick = chosenFree;
-      return chosenFree;
-    }
-
-    // se o nome tem apelidos "naturais", usa com chance de 1/3
-    const derived = resolveNicknameForFirstName(first);
-    const chosen = (derived && Math.random() < (1/3)) ? derived : first;
-
-    p._autoNick = chosen;
-    return chosen;
-  }
 
 
 
