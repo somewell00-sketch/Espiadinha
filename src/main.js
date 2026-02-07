@@ -2194,7 +2194,7 @@ function computeSeasonTitles() {
       "O Nome da Torcida"
     ],
     fav_flash: [
-      "Febre Relâmpago",
+      "Vitórias sem Capital",
       "Hype do Dia",
       "Assunto do Twitter",
       "Brilho Passageiro"
