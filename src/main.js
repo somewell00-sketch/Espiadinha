@@ -10728,55 +10728,37 @@ const html = tweets.map((x) => `
       return `${weekLabel(round)}: ${base.replace(/\.$/, '')}${extra}.`;
     };
 
-    const moments = hasArc ? (arc.definingMoments || []).slice(0, 6) : [];
+    // Evidências: lista curta (evita redundância e mantém foco no arco)
+    const moments = hasArc ? (arc.definingMoments || []).slice(0, 5) : [];
     const momentsHtml = moments.length
       ? `<div style="margin-top:12px;">
-          <div class="small" style="font-weight:900;">Momentos que sustentam essa leitura</div>
+          <div class="small" style="font-weight:900;">Evidências-chave</div>
           <ul class="small" style="margin:6px 0 0 18px;">
             ${moments.map(e => `<li>${escapeHtml(fmtMoment(e))}</li>`).join('')}
           </ul>
         </div>`
       : '';
 
-    // --- Leitura editorial (micro) ---
+    // --- Leitura da semana (micro) ---
     let editorialHtml = '';
     if (hasSnap) {
       const dom = snap.top3[0] || {};
       const domTitle = `${dom.emoji || '🎭'} ${dom.label || dom.id || 'Arquétipo'}`;
 
-      const traits = snap.top3.slice(1, 3).map((x) => `${x.emoji || '🎭'} ${x.label || x.id}`).join(' · ');
-      const traitsLine = traits ? `Arquétipos secundários: ${traits}` : '';
-
+      // Micro: contextualiza a semana sem repetir arco e sem reembalar o Top 3.
       const comboTitle = snap.comboTitle ? `${snap.comboEmoji || '🎭'} ${snap.comboTitle}` : '';
       const comboSub = snap.comboSubtitle || '';
       const duplaLine = snap.duplaWithId ? `${snap.duplaEmoji || '💞'} Dupla com ${snap.duplaWithName || '—'}` : '';
-      const arcTitle = snap.arcTitle ? `${snap.arcEmoji || '🎢'} ${snap.arcTitle}` : '';
-      const arcSub = snap.arcSubtitle || '';
-
-      const top3Rows = snap.top3.map((x) => {
-        const s = Number(x.score ?? 0);
-        const tier = tierLabel(s);
-        return `<div class="small" style="margin-top:8px; display:flex; justify-content:space-between; gap:10px;">
-          <div style="font-weight:900;">${escapeHtml(`${x.emoji || '🎭'} ${x.label || x.id}`)}</div>
-          <div style="opacity:.85;">${escapeHtml(`${tier} · ${s}`)}</div>
-        </div>`;
-      }).join('');
 
       editorialHtml = `
         <div style="margin-top:12px;">
-          <div class="small" style="font-weight:900;">Leitura editorial (semana ${wk})</div>
-          <div style="margin-top:6px; font-weight:900;">${escapeHtml(domTitle)}</div>
-          ${traitsLine ? `<div class="small" style="margin-top:4px; opacity:.9;">${escapeHtml(traitsLine)}</div>` : ''}
+          <div class="small" style="font-weight:900;">Leitura da semana (semana ${wk})</div>
+          <div class="small" style="margin-top:6px; opacity:.9;">Dominante: <strong>${escapeHtml(domTitle)}</strong></div>
           ${comboTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Personagem</div>
             <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(comboTitle)}</div>
             ${comboSub ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(comboSub)}</div>` : ''}` : ''}
           ${duplaLine ? `<div class="small" style="margin-top:6px; opacity:.92;">${escapeHtml(duplaLine)}</div>` : ''}
-          ${arcTitle ? `<div class="small" style="margin-top:8px; font-weight:900;">Arco BBB (leitura)</div>
-            <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(arcTitle)}</div>
-            ${arcSub ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(arcSub)}</div>` : ''}` : ''}
-          <div class="small" style="margin-top:10px; opacity:.9;">Top 3</div>
-          ${top3Rows}
-          <div class="small" style="margin-top:10px; opacity:.75;">Obs: isso é uma leitura automática do comportamento no simulador e pode mudar a cada semana.</div>
+          <div class="small" style="margin-top:10px; opacity:.72;">Obs: leitura automática do simulador e pode variar semanalmente.</div>
         </div>
       `;
     }
@@ -10826,9 +10808,14 @@ const seasonAccHtml = acc.length ? `
         <div class="c">
           ${seasonTitleHtml}
           ${seasonAccHtml}
-          ${arcBody}
-          ${editorialHtml}
+
+          <div style="margin-top:6px;">
+            <div class="small" style="font-weight:900;">Arco dominante</div>
+            <div style="margin-top:6px;">${arcBody}</div>
+          </div>
+
           ${momentsHtml}
+          ${editorialHtml}
         </div>
       </div>
     `;
