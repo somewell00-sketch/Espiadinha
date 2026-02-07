@@ -214,12 +214,21 @@ const ARCHETYPE_POOLS = {
   estrategista: ["Estrategista", "Jogador", "Cerebral", "Calculista", "Frio"],
   alivio: ["Alívio Cômico", "Bobo da Corte", "Meme", "Engraçado", "Figura"],
   palestrinha: ["Palestrinha", "Militante", "Educador", "Moralista", "Professor"],
-  gala: ["Galã", "Musa", "Crush da Casa", "Queridinho", "Favorito"],
+  gala: ["Galã", "Musa", "Crush da Casa", "Ícone", "Desejado"],
   casal: ["Casal", "Dupla", "Shippados", "Fechados", "Par"],
   pipoqueiro: ["Pipoqueiro", "Isento", "Em cima do muro", "Neutro"],
   justiceiro: ["Justiceiro", "Defensor", "Protetor", "Guardião"],
   sabio: ["Sábio", "Conselheiro", "Mentor", "Paz e Amor"],
   caotico: ["Caótico", "Imprevisível", "Agente do Caos", "Do nada"],
+
+  // ⭐ queridinho: popularidade muito alta e persistente (edição do público)
+  queridinho: ["Queridinho", "Favorito do Público", "Popstar", "Fã-clube", "Amado"],
+  // 🚫 rejeitado: rejeição persistente (alvo recorrente)
+  rejeitado: ["Rejeitado", "Cancelado", "Alvo do Público", "Rejeição Alta", "Queimado"],
+  // 🧨 inimigo público: rivalidade com muitos adversários
+  inimigo_publico: ["Inimigo Público", "Alvo da Casa", "Persona Non Grata", "Nêmesis", "O Mais Visado"],
+  // 💖 crush coletivo: 3+ pessoas consideram crush
+  crush_coletivo: ["Crush Coletivo", "Coração da Casa", "Desejado", "Crush Unânime", "Ídolo Romântico"],
 };
 
 const ARCHETYPE_META = {
@@ -235,6 +244,11 @@ const ARCHETYPE_META = {
   justiceiro: { emoji: "⚖️" },
   sabio: { emoji: "🧠" },
   caotico: { emoji: "🌪️" },
+
+  queridinho: { emoji: "⭐" },
+  rejeitado: { emoji: "🚫" },
+  inimigo_publico: { emoji: "🧨" },
+  crush_coletivo: { emoji: "💖" },
 };
 
 function ensureArchetypeState(p) {
@@ -603,6 +617,12 @@ function snapshotArchetypesForWeek(weekNumber) {
 
   const majorityTarget = voteMajorityTargetId(wSnap);
 
+  // Ranking de popularidade da semana (para detectar Top 2)
+  const alivePlayersList = (state.players || []).filter(p => p?.status?.alive);
+  const popRanking = alivePlayersList.slice().sort((a,b)=> popAtWeek(b, wk) - popAtWeek(a, wk));
+  const top2PopIds = popRanking.slice(0, 2).map(x => String(x.id));
+
+
   for (const p of (state.players || [])) {
     ensureArchetypeState(p);
 
@@ -614,9 +634,21 @@ function snapshotArchetypesForWeek(weekNumber) {
     const curPop = popAtWeek(p, wk);
     const popDelta = curPop - prevPop;
 
+    // ===== Streaks de público (⭐ queridinho / 🚫 rejeitado) + favorito permanente =====
+    p.status.popHighStreak = Number(p.status.popHighStreak ?? 0);
+    if (curPop >= 8.2) p.status.popHighStreak += 1;
+    else p.status.popHighStreak = 0;
+
+    // Rejeição por votos recebidos (>=3) de forma persistente
+    p.status.rejectionStreak = Number(p.status.rejectionStreak ?? 0);
+
+
     const votesTo = (wSnap.houseVotes || []).filter(v => String(v?.toId) === String(p.id)).length;
     const votesFrom = (wSnap.houseVotes || []).filter(v => String(v?.fromId) === String(p.id)).length;
     const votesRecN = clamp(votesTo / Math.max(1, aliveCount - 1), 0, 1);
+    if (votesTo >= 3) p.status.rejectionStreak += 1;
+    else p.status.rejectionStreak = 0;
+
 
     const nominated = (
       (String(wSnap.indicadoLiderId || '') === String(p.id) ? 1 : 0) +
@@ -692,6 +724,19 @@ function snapshotArchetypesForWeek(weekNumber) {
 
       // 🌪️ Caótico: vota fora da maioria, excentricidade e oscilação.
       caotico: S(100 * (0.38 * voteAgainstMajority + 0.26 * ex + 0.22 * swingN + 0.14 * activityN)),
+
+
+      // ⭐ Queridinho: pop muito alta e consistente (edita a leitura pública)
+      queridinho: S(100 * (0.60 * popLevelN + 0.20 * soc.avg + 0.12 * friendN + 0.08 * (1 - votesRecN))),
+
+      // 🚫 Rejeitado: recebe muitos votos e perde pop, com atrito social
+      rejeitado: S(100 * (0.52 * votesRecN + 0.28 * negDeltaN + 0.20 * enemyN)),
+
+      // 🧨 Inimigo Público: rival de muitos (3+) e alta tensão social
+      inimigo_publico: S(100 * (0.55 * enemyN + 0.25 * clamp(soc.rivals / Math.max(1, aliveCount - 1), 0, 1) + 0.20 * activityN)),
+
+      // 💖 Crush Coletivo: 3+ crushes apontando para a pessoa
+      crush_coletivo: S(100 * (0.55 * crushN + 0.25 * crushRecN + 0.20 * popLevelN)),
     };
 
 // Ajuste: arco de exclusão influencia leitura de arquétipos (e, por consequência, combos).
@@ -745,6 +790,44 @@ const aBonus = clamp(p.status.bbbNarrative.antagonistStreak, 0, 6);
 if (vBonus > 0) scores.vilao = clamp(scores.vilao + (4 * vBonus), 0, 100);
 if (aBonus > 0) scores.antagonista = clamp(scores.antagonista + (3 * aBonus), 0, 100);
 
+    // ===== Gates dos novos arquétipos =====
+    const isQueridinho = (p.status.popHighStreak >= 3);
+    const isRejeitado = (p.status.rejectionStreak >= 3);
+    const isInimigoPublico = (Number(soc.rivals ?? 0) >= 3);
+    const isCrushColetivo = (Number(soc.crush ?? 0) >= 3);
+
+    // Bônus e travas (corrige "pop 9–10 virar planta/encostado")
+    if (isQueridinho) {
+  scores.queridinho = clamp(Math.max(scores.queridinho, 78) + 18, 0, 100);
+  scores.planta = Math.min(scores.planta, 35);
+}
+    if (isRejeitado) {
+  scores.rejeitado = clamp(Math.max(scores.rejeitado, 72) + 14, 0, 100);
+  // reforça leituras de isolamento negativo / alvo recorrente
+  scores.perseguidor = clamp(scores.perseguidor + 10, 0, 100);
+  scores.sabio = Math.max(0, scores.sabio - 8);
+  scores.pipoqueiro = Math.max(0, scores.pipoqueiro - 6);
+}
+    if (isInimigoPublico) {
+  scores.inimigo_publico = clamp(scores.inimigo_publico + 14, 0, 100);
+  scores.antagonista = clamp(scores.antagonista + 6, 0, 100);
+}
+    if (isCrushColetivo) {
+  scores.crush_coletivo = clamp(scores.crush_coletivo + 12, 0, 100);
+  scores.gala = clamp(scores.gala + 6, 0, 100);
+}
+
+    // Persistência de favorito: streak de queridinho + Top 2 da semana => favorito permanente
+    p.status.favoritePermanent = !!p.status.favoritePermanent;
+    const isTop2Pop = top2PopIds.includes(String(p.id));
+    if (isQueridinho && isTop2Pop) {
+  p.status.favoritePermanent = true;
+}
+    if (p.status.favoritePermanent) {
+  scores.queridinho = clamp(scores.queridinho + 10, 0, 100);
+  scores.planta = Math.min(scores.planta, 25);
+}
+
 
     // top3
     const top = Object.entries(scores)
@@ -769,6 +852,10 @@ if (aBonus > 0) scores.antagonista = clamp(scores.antagonista + (3 * aBonus), 0,
 
     p.status.archetypeWeek[String(wk)] = {
       week: wk,
+      favoritePermanent: !!p.status.favoritePermanent,
+      popHighStreak: Number(p.status.popHighStreak ?? 0),
+      rejectionStreak: Number(p.status.rejectionStreak ?? 0),
+
       comboKey: comboBBB.key || '',
       comboTitle: comboBBB.title || '',
       comboSubtitle: comboBBB.subtitle || '',
