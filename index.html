@@ -96,6 +96,7 @@
   <button class="tabBtn" data-tab="tabHistorico">Histórico</button>
   <button class="tabBtn" data-tab="tabRels">Relações</button>
   <button class="tabBtn" data-tab="tabPopularidade">Popularidade</button>
+  <button class="tabBtn" data-tab="tabDivisao">Divisão</button>
   <button class="tabBtn" data-tab="tabElims">Eliminações</button>
   <button class="tabBtn" data-tab="tabConfig">Config</button>
 </div>
@@ -231,7 +232,35 @@
 	      <div class="small" id="popTabHint" style="margin-top:10px; opacity:.85;">—</div>
 	    </div>
 	  </div>
+	
+	<!-- Divisão: VIP vs Xepa (histórico) -->
+	<div class="menuPanel" id="tabDivisao">
+	  <div class="panel" style="border:none;">
+	    <div class="hd">
+	      <h2>Divisão</h2>
+	      <div class="small">Histórico de VIP e Xepa por semana.</div>
+	    </div>
+	    <div class="bd">
+	      <div class="tableTools">
+	        <select id="divSort">
+	          <option value="orig">Ordenar colunas: elenco</option>
+	          <option value="name_asc">Nome (A → Z)</option>
+	          <option value="vip_desc">Mais VIP</option>
+	          <option value="xepa_desc">Mais Xepa</option>
+	        </select>
+	      </div>
+	      <div class="tableWrap">
+	        <table id="divTable">
+	          <thead id="divHead"></thead>
+	          <tbody id="divBody"></tbody>
+	        </table>
+	      </div>
+	      <div class="small" id="divHint" style="margin-top:10px; opacity:.85;">—</div>
+	    </div>
+	  </div>
 	</div>
+
+</div>
 
 
 

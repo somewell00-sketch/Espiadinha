@@ -318,6 +318,8 @@ function getWeekSnap(weekNumber) {
     leaderId: w.leaderId ?? null,
     anjoId: w.anjoId ?? null,
     imuneId: w.imuneId ?? null,
+      vipIds: Array.isArray(w.vipIds) ? w.vipIds.slice() : [],
+      xepaIds: Array.isArray(w.xepaIds) ? w.xepaIds.slice() : [],
     indicadoLiderId: w.indicadoLiderId ?? null,
     contragolpeId: w.contragolpeId ?? null,
     indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
@@ -9130,6 +9132,8 @@ const html = `
       leaderId: w.leaderId ?? null,
       anjoId: w.anjoId ?? null,
       imuneId: w.imuneId ?? null,
+      vipIds: Array.isArray(w.vipIds) ? w.vipIds.slice() : [],
+      xepaIds: Array.isArray(w.xepaIds) ? w.xepaIds.slice() : [],
       indicadoLiderId: w.indicadoLiderId ?? null,
       contragolpeId: w.contragolpeId ?? null,
       indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
@@ -13482,6 +13486,10 @@ list.appendChild(tr);
       renderPopularityTab();
     }
 
+    if (activeTab === "tabDivisao") {
+      renderDivisionTab();
+    }
+
     if (activeTab === "tabElims") {
     // Eliminações
     const elimBody = $("elimTable");
@@ -13568,6 +13576,132 @@ list.appendChild(tr);
     if ($("meta")) $("meta").textContent = `${aliveN}/${state.players.length} ainda na casa`;
     if ($("btnNextTop")) $("btnNextTop").disabled = state.gameOver;
   }
+
+  function renderDivisionTab() {
+    const head = $("divHead");
+    const body = $("divBody");
+    const hint = $("divHint");
+    if (!head || !body) return;
+
+    const sortSel = $("divSort");
+    if (sortSel && !sortSel.__wired) {
+      sortSel.__wired = true;
+      sortSel.addEventListener("change", () => renderDivisionTab());
+    }
+
+    const weeks = (state.votesHistory || [])
+      .slice()
+      .sort((a, b) => Number(a.week || 0) - Number(b.week || 0));
+
+    const allPlayers = (state.players || []).slice();
+
+    // métricas para sorting
+    const vipCount = new Map();
+    const xepaCount = new Map();
+    allPlayers.forEach((p) => {
+      vipCount.set(p.id, 0);
+      xepaCount.set(p.id, 0);
+    });
+
+    weeks.forEach((w) => {
+      (w.vipIds || []).forEach((id) => vipCount.set(id, (vipCount.get(id) || 0) + 1));
+      (w.xepaIds || []).forEach((id) => xepaCount.set(id, (xepaCount.get(id) || 0) + 1));
+    });
+
+    // ordena colunas
+    const sort = String(sortSel?.value || "orig");
+    const players = allPlayers.slice();
+
+    if (sort === "name_asc") {
+      players.sort((a, b) => (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" }));
+    } else if (sort === "vip_desc") {
+      players.sort(
+        (a, b) =>
+          (vipCount.get(b.id) || 0) - (vipCount.get(a.id) || 0) ||
+          (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" })
+      );
+    } else if (sort === "xepa_desc") {
+      players.sort(
+        (a, b) =>
+          (xepaCount.get(b.id) || 0) - (xepaCount.get(a.id) || 0) ||
+          (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" })
+      );
+    }
+    // orig: mantém ordem do elenco
+
+    // header
+    const trh = document.createElement("tr");
+    const th0 = document.createElement("th");
+    th0.textContent = "Semana";
+    trh.appendChild(th0);
+
+    players.forEach((p) => {
+      const th = document.createElement("th");
+      const vipN = vipCount.get(p.id) || 0;
+      const xepaN = xepaCount.get(p.id) || 0;
+      th.innerHTML = `<div style="display:flex; flex-direction:column; gap:2px;">
+        <strong>${escapeHtml(displayName(p))}</strong>
+        <span class="small" style="opacity:.85;">VIP ${vipN} • Xepa ${xepaN}</span>
+      </div>`;
+      trh.appendChild(th);
+    });
+
+    head.innerHTML = "";
+    head.appendChild(trh);
+
+    // body
+    body.innerHTML = "";
+
+    const mkCell = (txt, muted = false, title = "") => {
+      const td = document.createElement("td");
+      td.style.textAlign = "center";
+      td.textContent = txt;
+      if (muted) td.style.color = "var(--muted)";
+      if (title) td.title = title;
+      return td;
+    };
+
+    weeks.forEach((w) => {
+      const tr = document.createElement("tr");
+
+      const tdW = document.createElement("td");
+      tdW.innerHTML = `<strong>S${Number(w.week || 0)}</strong>`;
+      tr.appendChild(tdW);
+
+      players.forEach((p) => {
+        const wNum = Number(w.week || 0);
+        const outWeek = Number(p.status?.outWeek || 0);
+
+        // se já saiu antes desta semana, marca como fora
+        if (outWeek && wNum > outWeek) {
+          tr.appendChild(mkCell("—", true, "Fora do jogo"));
+          return;
+        }
+
+        const isVip = Array.isArray(w.vipIds) && w.vipIds.includes(p.id);
+        const isXepa = Array.isArray(w.xepaIds) && w.xepaIds.includes(p.id);
+
+        if (isVip) tr.appendChild(mkCell("🥂 VIP", false, "VIP"));
+        else if (isXepa) tr.appendChild(mkCell("🥘 Xepa", false, "Xepa"));
+        else tr.appendChild(mkCell("—", true, "Sem divisão registrada"));
+      });
+
+      body.appendChild(tr);
+    });
+
+    if (!weeks.length) {
+      head.innerHTML = `<tr><th>Semana</th><th>Participantes</th></tr>`;
+      body.innerHTML = `<tr><td class="small" colspan="2">Sem dados ainda. A divisão é registrada quando uma semana termina (na eliminação).</td></tr>`;
+      if (hint) hint.textContent = "—";
+      return;
+    }
+
+    if (hint) {
+      const last = weeks[weeks.length - 1];
+      hint.textContent = `Última semana registrada: S${Number(last.week || 0)} • VIP ${(last.vipIds || []).length} • Xepa ${(last.xepaIds || []).length}`;
+    }
+  }
+
   /* ===== init ===== */
   if (state.players.length === 0) {
     const size = 1;
