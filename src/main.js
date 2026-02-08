@@ -8864,7 +8864,8 @@ return chosen;
 
     }
 
-    const formation = state.weekState?.wallFormation || "LIDER_CASA_2";
+    // (formation already defined earlier)
+
 	    // Pequeno card para deixar claro a formação da semana no histórico do jogo
 	    const formationLabel = (() => {
 	      switch (formation) {
