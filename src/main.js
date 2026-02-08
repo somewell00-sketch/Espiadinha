@@ -318,8 +318,8 @@ function getWeekSnap(weekNumber) {
     leaderId: w.leaderId ?? null,
     anjoId: w.anjoId ?? null,
     imuneId: w.imuneId ?? null,
-      vipIds: Array.isArray(w.vipIds) ? w.vipIds.slice() : [],
-      xepaIds: Array.isArray(w.xepaIds) ? w.xepaIds.slice() : [],
+      vipIds: (Array.isArray(w.vipIds) ? w.vipIds.slice() : (Array.isArray(state.divisionHistory?.[String(weekNumber)]?.vipIds) ? state.divisionHistory[String(weekNumber)].vipIds.slice() : [])),
+      xepaIds: (Array.isArray(w.xepaIds) ? w.xepaIds.slice() : (Array.isArray(state.divisionHistory?.[String(weekNumber)]?.xepaIds) ? state.divisionHistory[String(weekNumber)].xepaIds.slice() : [])),
     indicadoLiderId: w.indicadoLiderId ?? null,
     contragolpeId: w.contragolpeId ?? null,
     indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
@@ -4227,7 +4227,9 @@ function statusLabel(p) {
     final: { winnerId: null, secondId: null, thirdId: null },
     elimHistory: [],
     votesHistory: [],
-    relations: {},
+    
+      divisionHistory: {},
+relations: {},
     crushRevealed: {},
     crushReciprocalBonus: {},
     alliances: [],
@@ -4287,6 +4289,7 @@ function statusLabel(p) {
 
       parsed.elimHistory = Array.isArray(parsed.elimHistory) ? parsed.elimHistory : [];
       parsed.votesHistory = Array.isArray(parsed.votesHistory) ? parsed.votesHistory : [];
+      parsed.divisionHistory = (parsed.divisionHistory && typeof parsed.divisionHistory === 'object') ? parsed.divisionHistory : {};
 
       parsed.final = parsed.final || { winnerId: null, secondId: null, thirdId: null };
       parsed.weekState = parsed.weekState || defaultState().weekState;
@@ -7802,6 +7805,9 @@ function defineVipXepa(leaderId) {
     state.weekState.vipIds = vip;
     state.weekState.xepaIds = xepa;
 
+    state.divisionHistory = (state.divisionHistory && typeof state.divisionHistory === 'object') ? state.divisionHistory : {};
+    state.divisionHistory[String(state.week)] = { vipIds: vip.slice(), xepaIds: xepa.slice() };
+
 
     // Ajuste social imediato: quem entra no VIP tende a gostar mais do líder;
     // quem fica na Xepa tende a gostar menos do líder.
@@ -9132,8 +9138,8 @@ const html = `
       leaderId: w.leaderId ?? null,
       anjoId: w.anjoId ?? null,
       imuneId: w.imuneId ?? null,
-      vipIds: Array.isArray(w.vipIds) ? w.vipIds.slice() : [],
-      xepaIds: Array.isArray(w.xepaIds) ? w.xepaIds.slice() : [],
+      vipIds: (Array.isArray(w.vipIds) ? w.vipIds.slice() : (Array.isArray(state.divisionHistory?.[String(weekNumber)]?.vipIds) ? state.divisionHistory[String(weekNumber)].vipIds.slice() : [])),
+      xepaIds: (Array.isArray(w.xepaIds) ? w.xepaIds.slice() : (Array.isArray(state.divisionHistory?.[String(weekNumber)]?.xepaIds) ? state.divisionHistory[String(weekNumber)].xepaIds.slice() : [])),
       indicadoLiderId: w.indicadoLiderId ?? null,
       contragolpeId: w.contragolpeId ?? null,
       indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
@@ -13375,7 +13381,7 @@ list.appendChild(tr);
       th0.textContent = "Participante";
       th0.style.width = "220px";
       trh.appendChild(th0);
-      weeks.forEach((w) => {
+    allWeeks.forEach((w) => {
         const th = document.createElement("th");
         th.textContent = `Sem ${w.week}`;
         trh.appendChild(th);
@@ -13420,8 +13426,7 @@ list.appendChild(tr);
         const tdName = document.createElement("td");
         tdName.innerHTML = `<strong>${escapeHtml(displayName(p))}</strong>${p.status?.alive ? '' : ' <span class="small">(fora)</span>'}`;
         tr.appendChild(tdName);
-
-        weeks.forEach((w) => {
+    allWeeks.forEach((w) => {
   const td = document.createElement("td");
   const cell = document.createElement("div");
   cell.className = "voteCell";
@@ -13475,7 +13480,7 @@ list.appendChild(tr);
         votesBody.appendChild(tr);
       });
 
-      if (!weeks.length) {
+      if (!allWeeks.length) {
         votesHead.innerHTML = '<tr><th>Participante</th><th>Semanas</th></tr>';
         votesBody.innerHTML = '<tr><td class="small" colspan="2">Sem dados ainda. A tabela é preenchida quando uma semana termina (na eliminação).</td></tr>';
       }
@@ -13593,6 +13598,32 @@ list.appendChild(tr);
       .slice()
       .sort((a, b) => Number(a.week || 0) - Number(b.week || 0));
 
+    // Também considera semanas registradas em divisionHistory (inclui semana atual mesmo antes da eliminação)
+    const divHist = (state.divisionHistory && typeof state.divisionHistory === 'object') ? state.divisionHistory : {};
+    const weeksFromDiv = Object.keys(divHist)
+      .map((k) => Number(k))
+      .filter((n) => Number.isFinite(n) && n > 0)
+      .sort((a, b) => a - b)
+      .map((n) => ({ week: n, vipIds: divHist[String(n)]?.vipIds || [], xepaIds: divHist[String(n)]?.xepaIds || [] }));
+
+    // Merge: votesHistory tem prioridade (porque também carrega leader/anjo etc)
+    const mergedByWeek = new Map();
+    weeksFromDiv.forEach((w) => mergedByWeek.set(Number(w.week || 0), w));
+    weeks.forEach((w) => mergedByWeek.set(Number(w.week || 0), { ...mergedByWeek.get(Number(w.week || 0)), ...w }));
+
+    // Inclui a semana atual se já houver vip/xepa definidos
+    const curW = Number(state.week || 0);
+    const curVip = Array.isArray(state.weekState?.vipIds) ? state.weekState.vipIds : [];
+    const curXepa = Array.isArray(state.weekState?.xepaIds) ? state.weekState.xepaIds : [];
+    if (curW > 0 && (curVip.length || curXepa.length)) {
+      mergedByWeek.set(curW, { ...(mergedByWeek.get(curW) || {}), week: curW, vipIds: curVip.slice(), xepaIds: curXepa.slice() });
+    }
+
+    const allWeeks = Array.from(mergedByWeek.values())
+      .filter((w) => Number(w.week || 0) > 0)
+      .sort((a, b) => Number(a.week || 0) - Number(b.week || 0));
+
+
     const allPlayers = (state.players || []).slice();
 
     // métricas para sorting
@@ -13602,8 +13633,7 @@ list.appendChild(tr);
       vipCount.set(p.id, 0);
       xepaCount.set(p.id, 0);
     });
-
-    weeks.forEach((w) => {
+    allWeeks.forEach((w) => {
       (w.vipIds || []).forEach((id) => vipCount.set(id, (vipCount.get(id) || 0) + 1));
       (w.xepaIds || []).forEach((id) => xepaCount.set(id, (xepaCount.get(id) || 0) + 1));
     });
@@ -13660,8 +13690,7 @@ list.appendChild(tr);
       if (title) td.title = title;
       return td;
     };
-
-    weeks.forEach((w) => {
+    allWeeks.forEach((w) => {
       const tr = document.createElement("tr");
 
       const tdW = document.createElement("td");
@@ -13689,7 +13718,7 @@ list.appendChild(tr);
       body.appendChild(tr);
     });
 
-    if (!weeks.length) {
+    if (!allWeeks.length) {
       head.innerHTML = `<tr><th>Semana</th><th>Participantes</th></tr>`;
       body.innerHTML = `<tr><td class="small" colspan="2">Sem dados ainda. A divisão é registrada quando uma semana termina (na eliminação).</td></tr>`;
       if (hint) hint.textContent = "—";
@@ -13697,7 +13726,7 @@ list.appendChild(tr);
     }
 
     if (hint) {
-      const last = weeks[weeks.length - 1];
+      const last = allWeeks[allWeeks.length - 1];
       hint.textContent = `Última semana registrada: S${Number(last.week || 0)} • VIP ${(last.vipIds || []).length} • Xepa ${(last.xepaIds || []).length}`;
     }
   }
