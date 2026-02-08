@@ -3907,7 +3907,7 @@ dayAdd(
     // Escolhe quem vai se abrir (puxa mais para quem está em risco/rejeição)
     const weighted = alive.map((p) => {
       const w = 1 + (p.attrs.rejeicao ?? 0) * 0.35 + (p.status.alvo ?? 0) * 0.25 + (p.status.strikes ?? 0) * 0.35;
-      return { p, w: Math.max(0.1, w) };
+      return { item: p, w: Math.max(0.1, w) };
     });
     const who = pickWeighted(weighted);
     const others = alive.filter((p) => p.id !== who.id);
@@ -13023,6 +13023,9 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
     const aliveN = alive.length;
     const ctx = dayCtx();
     const activeTab = document.querySelector('.tabBtn.active')?.dataset?.tab || document.querySelector('.menuPanel.active')?.id || 'tabCasa';
+
+    // Semanas (1..semana atual). Usado por tabelas e gráficos (evita ReferenceError: allWeeks)
+    const allWeeks = Array.from({ length: Math.max(1, Number(state.week || 1)) }, (_, i) => ({ week: i + 1 }));
 
     // select do Histórico (participantes)
     const histWho = $("histWho");
