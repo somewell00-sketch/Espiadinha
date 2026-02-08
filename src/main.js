@@ -2536,6 +2536,7 @@ function computeSeasonTitles() {
     return { title, subtitle, axis: main, secondary };
   };
 
+  };
 
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
@@ -4255,20 +4256,25 @@ function statusLabel(p) {
     }
   });
 
+
+  // UI state: aba Divisão
+  let divisionSortMode = "cast"; // cast | mostVip | mostXepa | name
+  let divisionNameDir = "asc"; // asc | desc
+  let state = load() ?? defaultState();
+
   // Divisão (VIP/Xepa): histórico semanal persistente
   if (!state.divisionHistory || typeof state.divisionHistory !== "object") state.divisionHistory = {};
   // Se já existe VIP/Xepa definido para a semana atual (em saves antigos), espelha no histórico assim que as funções existirem
   try {
     const ws0 = state.weekState || {};
     if ((Array.isArray(ws0.vipIds) && ws0.vipIds.length) || (Array.isArray(ws0.xepaIds) && ws0.xepaIds.length)) {
-      setTimeout(() => { try { mirrorCurrentWeekDivisionIfAny(); } catch {} }, 0);
+      setTimeout(() => {
+        try {
+          if (typeof mirrorCurrentWeekDivisionIfAny === "function") mirrorCurrentWeekDivisionIfAny();
+        } catch {}
+      }, 0);
     }
   } catch {}
-
-  // UI state: aba Divisão
-  let divisionSortMode = "cast"; // cast | mostVip | mostXepa | name
-  let divisionNameDir = "asc"; // asc | desc
-  let state = load() ?? defaultState();
 
   // UI state: aba Popularidade
   let popTabSelectedIds = null; // Set<string>
