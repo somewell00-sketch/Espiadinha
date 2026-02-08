@@ -318,8 +318,6 @@ function getWeekSnap(weekNumber) {
     leaderId: w.leaderId ?? null,
     anjoId: w.anjoId ?? null,
     imuneId: w.imuneId ?? null,
-      vipIds: Array.isArray(w.vipIds) ? w.vipIds.slice() : [],
-      xepaIds: Array.isArray(w.xepaIds) ? w.xepaIds.slice() : [],
     indicadoLiderId: w.indicadoLiderId ?? null,
     contragolpeId: w.contragolpeId ?? null,
     indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
@@ -2538,6 +2536,7 @@ function computeSeasonTitles() {
     return { title, subtitle, axis: main, secondary };
   };
 
+  };
 
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
@@ -4257,6 +4256,19 @@ function statusLabel(p) {
     }
   });
 
+  // Divisão (VIP/Xepa): histórico semanal persistente
+  if (!state.divisionHistory || typeof state.divisionHistory !== "object") state.divisionHistory = {};
+  // Se já existe VIP/Xepa definido para a semana atual (em saves antigos), espelha no histórico assim que as funções existirem
+  try {
+    const ws0 = state.weekState || {};
+    if ((Array.isArray(ws0.vipIds) && ws0.vipIds.length) || (Array.isArray(ws0.xepaIds) && ws0.xepaIds.length)) {
+      setTimeout(() => { try { mirrorCurrentWeekDivisionIfAny(); } catch {} }, 0);
+    }
+  } catch {}
+
+  // UI state: aba Divisão
+  let divisionSortMode = "cast"; // cast | mostVip | mostXepa | name
+  let divisionNameDir = "asc"; // asc | desc
   let state = load() ?? defaultState();
 
   // UI state: aba Popularidade
@@ -4299,6 +4311,8 @@ parsed.weekState.xepaIds = Array.isArray(parsed.weekState.xepaIds) ? parsed.week
 
       parsed.relations = parsed.relations || {};
       parsed.crushRevealed = parsed.crushRevealed || {};
+      // Divisão (VIP/Xepa): histórico semanal persistente
+      parsed.divisionHistory = (parsed.divisionHistory && typeof parsed.divisionHistory === "object") ? parsed.divisionHistory : {};
       parsed.crushReciprocalBonus = parsed.crushReciprocalBonus || {};
       parsed.log = Array.isArray(parsed.log) ? parsed.log : [];
       parsed.gameOver = !!parsed.gameOver;
@@ -7776,6 +7790,77 @@ function runProva(roleLabel, pool, roleTypeClass) {
     gameAdd(line);
   }
 
+// ===== Divisão (VIP/Xepa): histórico semanal =====
+function ensureDivisionHistory() {
+  if (!state.divisionHistory || typeof state.divisionHistory !== "object") state.divisionHistory = {};
+}
+
+function uniqueIds(arr) {
+  const out = [];
+  const seen = new Set();
+  (Array.isArray(arr) ? arr : []).forEach((x) => {
+    if (!x) return;
+    const k = String(x);
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(k);
+  });
+  return out;
+}
+
+function recordDivisionForWeek(weekNumber, vipIdsRaw, xepaIdsRaw) {
+  ensureDivisionHistory();
+  const weekKey = String(weekNumber ?? state.week ?? 1);
+
+  const aliveNow = alivePlayers();
+  const aliveIds = aliveNow.map((p) => String(p.id));
+  const aliveSet = new Set(aliveIds);
+
+  const vipIds = uniqueIds(vipIdsRaw).filter((id) => aliveSet.has(id));
+  const xepaIds = uniqueIds(xepaIdsRaw).filter((id) => aliveSet.has(id) && !vipIds.includes(id));
+
+  // Garante cobertura: todo mundo vivo precisa estar em VIP ou Xepa
+  const covered = new Set([...vipIds, ...xepaIds]);
+  const missing = aliveIds.filter((id) => !covered.has(id));
+  // Se faltar alguém, coloca na Xepa (fallback seguro)
+  missing.forEach((id) => xepaIds.push(id));
+
+  state.divisionHistory[weekKey] = { vipIds, xepaIds };
+}
+
+function mirrorCurrentWeekDivisionIfAny() {
+  const ws = state.weekState || {};
+  const vip = Array.isArray(ws.vipIds) ? ws.vipIds : [];
+  const xepa = Array.isArray(ws.xepaIds) ? ws.xepaIds : [];
+  if (!vip.length && !xepa.length) return;
+  recordDivisionForWeek(state.week, vip, xepa);
+}
+
+// Caso o simulador não definisse VIP/Xepa, essa função cria uma divisão simples.
+// (Aqui já existe defineVipXepa(leaderId); esta é só um fallback utilitário.)
+function defineVipXepaForWeek() {
+  const alive = alivePlayers();
+  if (!alive.length) {
+    state.weekState.vipIds = [];
+    state.weekState.xepaIds = [];
+    mirrorCurrentWeekDivisionIfAny();
+    return;
+  }
+
+  const aliveIds = alive.map((p) => p.id);
+  const vipSize = Math.max(2, Math.ceil(alive.length / 3));
+
+  const vip = uniqueIds(aliveIds).slice(0, vipSize);
+  const vipSet = new Set(vip);
+  const xepa = aliveIds.filter((id) => !vipSet.has(id));
+
+  state.weekState.vipIds = vip;
+  state.weekState.xepaIds = xepa;
+
+    // Divisão (VIP/Xepa): espelha no histórico semanal
+    try { recordDivisionForWeek(state.week, vip, xepa); } catch {}
+  mirrorCurrentWeekDivisionIfAny();
+}
 function defineVipXepa(leaderId) {
     const alive = alivePlayers();
     if (!leaderId || !alive.length) {
@@ -8483,7 +8568,7 @@ function doIndica() {
       const threat = c.attrs.provas * 0.45 + c.attrs.estrategia * 0.35 + c.status.pop * 0.5;
       const r = relGet(voter.id, c.id);
       const relShield = r * 0.45;
-      const noise = rnd(-0.3, 0.3);
+      const noise = rnd(-1.2, 1.2);
       const score = (dislike - shield) * 0.8 + threat * 0.35 - relShield + noise;
       return { item: c, w: clamp(score + 5, 0.2, 30) };
     });
@@ -8509,15 +8594,10 @@ function doIndica() {
     const votes = [];
     const tally = new Map();
 
-	  // teto global: no máximo 10% dos votos serão "solo"
-const maxSoloVotes = Math.max(1, Math.floor(voters.length * 0.10));
-let soloVotesUsed = 0;
-
-
     // ===== VOTO EM BLOCOS (médio): quase sempre 2 blocos claros, mas alguns votam sozinhos =====
-    const PROB_FOLLOW_BLOCK = 0.92;
-    const PROB_SOLO_BASE = 0.08;
-    const REL_MIN_JOIN = 0.10;
+    const PROB_FOLLOW_BLOCK = 0.78;
+    const PROB_SOLO_BASE = 0.22;
+    const REL_MIN_JOIN = 0.35;
 
     const bf = state.weekState?.bigFone || {};
     const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
@@ -8570,7 +8650,7 @@ let soloVotesUsed = 0;
       if (blockOf[v.id] !== undefined) continue;
 
       // alguns são "independentes"
-      const indep = ((v.attrs.estrategia ?? 5) >= 8 && Math.random() < 0.15) || ((v.attrs.social ?? 5) <= 3 && Math.random() < 0.10);
+      const indep = ((v.attrs.estrategia ?? 5) >= 8 && Math.random() < 0.55) || ((v.attrs.social ?? 5) <= 3 && Math.random() < 0.45);
       if (indep) continue;
 
       const ra = whipA ? relGet(v.id, whipA.id) : -999;
@@ -8606,18 +8686,6 @@ let soloVotesUsed = 0;
       }
     }
     fillSmallBlock();
-	  // fallback: quem ficou sem bloco entra no lado "menos ruim" (para consolidar votação)
-for (const v of voters) {
-  if (!v.status.alive) continue;
-  if (blockOf[v.id] !== undefined) continue;
-
-  const ra = whipA ? relGet(v.id, whipA.id) : -999;
-  const rb = whipB ? relGet(v.id, whipB.id) : -999;
-  const best = ra >= rb ? 0 : 1;
-
-  blockOf[v.id] = best;
-  blocks[best].push(v);
-}
 
     function validCandidates(forVoter) {
       return alive.filter((c) => !protectedIds.has(c.id) && c.id !== forVoter.id);
@@ -8682,22 +8750,14 @@ for (const v of voters) {
       const isXepa = !!(state.weekState.xepaIds && state.weekState.xepaIds.includes(voter.id));
 
       const soloChance = PROB_SOLO_BASE + (isXepa ? 0.08 : 0) - (isVip ? 0.06 : 0);
-const followChance = PROB_FOLLOW_BLOCK + (isVip ? 0.10 : 0) - (isXepa ? 0.04 : 0);
+      const followChance = PROB_FOLLOW_BLOCK + (isVip ? 0.10 : 0) - (isXepa ? 0.04 : 0);
 
-// teto global: só deixa virar "solo" se ainda não estourou os 10%
-const canSolo = soloVotesUsed < maxSoloVotes;
-const willSolo = canSolo && (Math.random() < soloChance);
+      if (b !== undefined && bt[b] && Math.random() > soloChance && Math.random() < followChance) {
+        const targetId = bt[b].id;
+        if (candidates.some((c)=>c.id===targetId)) chosen = bt[b];
+      }
 
-if (!willSolo && b !== undefined && bt[b] && Math.random() < followChance) {
-  const targetId = bt[b].id;
-  if (candidates.some((c)=>c.id===targetId)) chosen = bt[b];
-}
-
-// se não escolheu pelo bloco, vota individualmente
-if (!chosen) {
-  chosen = chooseVote(voter, candidates);
-  if (willSolo) soloVotesUsed++;
-}
+      if (!chosen) chosen = chooseVote(voter, candidates);
 
       votes.push({ fromId: voter.id, toId: chosen.id });
       tally.set(chosen.id, (tally.get(chosen.id) || 0) + 1);
@@ -9132,8 +9192,6 @@ const html = `
       leaderId: w.leaderId ?? null,
       anjoId: w.anjoId ?? null,
       imuneId: w.imuneId ?? null,
-      vipIds: Array.isArray(w.vipIds) ? w.vipIds.slice() : [],
-      xepaIds: Array.isArray(w.xepaIds) ? w.xepaIds.slice() : [],
       indicadoLiderId: w.indicadoLiderId ?? null,
       contragolpeId: w.contragolpeId ?? null,
       indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
@@ -11866,8 +11924,69 @@ const seasonAccHtml = acc.length ? `
 
     if (d) { d.style.display = "block"; d.setAttribute("aria-hidden", "false"); }
     if (b) b.style.display = "block";
+function ensureDivisionTabUI() {
+  // Botão
+  const tabs = document.querySelector(".menuTabs");
+  if (tabs && !tabs.querySelector('.tabBtn[data-tab="tabDivisao"]')) {
+    const btn = document.createElement("button");
+    btn.className = "tabBtn";
+    btn.setAttribute("data-tab", "tabDivisao");
+    btn.textContent = "Divisão";
+
+    const popBtn = tabs.querySelector('.tabBtn[data-tab="tabPopularidade"]');
+    if (popBtn && popBtn.nextSibling) {
+      tabs.insertBefore(btn, popBtn.nextSibling);
+    } else {
+      tabs.appendChild(btn);
+    }
   }
 
+  // Painel
+  const panelsRoot = document.querySelector(".bottomMenu");
+  if (panelsRoot && !document.getElementById("tabDivisao")) {
+    const ref = document.getElementById("tabPopularidade") || document.getElementById("tabRels") || null;
+
+    const panel = document.createElement("div");
+    panel.className = "menuPanel";
+    panel.id = "tabDivisao";
+    panel.innerHTML = `
+      <div class="panel" style="border:none;">
+        <div class="hd">
+          <h2>Divisão</h2>
+          <div class="small">Histórico semanal de VIP/Xepa. Células vazias indicam que o participante já estava fora naquela semana.</div>
+        </div>
+        <div class="bd">
+          <div class="tableTools">
+            <select id="divisionSortMode">
+              <option value="cast">Ordenar colunas: Elenco</option>
+              <option value="mostVip">Mais VIP</option>
+              <option value="mostXepa">Mais Xepa</option>
+            </select>
+            <div class="small" style="opacity:.75;">Clique no nome de um participante para alternar A–Z / Z–A.</div>
+          </div>
+
+          <div id="divisionEmpty" class="small muted" style="margin:8px 0; display:none;"></div>
+
+          <div class="tableWrap">
+            <table id="divisionTable">
+              <thead id="divisionHead"></thead>
+              <tbody id="divisionBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (ref && ref.parentNode) {
+      ref.parentNode.insertBefore(panel, ref.nextSibling);
+    } else {
+      panelsRoot.appendChild(panel);
+    }
+  }
+}
+  }
+
+  ensureDivisionTabUI();
   // Tabs
   document.querySelectorAll(".tabBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -12551,6 +12670,137 @@ $("btnGenCast")?.addEventListener("click", () => {
     const selN = seriesList.length;
     hintEl.textContent = `${selN}/${total} selecionados • Semanas: S1 → S${lastWeek}`;
   }
+}
+
+function renderDivisionTab() {
+  ensureDivisionHistory();
+  // espelha a semana atual se já houver VIP/Xepa definido
+  try { mirrorCurrentWeekDivisionIfAny(); } catch {}
+
+  const head = $("divisionHead");
+  const body = $("divisionBody");
+  const empty = $("divisionEmpty");
+  const sel = $("divisionSortMode");
+
+  if (!head || !body || !empty) return;
+
+  if (sel) {
+    sel.value = divisionSortMode === "mostVip" ? "mostVip" : (divisionSortMode === "mostXepa" ? "mostXepa" : "cast");
+    sel.onchange = () => {
+      const v = sel.value;
+      divisionSortMode = (v === "mostVip" || v === "mostXepa") ? v : "cast";
+      renderDivisionTab();
+    };
+  }
+
+  const hist = state.divisionHistory || {};
+  const weekNums = Object.keys(hist)
+    .map((k) => parseInt(k, 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  const ws = state.weekState || {};
+  const hasCurrent = (Array.isArray(ws.vipIds) && ws.vipIds.length) || (Array.isArray(ws.xepaIds) && ws.xepaIds.length);
+  if (hasCurrent) weekNums.push(parseInt(String(state.week || 1), 10));
+
+  const maxWeek = weekNums.length ? Math.max(...weekNums) : 0;
+  if (!maxWeek) {
+    head.innerHTML = "";
+    body.innerHTML = "";
+    empty.style.display = "block";
+    empty.textContent = "Sem dados de Divisão ainda (aguarde a Prova do Líder ou a definição de VIP/Xepa).";
+    return;
+  }
+  empty.style.display = "none";
+  empty.textContent = "";
+
+  const weeks = [];
+  for (let w = 1; w <= maxWeek; w++) weeks.push(w);
+
+  const vipCount = {};
+  const xepaCount = {};
+  (state.players || []).forEach((p) => { vipCount[p.id] = 0; xepaCount[p.id] = 0; });
+
+  weeks.forEach((w) => {
+    const rec = hist[String(w)] || null;
+    if (!rec) return;
+    (rec.vipIds || []).forEach((id) => { if (vipCount[id] != null) vipCount[id] += 1; });
+    (rec.xepaIds || []).forEach((id) => { if (xepaCount[id] != null) xepaCount[id] += 1; });
+  });
+
+  const castOrder = (state.players || []).map((p) => p.id);
+
+  function isAliveInWeek(p, weekNum) {
+    if (!p || !p.status) return false;
+    if (!p.status.outWeek) return true;
+    return Number(weekNum) <= Number(p.status.outWeek);
+  }
+
+  const playersForCols = (state.players || []).slice();
+  const byName = (a, b) => (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" });
+
+  if (divisionSortMode === "mostVip") {
+    playersForCols.sort((a, b) => {
+      const dv = (vipCount[b.id] || 0) - (vipCount[a.id] || 0);
+      if (dv !== 0) return dv;
+      return byName(a, b);
+    });
+  } else if (divisionSortMode === "mostXepa") {
+    playersForCols.sort((a, b) => {
+      const dx = (xepaCount[b.id] || 0) - (xepaCount[a.id] || 0);
+      if (dx !== 0) return dx;
+      return byName(a, b);
+    });
+  } else if (divisionSortMode === "name") {
+    playersForCols.sort((a, b) => byName(a, b) * (divisionNameDir === "desc" ? -1 : 1));
+  } else {
+    playersForCols.sort((a, b) => castOrder.indexOf(a.id) - castOrder.indexOf(b.id));
+  }
+
+  head.innerHTML = `<tr>${
+    ['<th style="width:70px;">Semana</th>']
+      .concat(playersForCols.map((p) => `<th class="sortable" data-player-head="1" style="min-width:92px;">${escapeHtml(displayName(p))}</th>`))
+      .join('')
+  }</tr>`;
+
+  body.innerHTML = "";
+  weeks.forEach((w) => {
+    const tr = document.createElement("tr");
+    const tdW = document.createElement("td");
+    tdW.textContent = `S${w}`;
+    tr.appendChild(tdW);
+
+    const rec = hist[String(w)] || null;
+    const vipSet = new Set((rec?.vipIds || []).map(String));
+    const xepaSet = new Set((rec?.xepaIds || []).map(String));
+
+    playersForCols.forEach((p) => {
+      const td = document.createElement("td");
+      td.style.textAlign = "center";
+
+      if (!isAliveInWeek(p, w)) {
+        td.textContent = "";
+      } else if (vipSet.has(String(p.id))) {
+        td.textContent = "VIP";
+      } else if (xepaSet.has(String(p.id))) {
+        td.textContent = "Xepa";
+      } else {
+        td.textContent = "";
+      }
+
+      tr.appendChild(td);
+    });
+
+    body.appendChild(tr);
+  });
+
+  head.querySelectorAll('th[data-player-head="1"]').forEach((th) => {
+    th.style.cursor = "pointer";
+    th.onclick = () => {
+      divisionSortMode = "name";
+      divisionNameDir = (divisionNameDir === "asc") ? "desc" : "asc";
+      renderDivisionTab();
+    };
+  });
 }
 
   function roleClassForPlayer(p) {
@@ -13484,10 +13734,11 @@ list.appendChild(tr);
 
     if (activeTab === "tabPopularidade") {
       renderPopularityTab();
-    }
+
 
     if (activeTab === "tabDivisao") {
       renderDivisionTab();
+    }
     }
 
     if (activeTab === "tabElims") {
@@ -13576,132 +13827,6 @@ list.appendChild(tr);
     if ($("meta")) $("meta").textContent = `${aliveN}/${state.players.length} ainda na casa`;
     if ($("btnNextTop")) $("btnNextTop").disabled = state.gameOver;
   }
-
-  function renderDivisionTab() {
-    const head = $("divHead");
-    const body = $("divBody");
-    const hint = $("divHint");
-    if (!head || !body) return;
-
-    const sortSel = $("divSort");
-    if (sortSel && !sortSel.__wired) {
-      sortSel.__wired = true;
-      sortSel.addEventListener("change", () => renderDivisionTab());
-    }
-
-    const weeks = (state.votesHistory || [])
-      .slice()
-      .sort((a, b) => Number(a.week || 0) - Number(b.week || 0));
-
-    const allPlayers = (state.players || []).slice();
-
-    // métricas para sorting
-    const vipCount = new Map();
-    const xepaCount = new Map();
-    allPlayers.forEach((p) => {
-      vipCount.set(p.id, 0);
-      xepaCount.set(p.id, 0);
-    });
-
-    weeks.forEach((w) => {
-      (w.vipIds || []).forEach((id) => vipCount.set(id, (vipCount.get(id) || 0) + 1));
-      (w.xepaIds || []).forEach((id) => xepaCount.set(id, (xepaCount.get(id) || 0) + 1));
-    });
-
-    // ordena colunas
-    const sort = String(sortSel?.value || "orig");
-    const players = allPlayers.slice();
-
-    if (sort === "name_asc") {
-      players.sort((a, b) => (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" }));
-    } else if (sort === "vip_desc") {
-      players.sort(
-        (a, b) =>
-          (vipCount.get(b.id) || 0) - (vipCount.get(a.id) || 0) ||
-          (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" })
-      );
-    } else if (sort === "xepa_desc") {
-      players.sort(
-        (a, b) =>
-          (xepaCount.get(b.id) || 0) - (xepaCount.get(a.id) || 0) ||
-          (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" })
-      );
-    }
-    // orig: mantém ordem do elenco
-
-    // header
-    const trh = document.createElement("tr");
-    const th0 = document.createElement("th");
-    th0.textContent = "Semana";
-    trh.appendChild(th0);
-
-    players.forEach((p) => {
-      const th = document.createElement("th");
-      const vipN = vipCount.get(p.id) || 0;
-      const xepaN = xepaCount.get(p.id) || 0;
-      th.innerHTML = `<div style="display:flex; flex-direction:column; gap:2px;">
-        <strong>${escapeHtml(displayName(p))}</strong>
-        <span class="small" style="opacity:.85;">VIP ${vipN} • Xepa ${xepaN}</span>
-      </div>`;
-      trh.appendChild(th);
-    });
-
-    head.innerHTML = "";
-    head.appendChild(trh);
-
-    // body
-    body.innerHTML = "";
-
-    const mkCell = (txt, muted = false, title = "") => {
-      const td = document.createElement("td");
-      td.style.textAlign = "center";
-      td.textContent = txt;
-      if (muted) td.style.color = "var(--muted)";
-      if (title) td.title = title;
-      return td;
-    };
-
-    weeks.forEach((w) => {
-      const tr = document.createElement("tr");
-
-      const tdW = document.createElement("td");
-      tdW.innerHTML = `<strong>S${Number(w.week || 0)}</strong>`;
-      tr.appendChild(tdW);
-
-      players.forEach((p) => {
-        const wNum = Number(w.week || 0);
-        const outWeek = Number(p.status?.outWeek || 0);
-
-        // se já saiu antes desta semana, marca como fora
-        if (outWeek && wNum > outWeek) {
-          tr.appendChild(mkCell("—", true, "Fora do jogo"));
-          return;
-        }
-
-        const isVip = Array.isArray(w.vipIds) && w.vipIds.includes(p.id);
-        const isXepa = Array.isArray(w.xepaIds) && w.xepaIds.includes(p.id);
-
-        if (isVip) tr.appendChild(mkCell("🥂 VIP", false, "VIP"));
-        else if (isXepa) tr.appendChild(mkCell("🥘 Xepa", false, "Xepa"));
-        else tr.appendChild(mkCell("—", true, "Sem divisão registrada"));
-      });
-
-      body.appendChild(tr);
-    });
-
-    if (!weeks.length) {
-      head.innerHTML = `<tr><th>Semana</th><th>Participantes</th></tr>`;
-      body.innerHTML = `<tr><td class="small" colspan="2">Sem dados ainda. A divisão é registrada quando uma semana termina (na eliminação).</td></tr>`;
-      if (hint) hint.textContent = "—";
-      return;
-    }
-
-    if (hint) {
-      const last = weeks[weeks.length - 1];
-      hint.textContent = `Última semana registrada: S${Number(last.week || 0)} • VIP ${(last.vipIds || []).length} • Xepa ${(last.xepaIds || []).length}`;
-    }
-  }
-
   /* ===== init ===== */
   if (state.players.length === 0) {
     const size = 1;
