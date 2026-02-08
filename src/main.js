@@ -2536,6 +2536,8 @@ function computeSeasonTitles() {
     return { title, subtitle, axis: main, secondary };
   };
 
+  };
+
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
     if (!p || !p.narrative) return null;
@@ -13390,22 +13392,53 @@ list.appendChild(tr);
         // Corpo: 1 linha por jogador
         divBody.innerHTML = "";
 
+        // Ordenação: vivos em cima; eliminados embaixo (mais recente primeiro), depois nome
         const orderedPlayers = state.players
           .slice()
-          .sort((a, b) => (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" }));
+          .sort((a, b) => {
+            const aElim = (a.status?.alive === false) || (state.elimOrder || []).includes(a.id);
+            const bElim = (b.status?.alive === false) || (state.elimOrder || []).includes(b.id);
+
+            // 1) vivos sempre em cima
+            if (aElim !== bElim) return aElim ? 1 : -1;
+
+            // 2) entre eliminados: mais recente primeiro
+            if (aElim && bElim) {
+              const aw = Number(a.status?.outWeek || 0);
+              const bw = Number(b.status?.outWeek || 0);
+              if (aw !== bw) return bw - aw;
+
+              const ai = (state.elimOrder || []).indexOf(a.id);
+              const bi = (state.elimOrder || []).indexOf(b.id);
+              if (ai !== bi) return bi - ai;
+            }
+
+            // 3) entre vivos: por nome
+            return (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" });
+          });
 
         orderedPlayers.forEach((p) => {
           const tr = document.createElement("tr");
+          if (p.status?.alive === false) tr.className = "mutedRow";
 
           const tdName = document.createElement("td");
           tdName.className = "nameCell";
-          tdName.textContent = displayName(p);
+          tdName.innerHTML = `<strong>${escapeHtml(displayName(p))}</strong>${p.status?.alive ? '' : ' <span class="small">(fora)</span>'}`;
           tr.appendChild(tdName);
 
           weekNums.forEach((n) => {
             const td = document.createElement("td");
-            const s = statusFor(p.id, n);
 
+            // Se já saiu antes desta semana, marca como fora
+            if (p.status?.outWeek && n > p.status.outWeek) {
+              td.textContent = "-";
+              td.style.textAlign = "center";
+              td.style.color = "var(--muted)";
+              tr.appendChild(td);
+              return;
+            }
+
+            const s = statusFor(p.id, n);
             if (s === "LÍDER") td.innerHTML = `<strong>${s}</strong>`;
             else td.textContent = s;
 
