@@ -8514,7 +8514,7 @@ function doIndica() {
       const threat = c.attrs.provas * 0.45 + c.attrs.estrategia * 0.35 + c.status.pop * 0.5;
       const r = relGet(voter.id, c.id);
       const relShield = r * 0.45;
-      const noise = rnd(-1.2, 1.2);
+      const noise = rnd(-0.6, 0.6);
       const score = (dislike - shield) * 0.8 + threat * 0.35 - relShield + noise;
       return { item: c, w: clamp(score + 5, 0.2, 30) };
     });
@@ -8539,11 +8539,15 @@ function doIndica() {
     const voters = alive.filter((p) => p.id !== leaderId);
     const votes = [];
     const tally = new Map();
+	// teto global: no máximo 10% dos votos serão "solo"
+const maxSoloVotes = Math.max(1, Math.floor(voters.length * 0.10));
+let soloVotesUsed = 0;
+
 
     // ===== VOTO EM BLOCOS (médio): quase sempre 2 blocos claros, mas alguns votam sozinhos =====
-    const PROB_FOLLOW_BLOCK = 0.78;
-    const PROB_SOLO_BASE = 0.22;
-    const REL_MIN_JOIN = 0.35;
+    const PROB_FOLLOW_BLOCK = 0.90;
+    const PROB_SOLO_BASE = 0.10;
+    const REL_MIN_JOIN = 0.20;
 
     const bf = state.weekState?.bigFone || {};
     const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
@@ -8596,7 +8600,7 @@ function doIndica() {
       if (blockOf[v.id] !== undefined) continue;
 
       // alguns são "independentes"
-      const indep = ((v.attrs.estrategia ?? 5) >= 8 && Math.random() < 0.55) || ((v.attrs.social ?? 5) <= 3 && Math.random() < 0.45);
+      const indep = ((v.attrs.estrategia ?? 5) >= 8 && Math.random() < 0.25) || ((v.attrs.social ?? 5) <= 3 && Math.random() < 0.10);
       if (indep) continue;
 
       const ra = whipA ? relGet(v.id, whipA.id) : -999;
@@ -8632,6 +8636,17 @@ function doIndica() {
       }
     }
     fillSmallBlock();
+	  for (const v of voters) {
+  if (!v.status.alive) continue;
+  if (blockOf[v.id] !== undefined) continue;
+
+  const ra = whipA ? relGet(v.id, whipA.id) : -999;
+  const rb = whipB ? relGet(v.id, whipB.id) : -999;
+  const best = ra >= rb ? 0 : 1;
+
+  blockOf[v.id] = best;
+  blocks[best].push(v);
+}
 
     function validCandidates(forVoter) {
       return alive.filter((c) => !protectedIds.has(c.id) && c.id !== forVoter.id);
@@ -8695,15 +8710,24 @@ function doIndica() {
       const isVip = !!(state.weekState.vipIds && state.weekState.vipIds.includes(voter.id));
       const isXepa = !!(state.weekState.xepaIds && state.weekState.xepaIds.includes(voter.id));
 
-      const soloChance = PROB_SOLO_BASE + (isXepa ? 0.08 : 0) - (isVip ? 0.06 : 0);
-      const followChance = PROB_FOLLOW_BLOCK + (isVip ? 0.10 : 0) - (isXepa ? 0.04 : 0);
+     const soloChance = PROB_SOLO_BASE + (isXepa ? 0.08 : 0) - (isVip ? 0.06 : 0);
+const followChance = PROB_FOLLOW_BLOCK + (isVip ? 0.10 : 0) - (isXepa ? 0.04 : 0);
 
-      if (b !== undefined && bt[b] && Math.random() > soloChance && Math.random() < followChance) {
-        const targetId = bt[b].id;
-        if (candidates.some((c)=>c.id===targetId)) chosen = bt[b];
-      }
+// teto global: só deixa virar "solo" se ainda não estourou os 10%
+const canSolo = soloVotesUsed < maxSoloVotes;
+const willSolo = canSolo && (Math.random() < soloChance);
 
-      if (!chosen) chosen = chooseVote(voter, candidates);
+if (!willSolo && b !== undefined && bt[b] && Math.random() < followChance) {
+  const targetId = bt[b].id;
+  if (candidates.some((c)=>c.id===targetId)) chosen = bt[b];
+}
+
+// se não escolheu pelo bloco, vota individualmente
+if (!chosen) {
+  chosen = chooseVote(voter, candidates);
+  if (willSolo) soloVotesUsed++;
+}
+
 
       votes.push({ fromId: voter.id, toId: chosen.id });
       tally.set(chosen.id, (tally.get(chosen.id) || 0) + 1);
