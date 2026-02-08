@@ -3845,6 +3845,7 @@ if (mom <= -3) candidates.push({ p, recent: null, kind: 'collapse', base: 1.7, e
     const aggressor = group[0];
     const target = group[1];
     const others = group.slice(2);
+    if (!aggressor || !target || !aggressor.id || !target.id) return false;
 
     // Impactos fortes
     bump(aggressor, { pop: -rnd(1.2, 2.2), alvo: rnd(0.2, 0.7) });
@@ -3903,11 +3904,12 @@ dayAdd(
 
     // Escolhe quem vai se abrir (puxa mais para quem está em risco/rejeição)
     const weighted = alive.map((p) => {
-      const w = 1 + (p.attrs.rejeicao ?? 0) * 0.35 + (p.status.alvo ?? 0) * 0.25 + (p.status.strikes ?? 0) * 0.35;
+      const w = 1 + (p?.attrs?.rejeicao ?? 0) * 0.35 + (p?.status?.alvo ?? 0) * 0.25 + (p?.status?.strikes ?? 0) * 0.35;
       return { p, w: Math.max(0.1, w) };
     });
     const who = pickWeighted(weighted);
-    const others = alive.filter((p) => p.id !== who.id);
+    if (!who || !who.id) return false;
+    const others = alive.filter((p) => p && p.id && p.id !== who.id);
     if (!others.length) return false;
 
     // Listener: tende a ser alguém com boa relação
@@ -3949,6 +3951,7 @@ dayAdd(
     for (let i = 0; i < alive.length; i++) {
       for (let j = i + 1; j < alive.length; j++) {
         const A = alive[i], B = alive[j];
+        if (!A || !B || !A.id || !B.id) continue;
         const s = (relGet(A.id, B.id) + relGet(B.id, A.id)) / 2;
         if (s >= 2.8) pairs.push({ A, B, s });
       }
@@ -4425,7 +4428,7 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
   }
 
   function alivePlayers() {
-    return state.players.filter((p) => p.status.alive);
+    return (state.players || []).filter((p) => p && p.status && p.status.alive);
   }
 
   function isTop4() {
@@ -7164,6 +7167,8 @@ for (const p of featured) {
 
   // ===== Eventos com gatilho (confrontos/reações) =====
   function maybeTriggeredConfrontations(ctx, alive) {
+    alive = (alive || []).filter(p => p && p.id && p.status && p.status.alive);
+    if (alive.length < 2) return false;
     state.weekState = state.weekState || {};
     state.weekState.triggered = state.weekState.triggered || {};
 
@@ -7175,7 +7180,7 @@ for (const p of featured) {
       const aggressor = alive
         .filter(p => p.id !== target.id)
         .slice()
-        .sort((a,b)=> (b.attrs.conflito*1.2 + b.attrs.estrategia*0.6 + rnd(-0.8,0.8)) - (a.attrs.conflito*1.2 + a.attrs.estrategia*0.6 + rnd(-0.8,0.8)))[0];
+        .sort((a,b)=> (Number(b?.attrs?.conflito ?? 5)*1.2 + Number(b?.attrs?.estrategia ?? 5)*0.6 + rnd(-0.8,0.8)) - (Number(a?.attrs?.conflito ?? 5)*1.2 + Number(a?.attrs?.estrategia ?? 5)*0.6 + rnd(-0.8,0.8)))[0];
 
       if (target && aggressor) {
         state.weekState.triggered.sincerao = true;
