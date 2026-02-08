@@ -8614,436 +8614,481 @@ function doIndica() {
     return tiedPlayers[0] || null;
   }
 
-  function doCasa() {
-    const alive = alivePlayers();
-    const leaderId = state.weekState.leaderId;
-    const imuneId = state.weekState.imuneId;
-    const indicadoLiderId = state.weekState.indicadoLiderId;
-    const contragolpeId = state.weekState.contragolpeId;
-    const leader = state.players.find((p) => p.id === leaderId);
-    if (!leader) return;
+ function doCasa() {
+  const alive = alivePlayers();
+  const leaderId = state.weekState.leaderId;
+  const imuneId = state.weekState.imuneId;
+  const indicadoLiderId = state.weekState.indicadoLiderId;
+  const leader = state.players.find((p) => p.id === leaderId);
+  if (!leader) return;
 
+  const formation = state.weekState?.wallFormation || "LIDER_CASA_2";
 
-    const formation = state.weekState?.wallFormation || "LIDER_CASA_2";
-    // Para a formação "contragolpe do indicado do líder", resolvemos o puxado antes da votação
-    // para que essa pessoa não seja opção de voto da casa.
-    if (formation === "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO" && indicadoLiderId && !state.weekState.contragolpeId) {
-      // usa a lógica existente de contragolpe
-      doContragolpe();
-    }
+  // ✅ 1) FORMAÇÃO DO PAREDÃO: sempre a primeira coisa do domingo (primeira saída no feed)
+  if (!state.weekState._formationGameLineShown) {
+    state.weekState._formationGameLineShown = true;
 
-    const voters = alive.filter((p) => p.id !== leaderId);
-    const votes = [];
-    const tally = new Map();
-	// teto global: no máximo 10% dos votos serão "solo"
-const maxSoloVotes = Math.max(1, Math.floor(voters.length * 0.10));
-let soloVotesUsed = 0;
+    const formationLabel = (() => {
+      switch (formation) {
+        case "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO":
+          return "👑 Líder indica + Casa vota + Contragolpe do indicado do líder";
+        case "LIDER_CASA_CONTRAGOLPE_MAISVOTADO":
+          return "👑 Líder indica + Casa vota + Contragolpe do mais votado da casa";
+        case "LIDER_CASA_PERDEDOR_PROVA":
+          return "👑 Líder indica + Casa vota + Último da prova do líder";
+        case "LIDER_CASA_2":
+        default:
+          return "👑 Líder indica + Casa vota 2";
+      }
+    })();
 
+    // gameLine sem "nome" (primeiro parâmetro null) para ficar como log puro
+    gameLine(null, `📋 Formação do paredão: ${formationLabel}`, "", "", "misto", "paredao");
+  }
 
-    // ===== VOTO EM BLOCOS (médio): quase sempre 2 blocos claros, mas alguns votam sozinhos =====
-    const PROB_FOLLOW_BLOCK = 0.90;
-    const PROB_SOLO_BASE = 0.10;
-    const REL_MIN_JOIN = 0.20;
+  // ✅ 2) Para a formação "contragolpe do indicado do líder", resolve ANTES da votação
+  // para que o puxado NÃO seja opção de voto da casa.
+  if (
+    formation === "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO" &&
+    indicadoLiderId &&
+    !state.weekState.contragolpeId
+  ) {
+    doContragolpe(); // deve setar state.weekState.contragolpeId
+  }
 
-    const bf = state.weekState?.bigFone || {};
-    const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
-    const protectedIds = new Set([
+  const contragolpeId = state.weekState.contragolpeId;
+
+  const voters = alive.filter((p) => p.id !== leaderId);
+  const votes = [];
+  const tally = new Map();
+
+  // teto global: no máximo 10% dos votos serão "solo"
+  const maxSoloVotes = Math.max(1, Math.floor(voters.length * 0.10));
+  let soloVotesUsed = 0;
+
+  // ===== VOTO EM BLOCOS (médio): quase sempre 2 blocos claros, mas alguns votam sozinhos =====
+  const PROB_FOLLOW_BLOCK = 0.90;
+  const PROB_SOLO_BASE = 0.10;
+  const REL_MIN_JOIN = 0.20;
+
+  const bf = state.weekState?.bigFone || {};
+  const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
+
+  const protectedIds = new Set(
+    [
       leaderId,
       indicadoLiderId,
-      contragolpeId,
+      contragolpeId, // ✅ se já houve contragolpe antes da votação, não vira alvo
       imuneId,
       bf.noVoteId,
       ...(Array.isArray(bf.noVoteIds) ? bf.noVoteIds : []),
       bf.extraParedaoId,
       ...(Array.isArray(bf.extraParedaoIds) ? bf.extraParedaoIds : []),
-      ...bfImm
-    ].filter(Boolean));
+      ...bfImm,
+    ].filter(Boolean)
+  );
 
-    function pickWhips() {
-      const cand = voters.filter((p)=>p.status.alive);
-      if (cand.length <= 2) return cand.slice(0,2).map((p)=>p.id);
+  function pickWhips() {
+    const cand = voters.filter((p) => p.status.alive);
+    if (cand.length <= 2) return cand.slice(0, 2).map((p) => p.id);
 
-      const scored = cand.map((p)=>{
-        const s = (p.attrs.social ?? 5) * 1.1 + (p.attrs.estrategia ?? 5) * 0.9 + (p.attrs.conflito ?? 5) * 0.35 + (p.status.pop ?? 5) * 0.25;
+    const scored = cand
+      .map((p) => {
+        const s =
+          (p.attrs.social ?? 5) * 1.1 +
+          (p.attrs.estrategia ?? 5) * 0.9 +
+          (p.attrs.conflito ?? 5) * 0.35 +
+          (p.status.pop ?? 5) * 0.25;
         return { p, s };
-      }).sort((a,b)=>b.s-a.s);
+      })
+      .sort((a, b) => b.s - a.s);
 
-      const whipA = scored[0].p;
+    const whipA = scored[0].p;
 
-      const rest = scored.slice(1).map((x)=>x.p);
-      rest.sort((a,b)=>{
-        // preferir alguém com relação fraca/negativa com o whipA (forma dois lados)
-        const ra = relGet(whipA.id, a.id);
-        const rb = relGet(whipA.id, b.id);
-        return ra - rb;
-      });
+    const rest = scored.slice(1).map((x) => x.p);
+    rest.sort((a, b) => {
+      // preferir alguém com relação fraca/negativa com o whipA (forma dois lados)
+      const ra = relGet(whipA.id, a.id);
+      const rb = relGet(whipA.id, b.id);
+      return ra - rb;
+    });
 
-      const whipB = rest[0] || scored[1].p;
-      return [whipA.id, whipB.id];
+    const whipB = rest[0] || scored[1].p;
+    return [whipA.id, whipB.id];
+  }
+
+  const whipIds = pickWhips();
+  const whipA = state.players.find((p) => p.id === whipIds[0]) || null;
+  const whipB = state.players.find((p) => p.id === whipIds[1]) || null;
+
+  const blockOf = {}; // voterId -> 0/1
+  const blocks = [[], []];
+
+  if (whipA) {
+    blockOf[whipA.id] = 0;
+    blocks[0].push(whipA);
+  }
+  if (whipB && (!whipA || whipB.id !== whipA.id)) {
+    blockOf[whipB.id] = 1;
+    blocks[1].push(whipB);
+  }
+
+  // atribui membros a quem eles mais confiam
+  for (const v of voters) {
+    if (!v || !v.status.alive) continue;
+    if (blockOf[v.id] !== undefined) continue;
+
+    // alguns são "independentes"
+    const indep =
+      ((v.attrs.estrategia ?? 5) >= 8 && Math.random() < 0.25) ||
+      ((v.attrs.social ?? 5) <= 3 && Math.random() < 0.10);
+    if (indep) continue;
+
+    const ra = whipA ? relGet(v.id, whipA.id) : -999;
+    const rb = whipB ? relGet(v.id, whipB.id) : -999;
+    const best = ra >= rb ? 0 : 1;
+    const bestScore = Math.max(ra, rb);
+    if (bestScore >= REL_MIN_JOIN) {
+      blockOf[v.id] = best;
+      blocks[best].push(v);
     }
+  }
 
-    const whipIds = pickWhips();
-    const whipA = state.players.find((p)=>p.id===whipIds[0]) || null;
-    const whipB = state.players.find((p)=>p.id===whipIds[1]) || null;
+  // se um bloco ficou pequeno, puxa alguns neutros pra manter 2 lados
+  function fillSmallBlock() {
+    if (!whipA || !whipB) return;
+    const a = blocks[0].length;
+    const b = blocks[1].length;
+    if (a >= 3 && b >= 3) return;
 
-    const blockOf = {}; // voterId -> 0/1
-    const blocks = [[], []];
+    const small = a <= b ? 0 : 1;
+    const whip = small === 0 ? whipA : whipB;
+    const need = Math.max(0, 3 - blocks[small].length);
+    if (!need) return;
 
-    if (whipA) { blockOf[whipA.id] = 0; blocks[0].push(whipA); }
-    if (whipB && (!whipA || whipB.id !== whipA.id)) { blockOf[whipB.id] = 1; blocks[1].push(whipB); }
-
-    // atribui membros a quem eles mais confiam
-    for (const v of voters) {
-      if (!v || !v.status.alive) continue;
-      if (blockOf[v.id] !== undefined) continue;
-
-      // alguns são "independentes"
-      const indep = ((v.attrs.estrategia ?? 5) >= 8 && Math.random() < 0.25) || ((v.attrs.social ?? 5) <= 3 && Math.random() < 0.10);
-      if (indep) continue;
-
-      const ra = whipA ? relGet(v.id, whipA.id) : -999;
-      const rb = whipB ? relGet(v.id, whipB.id) : -999;
-      const best = ra >= rb ? 0 : 1;
-      const bestScore = Math.max(ra, rb);
-      if (bestScore >= REL_MIN_JOIN) {
-        blockOf[v.id] = best;
-        blocks[best].push(v);
+    const pool = voters.filter((v) => v.status.alive && blockOf[v.id] === undefined);
+    pool.sort((x, y) => relGet(y.id, whip.id) - relGet(x.id, whip.id));
+    for (const v of pool) {
+      if (blocks[small].length >= 3) break;
+      if (relGet(v.id, whip.id) >= 0.15) {
+        blockOf[v.id] = small;
+        blocks[small].push(v);
       }
     }
+  }
+  fillSmallBlock();
 
-    // se um bloco ficou pequeno, puxa alguns neutros pra manter 2 lados
-    function fillSmallBlock() {
-      if (!whipA || !whipB) return;
-      const a = blocks[0].length;
-      const b = blocks[1].length;
-      if (a >= 3 && b >= 3) return;
+  // garante que todo mundo caia em um lado (pra não ficar b undefined)
+  for (const v of voters) {
+    if (!v.status.alive) continue;
+    if (blockOf[v.id] !== undefined) continue;
 
-      const small = a <= b ? 0 : 1;
-      const whip = small === 0 ? whipA : whipB;
-      const need = Math.max(0, 3 - blocks[small].length);
-      if (!need) return;
+    const ra = whipA ? relGet(v.id, whipA.id) : -999;
+    const rb = whipB ? relGet(v.id, whipB.id) : -999;
+    const best = ra >= rb ? 0 : 1;
 
-      const pool = voters.filter((v)=>v.status.alive && blockOf[v.id] === undefined);
-      pool.sort((x,y)=> relGet(y.id, whip.id) - relGet(x.id, whip.id));
-      for (const v of pool) {
-        if (blocks[small].length >= 3) break;
-        if (relGet(v.id, whip.id) >= 0.15) {
-          blockOf[v.id] = small;
-          blocks[small].push(v);
-        }
+    blockOf[v.id] = best;
+    blocks[best].push(v);
+  }
+
+  function validCandidates(forVoter) {
+    return alive.filter((c) => !protectedIds.has(c.id) && c.id !== forVoter.id);
+  }
+
+  function blockTarget(members) {
+    let best = null;
+    let bestScore = -1e9;
+
+    for (const cand of alive) {
+      if (protectedIds.has(cand.id)) continue;
+      // alvo de bloco não mira em alguém do próprio bloco
+      if (members.some((m) => m.id === cand.id)) continue;
+
+      let score = 0;
+      for (const m of members) {
+        const r = relGet(m.id, cand.id);
+        score += -r * 1.25;
+        score += (cand.status.alvo || 0) * 0.10;
+        score += (10 - (cand.status.pop || 0)) * 0.06;
+      }
+      score += (cand.attrs.rejeicao || 0) * 0.08;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = cand;
       }
     }
-    fillSmallBlock();
-	  for (const v of voters) {
-  if (!v.status.alive) continue;
-  if (blockOf[v.id] !== undefined) continue;
+    return best;
+  }
 
-  const ra = whipA ? relGet(v.id, whipA.id) : -999;
-  const rb = whipB ? relGet(v.id, whipB.id) : -999;
-  const best = ra >= rb ? 0 : 1;
+  const bt = [null, null];
+  if (blocks[0].length) bt[0] = blockTarget(blocks[0]);
+  if (blocks[1].length) bt[1] = blockTarget(blocks[1]);
 
-  blockOf[v.id] = best;
-  blocks[best].push(v);
-}
+  const reveal = Math.random() < 0.65;
+  if (reveal && (blocks[0].length >= 3 || blocks[1].length >= 3)) {
+    const nameA = whipA ? shortNameForEvents(whipA) : "Bloco A";
+    const nameB = whipB ? shortNameForEvents(whipB) : "Bloco B";
+    const tgtA = bt[0] ? shortNameForEvents(bt[0]) : "—";
+    const tgtB = bt[1] ? shortNameForEvents(bt[1]) : "—";
+    gameAdd(`
+      <div class="gameCard gameParedao">
+        <div class="gcTitle"><strong>Clima de votação</strong></div>
+        <div class="gcLine">
+          <strong>${escapeHtml(nameA)}</strong> tenta puxar votos em <strong>${escapeHtml(tgtA)}</strong>. Enquanto <strong>${escapeHtml(
+      nameB
+    )}</strong> tenta puxar votos em <strong>${escapeHtml(tgtB)}</strong>.
+        </div>
+      </div>
+    `);
+  }
 
-    function validCandidates(forVoter) {
-      return alive.filter((c) => !protectedIds.has(c.id) && c.id !== forVoter.id);
+  const shuffled = voters.slice().sort(() => Math.random() - 0.5);
+
+  for (const voter of shuffled) {
+    const candidates = validCandidates(voter);
+    if (!candidates.length) continue;
+
+    let chosen = null;
+    const b = blockOf[voter.id];
+
+    const isVip = !!(state.weekState.vipIds && state.weekState.vipIds.includes(voter.id));
+    const isXepa = !!(state.weekState.xepaIds && state.weekState.xepaIds.includes(voter.id));
+
+    const soloChance = PROB_SOLO_BASE + (isXepa ? 0.08 : 0) - (isVip ? 0.06 : 0);
+    const followChance = PROB_FOLLOW_BLOCK + (isVip ? 0.10 : 0) - (isXepa ? 0.04 : 0);
+
+    // teto global: só deixa virar "solo" se ainda não estourou os 10%
+    const canSolo = soloVotesUsed < maxSoloVotes;
+    const willSolo = canSolo && Math.random() < soloChance;
+
+    if (!willSolo && b !== undefined && bt[b] && Math.random() < followChance) {
+      const targetId = bt[b].id;
+      if (candidates.some((c) => c.id === targetId)) chosen = bt[b];
     }
 
-    function blockTarget(members) {
-      let best = null;
-      let bestScore = -1e9;
-
-      for (const cand of alive) {
-        if (protectedIds.has(cand.id)) continue;
-        // alvo de bloco não mira em alguém do próprio bloco
-        if (members.some((m)=>m.id===cand.id)) continue;
-
-        let score = 0;
-        for (const m of members) {
-          const r = relGet(m.id, cand.id);
-          score += (-r) * 1.25;
-          score += (cand.status.alvo || 0) * 0.10;
-          score += (10 - (cand.status.pop || 0)) * 0.06;
-        }
-        score += (cand.attrs.rejeicao || 0) * 0.08;
-
-        if (score > bestScore) {
-          bestScore = score;
-          best = cand;
-        }
-      }
-      return best;
+    // se não escolheu pelo bloco, vota individualmente
+    if (!chosen) {
+      chosen = chooseVote(voter, candidates);
+      if (willSolo) soloVotesUsed++;
     }
 
-    const bt = [null, null];
-    if (blocks[0].length) bt[0] = blockTarget(blocks[0]);
-    if (blocks[1].length) bt[1] = blockTarget(blocks[1]);
+    votes.push({ fromId: voter.id, toId: chosen.id });
+    tally.set(chosen.id, (tally.get(chosen.id) || 0) + 1);
+  }
 
-    const reveal = Math.random() < 0.65;
-    if (reveal && (blocks[0].length >= 3 || blocks[1].length >= 3)) {
-      const nameA = whipA ? shortNameForEvents(whipA) : "Bloco A";
-      const nameB = whipB ? shortNameForEvents(whipB) : "Bloco B";
-      const tgtA = bt[0] ? shortNameForEvents(bt[0]) : "—";
-      const tgtB = bt[1] ? shortNameForEvents(bt[1]) : "—";
-      gameAdd(`
-  <div class="gameCard gameParedao">
-    <div class="gcTitle"><strong>Clima de votação</strong></div>
-    <div class="gcLine">
-      <strong>${escapeHtml(nameA)}</strong> tenta puxar votos em <strong>${escapeHtml(tgtA)}</strong>. Enquanto <strong>${escapeHtml(nameB)}</strong> tenta puxar votos em <strong>${escapeHtml(tgtB)}</strong>.
-    </div>
-  </div>
-`);
-    }
+  const counts = Array.from(tally.entries())
+    .map(([id, count]) => ({ id, count }))
+    .sort((a, b) => b.count - a.count);
 
-    const shuffled = voters.slice().sort(() => Math.random() - 0.5);
+  // Guarda votos da casa (para possíveis eventos)
+  state.weekState = state.weekState || {};
+  state.weekState.lastCasaVotes = votes.slice();
 
-    for (const voter of shuffled) {
-      const candidates = validCandidates(voter);
-      if (!candidates.length) continue;
+  function pickNom(excludeIds, slotLabel) {
+    const remaining = counts.filter((x) => !excludeIds.has(x.id));
+    if (!remaining.length) return null;
 
-      let chosen = null;
-      const b = blockOf[voter.id];
+    const max = remaining[0].count;
+    const tiedIds = remaining.filter((x) => x.count === max).map((x) => x.id);
+    if (tiedIds.length === 1) return state.players.find((p) => p.id === tiedIds[0]) || null;
 
-      const isVip = !!(state.weekState.vipIds && state.weekState.vipIds.includes(voter.id));
-      const isXepa = !!(state.weekState.xepaIds && state.weekState.xepaIds.includes(voter.id));
+    const chosen = leaderBreakTie(leader, tiedIds);
 
-     const soloChance = PROB_SOLO_BASE + (isXepa ? 0.08 : 0) - (isVip ? 0.06 : 0);
-const followChance = PROB_FOLLOW_BLOCK + (isVip ? 0.10 : 0) - (isXepa ? 0.04 : 0);
+    const tiedNames = tiedIds
+      .map((id) => state.players.find((p) => p.id === id)?.name)
+      .filter(Boolean)
+      .join(", ");
 
-// teto global: só deixa virar "solo" se ainda não estourou os 10%
-const canSolo = soloVotesUsed < maxSoloVotes;
-const willSolo = canSolo && (Math.random() < soloChance);
+    // guarda para exibir depois da contagem
+    state.weekState.houseTieBreak = {
+      leaderId: leader?.id,
+      slotLabel,
+      tiedNames,
+      chosenName: chosen?.name || "—",
+    };
 
-if (!willSolo && b !== undefined && bt[b] && Math.random() < followChance) {
-  const targetId = bt[b].id;
-  if (candidates.some((c)=>c.id===targetId)) chosen = bt[b];
-}
+    return chosen;
+  }
 
-// se não escolheu pelo bloco, vota individualmente
-if (!chosen) {
-  chosen = chooseVote(voter, candidates);
-  if (willSolo) soloVotesUsed++;
-}
+  const houseNomCount = formation === "LIDER_CASA_2" ? 2 : 1;
 
+  const nom1 = pickNom(new Set(), houseNomCount === 1 ? "indicação da casa" : "1ª indicação da casa");
+  let nom2 = null;
+  if (houseNomCount === 2) {
+    const ex2 = new Set();
+    if (nom1) ex2.add(nom1.id);
+    nom2 = pickNom(ex2, "2ª indicação da casa");
+  }
 
-      votes.push({ fromId: voter.id, toId: chosen.id });
-      tally.set(chosen.id, (tally.get(chosen.id) || 0) + 1);
-    }
+  // Contragolpe do mais votado da casa (formação específica)
+  if (formation === "LIDER_CASA_CONTRAGOLPE_MAISVOTADO" && nom1 && !state.weekState.contragolpeId) {
+    const puxador = nom1;
+    const bf = state.weekState?.bigFone || {};
+    const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
 
-    const counts = Array.from(tally.entries())
-      .map(([id, count]) => ({ id, count }))
-      .sort((a, b) => b.count - a.count);
+    const noVoteIds = bfNoVoteIds();
+    const extraIds = bfExtraParedaoIds();
 
-    // Guarda votos da casa (para possíveis eventos de "voto descoberto" em seg/ter)
-    state.weekState = state.weekState || {};
-    state.weekState.lastCasaVotes = votes.slice();
-
-    function pickNom(excludeIds, slotLabel) {
-      const remaining = counts.filter((x) => !excludeIds.has(x.id));
-      if (!remaining.length) return null;
-      const max = remaining[0].count;
-      const tiedIds = remaining.filter((x) => x.count === max).map((x) => x.id);
-      if (tiedIds.length === 1) return state.players.find((p) => p.id === tiedIds[0]) || null;
-
-     const chosen = leaderBreakTie(leader, tiedIds);
-const tiedNames = tiedIds
-  .map((id) => state.players.find((p) => p.id === id)?.name)
-  .filter(Boolean)
-  .join(", ");
-
-// guarda para exibir depois da contagem
-state.weekState.houseTieBreak = {
-  leaderId: leader?.id,
-  slotLabel,
-  tiedNames,
-  chosenName: chosen?.name || "—"
-};
-
-return chosen;
-									
-
-    }
-
-    // (formation already defined earlier)
-
-	    // Pequeno card para deixar claro a formação da semana no histórico do jogo
-	    const formationLabel = (() => {
-	      switch (formation) {
-	        case "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO": return "👑 Líder indica + Casa vota + Contragolpe do indicado do líder";
-	        case "LIDER_CASA_CONTRAGOLPE_MAISVOTADO": return "👑 Líder indica + Casa vota + Contragolpe do mais votado da casa";
-	        case "LIDER_CASA_PERDEDOR_PROVA": return "👑 Líder indica + Casa vota + Último da prova do líder";
-	        case "LIDER_CASA_2":
-	        default: return "👑 Líder indica + Casa vota 2";
-	      }
-	    })();
-	    if (!state.weekState._formationCardShown) {
-	      state.weekState._formationCardShown = true;
-	      gameAdd(`<div class="gameCard gameNeu"><strong>Formação do paredão</strong>: ${escapeHtml(formationLabel)}</div>`);
-	    }
-    const houseNomCount = (formation === "LIDER_CASA_2") ? 2 : 1;
-
-    const nom1 = pickNom(new Set(), houseNomCount === 1 ? "indicação da casa" : "1ª indicação da casa");
-    let nom2 = null;
-    if (houseNomCount === 2) {
-      const ex2 = new Set();
-      if (nom1) ex2.add(nom1.id);
-      nom2 = pickNom(ex2, "2ª indicação da casa");
-    }
-
-    // Contragolpe do mais votado da casa (formação específica)
-    if (formation === "LIDER_CASA_CONTRAGOLPE_MAISVOTADO" && nom1 && !state.weekState.contragolpeId) {
-      const puxador = nom1;
-      const bf = state.weekState?.bigFone || {};
-      const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
-
-      const noVoteIds = bfNoVoteIds();
-      const extraIds = bfExtraParedaoIds();
-
-      const exclude = new Set([
+    const exclude = new Set(
+      [
         leaderId,
         imuneId,
         indicadoLiderId,
         puxador.id,
         ...noVoteIds,
         ...extraIds,
-        ...bfImm
-      ].filter(Boolean));
+        ...bfImm,
+      ].filter(Boolean)
+    );
 
-      // não puxa alguém que já esteja no paredão (nom2 etc.)
+    if (nom2) exclude.add(nom2.id);
+
+    const candidates = alive.filter((p) => p.status.alive && !exclude.has(p.id));
+    if (candidates.length) {
+      candidates.sort((a, b) => contragolpeTargetScore(puxador, b) - contragolpeTargetScore(puxador, a));
+      const puxado = candidates[0];
+      state.weekState.contragolpeId = puxado.id;
+
+      bump(puxado, { pop: -0.22, alvo: +0.85 });
+
+      state.relations[puxado.id] = state.relations[puxado.id] || {};
+      const r0 = relGet(puxado.id, puxador.id);
+      state.relations[puxado.id][puxador.id] = clamp(r0 - 0.6, -5, 5);
+
+      // ✅ Só UMA saída (card) pro contragolpe (sem gameline duplicada)
+      gameAdd(
+        `<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(
+          shortNameForEvents(puxador)
+        )} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`
+      );
+    }
+  }
+
+  // Fallback: se a formação pede contragolpe do indicado do líder e não rolou antes, resolve aqui
+  if (formation === "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO" && indicadoLiderId && !state.weekState.contragolpeId) {
+    const indicado = state.players.find((p) => p.id === indicadoLiderId);
+    if (indicado) {
+      const bf = state.weekState?.bigFone || {};
+      const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
+      const noVoteIds = bfNoVoteIds();
+      const extraIds = bfExtraParedaoIds();
+
+      const exclude = new Set([leaderId, imuneId, indicado.id, ...noVoteIds, ...extraIds, ...bfImm].filter(Boolean));
+
+      if (nom1) exclude.add(nom1.id);
       if (nom2) exclude.add(nom2.id);
 
       const candidates = alive.filter((p) => p.status.alive && !exclude.has(p.id));
       if (candidates.length) {
-        candidates.sort((a, b) => contragolpeTargetScore(puxador, b) - contragolpeTargetScore(puxador, a));
+        candidates.sort((a, b) => contragolpeTargetScore(indicado, b) - contragolpeTargetScore(indicado, a));
         const puxado = candidates[0];
         state.weekState.contragolpeId = puxado.id;
+
         bump(puxado, { pop: -0.22, alvo: +0.85 });
 
-        // quem é puxado tende a piorar a relação com quem puxou
         state.relations[puxado.id] = state.relations[puxado.id] || {};
-        const r0 = relGet(puxado.id, puxador.id);
-        state.relations[puxado.id][puxador.id] = clamp(r0 - 0.6, -5, 5);
-	      	gameAdd(`<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(shortNameForEvents(puxador))} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`);
+        const r0 = relGet(puxado.id, indicado.id);
+        state.relations[puxado.id][indicado.id] = clamp(r0 - 0.6, -5, 5);
+
+        // ✅ Só UMA saída (card) pro contragolpe (sem gameline duplicada)
+        gameAdd(
+          `<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(
+            shortNameForEvents(indicado)
+          )} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`
+        );
       }
     }
-
-    // Fallback: se a formação pede contragolpe do indicado do líder e não rolou antes, resolve aqui
-    if (formation === "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO" && indicadoLiderId && !state.weekState.contragolpeId) {
-      const indicado = state.players.find((p) => p.id === indicadoLiderId);
-      if (indicado) {
-        const bf = state.weekState?.bigFone || {};
-        const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
-        const noVoteIds = bfNoVoteIds();
-        const extraIds = bfExtraParedaoIds();
-
-        const exclude = new Set([
-          leaderId,
-          imuneId,
-          indicado.id,
-          ...noVoteIds,
-          ...extraIds,
-          ...bfImm
-        ].filter(Boolean));
-
-        if (nom1) exclude.add(nom1.id);
-        if (nom2) exclude.add(nom2.id);
-
-        const candidates = alive.filter((p) => p.status.alive && !exclude.has(p.id));
-        if (candidates.length) {
-          candidates.sort((a, b) => contragolpeTargetScore(indicado, b) - contragolpeTargetScore(indicado, a));
-          const puxado = candidates[0];
-          state.weekState.contragolpeId = puxado.id;
-          bump(puxado, { pop: -0.22, alvo: +0.85 });
-          state.relations[puxado.id] = state.relations[puxado.id] || {};
-          const r0 = relGet(puxado.id, indicado.id);
-          state.relations[puxado.id][indicado.id] = clamp(r0 - 0.6, -5, 5);
-	          gameAdd(`<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(shortNameForEvents(indicado))} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`);
-        }
-      }
-    }
-    state.weekState.indicadosCasaIds = [nom1?.id, nom2?.id].filter(Boolean);
-
-    state.weekState.houseVotes = votes;
-    state.weekState.tally = Object.fromEntries(Array.from(tally.entries()));
-
-    const set = new Map();
-    const ind = state.players.find((p) => p.id === indicadoLiderId);
-    const puxId = state.weekState.contragolpeId;
-    const pux = state.players.find((p) => p.id === puxId);
-    if (ind) set.set(ind.id, ind);
-    if (pux) set.set(pux.id, pux);
-    if (nom1) set.set(nom1.id, nom1);
-    // Formação: Líder indica + Casa vota + perdedor da Prova do Líder
-    if (formation === "LIDER_CASA_PERDEDOR_PROVA") {
-      const loserId = state.weekState.leaderLoserId;
-      const loser = loserId ? state.players.find((p) => p.id === loserId) : null;
-      if (loser && loser.status.alive) set.set(loser.id, loser);
-    }
-
-    if (nom2) set.set(nom2.id, nom2);
-
-    // Big Fone pode adicionar nomes extras ao paredão (sexta)
-    const extras = bfExtraParedaoIds();
-    for (const extraId of extras) {
-      const extra = state.players.find((p) => p.id === extraId);
-      if (extra && extra.status.alive) set.set(extra.id, extra);
-    }
-
-    const desiredMin = 3;
-
-    // fallback: garante pelo menos 3 nomes
-    if (set.size < desiredMin) {
-      for (const p of alive) {
-        if (p.id === leaderId) continue;
-        if (!set.has(p.id)) set.set(p.id, p);
-        if (set.size === desiredMin) break;
-      }
-    }
-
-    const paredao = Array.from(set.values());
-    state.weekState.paredaoIds = paredao.map((p) => p.id);
-    paredao.forEach((p) => bump(p, { strikes: +1 }));
-    const voteLines = votes
-      .map((v) => {
-        const fromP = state.players.find((p) => p.id === v.fromId);
-        const toP = state.players.find((p) => p.id === v.toId);
-        const from = fromP ? shortNameForEvents(fromP) : "??";
-        const to = toP ? shortNameForEvents(toP) : "??";
-        return `${escapeHtml(from)} → <strong>${escapeHtml(to)}</strong>`;
-      })
-      .join("<br>");
-
-    const tallyLine = counts
-      .slice(0, 10)
-      .map((x) => {
-        const pp = state.players.find((p) => p.id === x.id);
-        return `<strong>${escapeHtml(pp ? shortNameForEvents(pp) : "??")}</strong>: ${x.count}`;
-      })
-      .join(" • ");
-
-gameAdd(`<div class="gameCard gameNeu"><strong>Votação da casa</strong>: <br/> ${voteLines || "—"}</div>`);
-gameAdd(`<div class="gameCard gameNeu"><strong>Contagem</strong>: ${tallyLine || "—"}</div>`);
-
-// desempate do líder (após a contagem)
-if (state.weekState.houseTieBreak && state.weekState.houseTieBreak.tiedNames) {
-  const tb = state.weekState.houseTieBreak;
-  const l = tb.leaderId ? state.players.find((p) => p.id === tb.leaderId) : leader;
-  if (l) {
-    gameLine(
-  null,
-  `👑 Votação da casa empatou, ${escapeHtml(shortNameForEvents(l))} como líder desempata, escolhendo ${escapeHtml(tb.chosenName)} para o paredão!`,
-  "decisão fecha a indicação",
-  "expõe alvo e mexe no clima",
-  "misto",
-  "paredao"
-);
   }
+
+  state.weekState.indicadosCasaIds = [nom1?.id, nom2?.id].filter(Boolean);
+
+  state.weekState.houseVotes = votes;
+  state.weekState.tally = Object.fromEntries(Array.from(tally.entries()));
+
+  const set = new Map();
+  const ind = state.players.find((p) => p.id === indicadoLiderId);
+  const puxId = state.weekState.contragolpeId;
+  const pux = state.players.find((p) => p.id === puxId);
+
+  if (ind) set.set(ind.id, ind);
+  if (pux) set.set(pux.id, pux);
+  if (nom1) set.set(nom1.id, nom1);
+
+  // Formação: Líder indica + Casa vota + perdedor da Prova do Líder
+  if (formation === "LIDER_CASA_PERDEDOR_PROVA") {
+    const loserId = state.weekState.leaderLoserId;
+    const loser = loserId ? state.players.find((p) => p.id === loserId) : null;
+    if (loser && loser.status.alive) set.set(loser.id, loser);
+  }
+
+  if (nom2) set.set(nom2.id, nom2);
+
+  // Big Fone pode adicionar nomes extras ao paredão (sexta)
+  const extras = bfExtraParedaoIds();
+  for (const extraId of extras) {
+    const extra = state.players.find((p) => p.id === extraId);
+    if (extra && extra.status.alive) set.set(extra.id, extra);
+  }
+
+  const desiredMin = 3;
+
+  // fallback: garante pelo menos 3 nomes
+  if (set.size < desiredMin) {
+    for (const p of alive) {
+      if (p.id === leaderId) continue;
+      if (!set.has(p.id)) set.set(p.id, p);
+      if (set.size === desiredMin) break;
+    }
+  }
+
+  const paredao = Array.from(set.values());
+  state.weekState.paredaoIds = paredao.map((p) => p.id);
+  paredao.forEach((p) => bump(p, { strikes: +1 }));
+
+  const voteLines = votes
+    .map((v) => {
+      const fromP = state.players.find((p) => p.id === v.fromId);
+      const toP = state.players.find((p) => p.id === v.toId);
+      const from = fromP ? shortNameForEvents(fromP) : "??";
+      const to = toP ? shortNameForEvents(toP) : "??";
+      return `${escapeHtml(from)} → <strong>${escapeHtml(to)}</strong>`;
+    })
+    .join("<br>");
+
+  const tallyLine = counts
+    .slice(0, 10)
+    .map((x) => {
+      const pp = state.players.find((p) => p.id === x.id);
+      return `<strong>${escapeHtml(pp ? shortNameForEvents(pp) : "??")}</strong>: ${x.count}`;
+    })
+    .join(" • ");
+
+  gameAdd(`<div class="gameCard gameNeu"><strong>Votação da casa</strong>: <br/> ${voteLines || "—"}</div>`);
+  gameAdd(`<div class="gameCard gameNeu"><strong>Contagem</strong>: ${tallyLine || "—"}</div>`);
+
+  // desempate do líder (após a contagem)
+  if (state.weekState.houseTieBreak && state.weekState.houseTieBreak.tiedNames) {
+    const tb = state.weekState.houseTieBreak;
+    const l = tb.leaderId ? state.players.find((p) => p.id === tb.leaderId) : leader;
+    if (l) {
+      gameLine(
+        null,
+        `👑 Votação da casa empatou, ${escapeHtml(shortNameForEvents(l))} como líder desempata, escolhendo ${escapeHtml(
+          tb.chosenName
+        )} para o paredão!`,
+        "decisão fecha a indicação",
+        "expõe alvo e mexe no clima",
+        "misto",
+        "paredao"
+      );
+    }
+  }
+
+  const names = paredao.map((p) => p.name).join(", ");
+  gameLine(names, "paredão formado", "a tensão sobe", "alianças e blocos ficam expostos", "misto", "paredao");
 }
 
-    const names = paredao.map((p) => p.name).join(", ");
-    gameLine(names, "paredão formado", "a tensão sobe", "alianças e blocos ficam expostos", "misto", "paredao");
-  }
 
   function undoParedaoStrike(p) {
     if (!p || !p.status) return;
