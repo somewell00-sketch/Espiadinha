@@ -2536,6 +2536,7 @@ function computeSeasonTitles() {
     return { title, subtitle, axis: main, secondary };
   };
 
+  };
 
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
@@ -11928,7 +11929,12 @@ const seasonAccHtml = acc.length ? `
 
     if (d) { d.style.display = "block"; d.setAttribute("aria-hidden", "false"); }
     if (b) b.style.display = "block";
-function ensureDivisionTabUI() {
+
+
+
+  }
+
+  function ensureDivisionTabUI() {
   // Botão
   const tabs = document.querySelector(".menuTabs");
   if (tabs && !tabs.querySelector('.tabBtn[data-tab="tabDivisao"]')) {
@@ -11988,9 +11994,8 @@ function ensureDivisionTabUI() {
     }
   }
 }
-  }
 
-  ensureDivisionTabUI();
+ensureDivisionTabUI();
   // Tabs
   document.querySelectorAll(".tabBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
