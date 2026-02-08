@@ -13588,6 +13588,16 @@ list.appendChild(tr);
     const hint = $("divHint");
     if (!head || !body) return;
 
+    // Se já existe líder na semana e ainda não foi definida a divisão, gera agora.
+    // Isso evita a aba aparecer "vazia" quando o estado veio de preset/load sem vip/xepa.
+    const curLeaderId = state.weekState?.leaderId;
+    const hasVip = Array.isArray(state.weekState?.vipIds) && state.weekState.vipIds.length > 0;
+    const hasXepa = Array.isArray(state.weekState?.xepaIds) && state.weekState.xepaIds.length > 0;
+    if (curLeaderId && (!hasVip || !hasXepa) && typeof defineVipXepa === "function") {
+      defineVipXepa(curLeaderId);
+      save();
+    }
+
     const sortSel = $("divSort");
     if (sortSel && !sortSel.__wired) {
       sortSel.__wired = true;
