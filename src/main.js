@@ -8558,7 +8558,6 @@ function doIndica() {
     const imuneId = state.weekState.imuneId;
     const indicado = state.players.find((p) => p.id === state.weekState.indicadoLiderId);
     if (!indicado) return;
-    const formation = state.weekState?.wallFormation || "LIDER_CASA_2";
     // Contragolpe só existe em duas formações; aqui é apenas o contragolpe do indicado do líder.
     if (formation !== "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO") {
       state.weekState.contragolpeId = null;
@@ -8591,8 +8590,6 @@ function doIndica() {
     state.relations[puxado.id] = state.relations[puxado.id] || {};
     const r0 = relGet(puxado.id, indicado.id);
     state.relations[puxado.id][indicado.id] = clamp(r0 - 0.6, -5, 5);
-
-    gameLine(`${indicado.name} puxa ${puxado.name}`, "contragolpe: o indicado escolhe alguém para ir junto", "o clima piora e vira briga de narrativa", "muda a mira da casa", "misto", "paredao");
 	    gameAdd(`<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(shortNameForEvents(indicado))} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`);
   }
 
@@ -8625,6 +8622,15 @@ function doIndica() {
     const leader = state.players.find((p) => p.id === leaderId);
     if (!leader) return;
 
+
+    const formation = state.weekState?.wallFormation || "LIDER_CASA_2";
+    // Para a formação "contragolpe do indicado do líder", resolvemos o puxado antes da votação
+    // para que essa pessoa não seja opção de voto da casa.
+    if (formation === "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO" && indicadoLiderId && !state.weekState.contragolpeId) {
+      // usa a lógica existente de contragolpe
+      doContragolpe();
+    }
+
     const voters = alive.filter((p) => p.id !== leaderId);
     const votes = [];
     const tally = new Map();
@@ -8646,7 +8652,9 @@ let soloVotesUsed = 0;
       contragolpeId,
       imuneId,
       bf.noVoteId,
+      ...(Array.isArray(bf.noVoteIds) ? bf.noVoteIds : []),
       bf.extraParedaoId,
+      ...(Array.isArray(bf.extraParedaoIds) ? bf.extraParedaoIds : []),
       ...bfImm
     ].filter(Boolean));
 
@@ -8914,8 +8922,6 @@ return chosen;
         state.relations[puxado.id] = state.relations[puxado.id] || {};
         const r0 = relGet(puxado.id, puxador.id);
         state.relations[puxado.id][puxador.id] = clamp(r0 - 0.6, -5, 5);
-
-	      	gameLine(`${puxador.name} puxa ${puxado.name}`, "contragolpe: o mais votado da casa escolhe alguém", "o clima piora e vira briga de narrativa", "muda a mira da casa", "misto", "paredao");
 	      	gameAdd(`<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(shortNameForEvents(puxador))} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`);
       }
     }
@@ -8950,7 +8956,6 @@ return chosen;
           state.relations[puxado.id] = state.relations[puxado.id] || {};
           const r0 = relGet(puxado.id, indicado.id);
           state.relations[puxado.id][indicado.id] = clamp(r0 - 0.6, -5, 5);
-	          gameLine(`${indicado.name} puxa ${puxado.name}`, "contragolpe: o indicado escolhe alguém para ir junto", "o clima piora e vira briga de narrativa", "muda a mira da casa", "misto", "paredao");
 	          gameAdd(`<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(shortNameForEvents(indicado))} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`);
         }
       }
@@ -9055,6 +9060,7 @@ if (state.weekState.houseTieBreak && state.weekState.houseTieBreak.tiedNames) {
   if (participants.length < 2) return;
 
   const winners = [];
+  const initialParticipants = [...participants];
 
   // remove vencedores até ficar com 3 nomes no paredão
   while (state.weekState.paredaoIds.length > 3 && participants.length >= 2) {
@@ -9074,7 +9080,7 @@ if (state.weekState.houseTieBreak && state.weekState.houseTieBreak.tiedNames) {
 
   const indicado = indicadoLiderId ? state.players.find((p) => p.id === indicadoLiderId) : null;
 
-  const partNames = participants
+  const partNames = initialParticipants
     .map((id) => state.players.find((p) => p.id === id))
     .filter(Boolean)
     .map((p) => shortNameForEvents(p))
