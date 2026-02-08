@@ -3905,9 +3905,10 @@ dayAdd(
     // Escolhe quem vai se abrir (puxa mais para quem está em risco/rejeição)
     const weighted = alive.map((p) => {
       const w = 1 + (p.attrs.rejeicao ?? 0) * 0.35 + (p.status.alvo ?? 0) * 0.25 + (p.status.strikes ?? 0) * 0.35;
-      return { p, w: Math.max(0.1, w) };
+      return { item: p, w: Math.max(0.1, w) };
     });
     const who = pickWeighted(weighted);
+    if (!who) return false;
     const others = alive.filter((p) => p.id !== who.id);
     if (!others.length) return false;
 
@@ -8592,6 +8593,7 @@ function doIndica() {
     state.relations[puxado.id][indicado.id] = clamp(r0 - 0.6, -5, 5);
 
     gameLine(`${indicado.name} puxa ${puxado.name}`, "contragolpe: o indicado escolhe alguém para ir junto", "o clima piora e vira briga de narrativa", "muda a mira da casa", "misto", "paredao");
+	    gameAdd(`<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(shortNameForEvents(indicado))} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`);
   }
 
   function chooseVote(voter, candidates) {
@@ -8855,6 +8857,20 @@ return chosen;
     }
 
     const formation = state.weekState?.wallFormation || "LIDER_CASA_2";
+	    // Pequeno card para deixar claro a formação da semana no histórico do jogo
+	    const formationLabel = (() => {
+	      switch (formation) {
+	        case "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO": return "👑 Líder indica + Casa vota + Contragolpe do indicado do líder";
+	        case "LIDER_CASA_CONTRAGOLPE_MAISVOTADO": return "👑 Líder indica + Casa vota + Contragolpe do mais votado da casa";
+	        case "LIDER_CASA_PERDEDOR_PROVA": return "👑 Líder indica + Casa vota + Último da prova do líder";
+	        case "LIDER_CASA_2":
+	        default: return "👑 Líder indica + Casa vota 2";
+	      }
+	    })();
+	    if (!state.weekState._formationCardShown) {
+	      state.weekState._formationCardShown = true;
+	      gameAdd(`<div class="gameCard gameNeu"><strong>Formação do paredão</strong>: ${escapeHtml(formationLabel)}</div>`);
+	    }
     const houseNomCount = (formation === "LIDER_CASA_2") ? 2 : 1;
 
     const nom1 = pickNom(new Set(), houseNomCount === 1 ? "indicação da casa" : "1ª indicação da casa");
@@ -8899,7 +8915,8 @@ return chosen;
         const r0 = relGet(puxado.id, puxador.id);
         state.relations[puxado.id][puxador.id] = clamp(r0 - 0.6, -5, 5);
 
-        gameLine(`${puxador.name} puxa ${puxado.name}`, "contragolpe: o mais votado da casa escolhe alguém", "o clima piora e vira briga de narrativa", "muda a mira da casa", "misto", "paredao");
+	      	gameLine(`${puxador.name} puxa ${puxado.name}`, "contragolpe: o mais votado da casa escolhe alguém", "o clima piora e vira briga de narrativa", "muda a mira da casa", "misto", "paredao");
+	      	gameAdd(`<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(shortNameForEvents(puxador))} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`);
       }
     }
 
@@ -8933,7 +8950,8 @@ return chosen;
           state.relations[puxado.id] = state.relations[puxado.id] || {};
           const r0 = relGet(puxado.id, indicado.id);
           state.relations[puxado.id][indicado.id] = clamp(r0 - 0.6, -5, 5);
-          gameLine(`${indicado.name} puxa ${puxado.name}`, "contragolpe: o indicado escolhe alguém para ir junto", "o clima piora e vira briga de narrativa", "muda a mira da casa", "misto", "paredao");
+	          gameLine(`${indicado.name} puxa ${puxado.name}`, "contragolpe: o indicado escolhe alguém para ir junto", "o clima piora e vira briga de narrativa", "muda a mira da casa", "misto", "paredao");
+	          gameAdd(`<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(shortNameForEvents(indicado))} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`);
         }
       }
     }
@@ -9074,7 +9092,7 @@ if (state.weekState.houseTieBreak && state.weekState.houseTieBreak.tiedNames) {
     .map((p) => escapeHtml(shortNameForEvents(p)))
     .join(", ");
 
-  dayAdd(`
+  gameAdd(`
     <div class="gameCard gameNeu">
       <div style="font-weight:900; font-size:16px; margin-bottom:6px;">
        🔄 Bate e Volta 🔄
@@ -10267,8 +10285,8 @@ if (ctxFrozen.key === "seg") {
         if (!top6 && aliveN > 6) doImune();
         if (aliveN > 3) {
           doIndica();
-          doContragolpe();
-          doCasa();
+	          // A votação da casa também resolve contragolpe quando a formação da semana pede.
+	          doCasa();
           // Se o Big Fone gerou 4 nomes no paredão, rola Bate e Volta (sorte)
           doBateVoltaIfNeeded();
         }
@@ -10286,8 +10304,7 @@ if (ctxFrozen.key === "seg") {
           // imunidade só faz sentido quando existe a mecânica
           if (!top6 && aliveN > 6 && !state.weekState.imuneId) doImune();
           if (!state.weekState.indicadoLiderId && aliveN > 3) doIndica();
-          doContragolpe();
-          if (aliveN > 3) doCasa();
+	          if (aliveN > 3) doCasa();
           doBateVoltaIfNeeded();
         }
         doPublicoElim({ advanceWeek: true, resetDayToWednesday: true, deferAdvance: true });
