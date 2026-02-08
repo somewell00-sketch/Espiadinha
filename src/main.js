@@ -4777,6 +4777,24 @@ function resolveDisplayName(p) {
   return chosen;
 }
 
+function ensureBaseNames() {
+  (state.players || []).forEach((p) => {
+    // se tiver apelido manual, ele manda
+    const manual = String(p.nickname ?? "").trim();
+    if (manual) {
+      p._autoNick = "";
+      p.baseName = manual;
+      return;
+    }
+
+    // garante um apelido gerado estável
+    const stable = String(p._autoNick ?? "").trim();
+    if (!stable) resolveDisplayName(p); // resolveDisplayName já grava p._autoNick
+
+    // garante baseName
+    p.baseName = String(p._autoNick ?? "").trim() || String(p.firstName ?? p.name ?? "").trim();
+  });
+}
 
 
 
@@ -12103,11 +12121,12 @@ $("btnClearLogTop")?.addEventListener("click", () => {
     const parsed = validateImportedState(obj);
     if (!parsed) throw new Error("JSON inválido.");
 
-    state = parsed;
-    pendingAdvance = null;
+   state = parsed;
+pendingAdvance = null;
 
-    save();
-    render();
+ensureBaseNames();
+save();
+render();
 
   } catch (e) {
     alert(e.message || "Erro ao importar.");
@@ -12123,11 +12142,12 @@ $("btnLoadPreset")?.addEventListener("click", async () => {
     const parsed = validateImportedState(obj);
     if (!parsed) throw new Error("Elenco inválido.");
 
-    state = parsed;
-    pendingAdvance = null;
+   state = parsed;
+pendingAdvance = null;
 
-    save();
-    render();
+ensureBaseNames();
+save();
+render();
   } catch (e) {
     alert(e.message || "Erro ao carregar elenco.");
   }
@@ -12188,7 +12208,9 @@ $("btnLoadPreset")?.addEventListener("click", async () => {
 
   pushLog("Sistema", `Elenco exemplo (${baseSize}) criado.`);
   state.setupDone = false;
-  save();
+  ensureBaseNames();
+
+	  save();
   enterSetupMode();
   render();
 });
@@ -12216,7 +12238,9 @@ $("btnGenCast")?.addEventListener("click", () => {
     pendingAdvance = null;
 
     state.setupDone = false;
-    save();
+   ensureBaseNames();
+
+	save();
     enterSetupMode();
     render();
   });
@@ -12247,6 +12271,7 @@ $("btnGenCast")?.addEventListener("click", () => {
     return "neutral";
   }
 
+	
   function popHistoryLabel(p, maxWeeks = 6) {
     // Mostra SEMANA 1 -> ÚLTIMA SEMANA (mas para na semana em que saiu)
     const w = p?.status?.popWeek || {};
@@ -13665,7 +13690,7 @@ list.appendChild(tr);
   }
   /* ===== init ===== */
   if (state.players.length === 0) {
-    const size = 1;
+    const size = 16;
     state.players = generateBalancedCast(size);
     state.setupDone = false;
     save();
