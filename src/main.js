@@ -4428,8 +4428,14 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
 
   function pickParedaoFormation() {
     // Top 4/Top 3 têm regras próprias; aqui é só para as semanas "normais"
-    return pickOne(PAREDAO_FORMATIONS);
-  }
+    const formations = [
+      "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO",
+      "LIDER_CASA_CONTRAGOLPE_MAISVOTADO",
+      "LIDER_CASA_2",
+      "LIDER_CASA_PERDEDOR_PROVA"
+    ];
+    return pickOne(formations);
+}
 
 function resetWeekState() {
     const prevLeaderId = state.weekState?.leaderId ?? null;
