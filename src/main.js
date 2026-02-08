@@ -2536,6 +2536,8 @@ function computeSeasonTitles() {
     return { title, subtitle, axis: main, secondary };
   };
 
+  };
+
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
     if (!p || !p.narrative) return null;
@@ -4254,25 +4256,7 @@ function statusLabel(p) {
     }
   });
 
-
-  // UI state: aba Divisão
-  let divisionSortMode = "cast"; // cast | mostVip | mostXepa | name
-  let divisionNameDir = "asc"; // asc | desc
   let state = load() ?? defaultState();
-
-  // Divisão (VIP/Xepa): histórico semanal persistente
-  if (!state.divisionHistory || typeof state.divisionHistory !== "object") state.divisionHistory = {};
-  // Se já existe VIP/Xepa definido para a semana atual (em saves antigos), espelha no histórico assim que as funções existirem
-  try {
-    const ws0 = state.weekState || {};
-    if ((Array.isArray(ws0.vipIds) && ws0.vipIds.length) || (Array.isArray(ws0.xepaIds) && ws0.xepaIds.length)) {
-      setTimeout(() => {
-        try {
-          if (typeof mirrorCurrentWeekDivisionIfAny === "function") mirrorCurrentWeekDivisionIfAny();
-        } catch {}
-      }, 0);
-    }
-  } catch {}
 
   // UI state: aba Popularidade
   let popTabSelectedIds = null; // Set<string>
@@ -4314,8 +4298,6 @@ parsed.weekState.xepaIds = Array.isArray(parsed.weekState.xepaIds) ? parsed.week
 
       parsed.relations = parsed.relations || {};
       parsed.crushRevealed = parsed.crushRevealed || {};
-      // Divisão (VIP/Xepa): histórico semanal persistente
-      parsed.divisionHistory = (parsed.divisionHistory && typeof parsed.divisionHistory === "object") ? parsed.divisionHistory : {};
       parsed.crushReciprocalBonus = parsed.crushReciprocalBonus || {};
       parsed.log = Array.isArray(parsed.log) ? parsed.log : [];
       parsed.gameOver = !!parsed.gameOver;
@@ -7793,77 +7775,6 @@ function runProva(roleLabel, pool, roleTypeClass) {
     gameAdd(line);
   }
 
-// ===== Divisão (VIP/Xepa): histórico semanal =====
-function ensureDivisionHistory() {
-  if (!state.divisionHistory || typeof state.divisionHistory !== "object") state.divisionHistory = {};
-}
-
-function uniqueIds(arr) {
-  const out = [];
-  const seen = new Set();
-  (Array.isArray(arr) ? arr : []).forEach((x) => {
-    if (!x) return;
-    const k = String(x);
-    if (seen.has(k)) return;
-    seen.add(k);
-    out.push(k);
-  });
-  return out;
-}
-
-function recordDivisionForWeek(weekNumber, vipIdsRaw, xepaIdsRaw) {
-  ensureDivisionHistory();
-  const weekKey = String(weekNumber ?? state.week ?? 1);
-
-  const aliveNow = alivePlayers();
-  const aliveIds = aliveNow.map((p) => String(p.id));
-  const aliveSet = new Set(aliveIds);
-
-  const vipIds = uniqueIds(vipIdsRaw).filter((id) => aliveSet.has(id));
-  const xepaIds = uniqueIds(xepaIdsRaw).filter((id) => aliveSet.has(id) && !vipIds.includes(id));
-
-  // Garante cobertura: todo mundo vivo precisa estar em VIP ou Xepa
-  const covered = new Set([...vipIds, ...xepaIds]);
-  const missing = aliveIds.filter((id) => !covered.has(id));
-  // Se faltar alguém, coloca na Xepa (fallback seguro)
-  missing.forEach((id) => xepaIds.push(id));
-
-  state.divisionHistory[weekKey] = { vipIds, xepaIds };
-}
-
-function mirrorCurrentWeekDivisionIfAny() {
-  const ws = state.weekState || {};
-  const vip = Array.isArray(ws.vipIds) ? ws.vipIds : [];
-  const xepa = Array.isArray(ws.xepaIds) ? ws.xepaIds : [];
-  if (!vip.length && !xepa.length) return;
-  recordDivisionForWeek(state.week, vip, xepa);
-}
-
-// Caso o simulador não definisse VIP/Xepa, essa função cria uma divisão simples.
-// (Aqui já existe defineVipXepa(leaderId); esta é só um fallback utilitário.)
-function defineVipXepaForWeek() {
-  const alive = alivePlayers();
-  if (!alive.length) {
-    state.weekState.vipIds = [];
-    state.weekState.xepaIds = [];
-    mirrorCurrentWeekDivisionIfAny();
-    return;
-  }
-
-  const aliveIds = alive.map((p) => p.id);
-  const vipSize = Math.max(2, Math.ceil(alive.length / 3));
-
-  const vip = uniqueIds(aliveIds).slice(0, vipSize);
-  const vipSet = new Set(vip);
-  const xepa = aliveIds.filter((id) => !vipSet.has(id));
-
-  state.weekState.vipIds = vip;
-  state.weekState.xepaIds = xepa;
-
-    // Divisão (VIP/Xepa): espelha no histórico semanal
-    try { recordDivisionForWeek(state.week, vip, xepa); } catch {}
-  mirrorCurrentWeekDivisionIfAny();
-}
 function defineVipXepa(leaderId) {
     const alive = alivePlayers();
     if (!leaderId || !alive.length) {
@@ -11927,73 +11838,8 @@ const seasonAccHtml = acc.length ? `
 
     if (d) { d.style.display = "block"; d.setAttribute("aria-hidden", "false"); }
     if (b) b.style.display = "block";
-
-
-
   }
 
-  function ensureDivisionTabUI() {
-  // Botão
-  const tabs = document.querySelector(".menuTabs");
-  if (tabs && !tabs.querySelector('.tabBtn[data-tab="tabDivisao"]')) {
-    const btn = document.createElement("button");
-    btn.className = "tabBtn";
-    btn.setAttribute("data-tab", "tabDivisao");
-    btn.textContent = "Divisão";
-
-    const popBtn = tabs.querySelector('.tabBtn[data-tab="tabPopularidade"]');
-    if (popBtn && popBtn.nextSibling) {
-      tabs.insertBefore(btn, popBtn.nextSibling);
-    } else {
-      tabs.appendChild(btn);
-    }
-  }
-
-  // Painel
-  const panelsRoot = document.querySelector(".bottomMenu");
-  if (panelsRoot && !document.getElementById("tabDivisao")) {
-    const ref = document.getElementById("tabPopularidade") || document.getElementById("tabRels") || null;
-
-    const panel = document.createElement("div");
-    panel.className = "menuPanel";
-    panel.id = "tabDivisao";
-    panel.innerHTML = `
-      <div class="panel" style="border:none;">
-        <div class="hd">
-          <h2>Divisão</h2>
-          <div class="small">Histórico semanal de VIP/Xepa. Células vazias indicam que o participante já estava fora naquela semana.</div>
-        </div>
-        <div class="bd">
-          <div class="tableTools">
-            <select id="divisionSortMode">
-              <option value="cast">Ordenar colunas: Elenco</option>
-              <option value="mostVip">Mais VIP</option>
-              <option value="mostXepa">Mais Xepa</option>
-            </select>
-            <div class="small" style="opacity:.75;">Clique no nome de um participante para alternar A–Z / Z–A.</div>
-          </div>
-
-          <div id="divisionEmpty" class="small muted" style="margin:8px 0; display:none;"></div>
-
-          <div class="tableWrap">
-            <table id="divisionTable">
-              <thead id="divisionHead"></thead>
-              <tbody id="divisionBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    `;
-
-    if (ref && ref.parentNode) {
-      ref.parentNode.insertBefore(panel, ref.nextSibling);
-    } else {
-      panelsRoot.appendChild(panel);
-    }
-  }
-}
-
-ensureDivisionTabUI();
   // Tabs
   document.querySelectorAll(".tabBtn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -12677,142 +12523,6 @@ $("btnGenCast")?.addEventListener("click", () => {
     const selN = seriesList.length;
     hintEl.textContent = `${selN}/${total} selecionados • Semanas: S1 → S${lastWeek}`;
   }
-}
-
-function renderDivisionTab() {
-  ensureDivisionHistory();
-  // espelha a semana atual se já houver VIP/Xepa definido
-  try { mirrorCurrentWeekDivisionIfAny(); } catch {}
-
-  const head = $("divisionHead");
-  const body = $("divisionBody");
-  const empty = $("divisionEmpty");
-  const sel = $("divisionSortMode");
-
-  if (!head || !body || !empty) return;
-
-  if (sel) {
-    sel.value = divisionSortMode === "mostVip" ? "mostVip" : (divisionSortMode === "mostXepa" ? "mostXepa" : "cast");
-    sel.onchange = () => {
-      const v = sel.value;
-      divisionSortMode = (v === "mostVip" || v === "mostXepa") ? v : "cast";
-      renderDivisionTab();
-    };
-  }
-
-  const hist = state.divisionHistory || {};
-  const weekNums = Object.keys(hist)
-    .map((k) => parseInt(k, 10))
-    .filter((n) => Number.isFinite(n) && n > 0);
-
-  const ws = state.weekState || {};
-  const hasCurrent = (Array.isArray(ws.vipIds) && ws.vipIds.length) || (Array.isArray(ws.xepaIds) && ws.xepaIds.length);
-  if (hasCurrent) weekNums.push(parseInt(String(state.week || 1), 10));
-
-  const maxWeek = weekNums.length ? Math.max(...weekNums) : 0;
-
-  // Se ainda não existe nenhum registro em divisionHistory (começo do jogo),
-  // ainda assim renderiza a tabela com o elenco, marcando como "—" (não definido).
-  const effectiveMaxWeek = maxWeek ? maxWeek : (Number(state.week || 1) || 1);
-
-  if (!maxWeek) {
-    empty.style.display = "block";
-    empty.textContent = "VIP/Xepa ainda não foram definidos nesta semana. A tabela abaixo mostra o elenco, e '—' indica divisão ainda não definida.";
-  } else {
-    empty.style.display = "none";
-    empty.textContent = "";
-  }
-
-  const weeks = [];
-  for (let w = 1; w <= effectiveMaxWeek; w++) weeks.push(w);
-
-  const vipCount = {};
-  const xepaCount = {};
-  (state.players || []).forEach((p) => { vipCount[p.id] = 0; xepaCount[p.id] = 0; });
-
-  weeks.forEach((w) => {
-    const rec = hist[String(w)] || null;
-    if (!rec) return;
-    (rec.vipIds || []).forEach((id) => { if (vipCount[id] != null) vipCount[id] += 1; });
-    (rec.xepaIds || []).forEach((id) => { if (xepaCount[id] != null) xepaCount[id] += 1; });
-  });
-
-  const castOrder = (state.players || []).map((p) => p.id);
-
-  function isAliveInWeek(p, weekNum) {
-    if (!p || !p.status) return false;
-    if (!p.status.outWeek) return true;
-    return Number(weekNum) <= Number(p.status.outWeek);
-  }
-
-  const playersForCols = (state.players || []).slice();
-  const byName = (a, b) => (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" });
-
-  if (divisionSortMode === "mostVip") {
-    playersForCols.sort((a, b) => {
-      const dv = (vipCount[b.id] || 0) - (vipCount[a.id] || 0);
-      if (dv !== 0) return dv;
-      return byName(a, b);
-    });
-  } else if (divisionSortMode === "mostXepa") {
-    playersForCols.sort((a, b) => {
-      const dx = (xepaCount[b.id] || 0) - (xepaCount[a.id] || 0);
-      if (dx !== 0) return dx;
-      return byName(a, b);
-    });
-  } else if (divisionSortMode === "name") {
-    playersForCols.sort((a, b) => byName(a, b) * (divisionNameDir === "desc" ? -1 : 1));
-  } else {
-    playersForCols.sort((a, b) => castOrder.indexOf(a.id) - castOrder.indexOf(b.id));
-  }
-
-  head.innerHTML = `<tr>${
-    ['<th style="width:70px;">Semana</th>']
-      .concat(playersForCols.map((p) => `<th class="sortable" data-player-head="1" style="min-width:92px;">${escapeHtml(displayName(p))}</th>`))
-      .join('')
-  }</tr>`;
-
-  body.innerHTML = "";
-  weeks.forEach((w) => {
-    const tr = document.createElement("tr");
-    const tdW = document.createElement("td");
-    tdW.textContent = `S${w}`;
-    tr.appendChild(tdW);
-
-    const rec = hist[String(w)] || null;
-    const vipSet = new Set((rec?.vipIds || []).map(String));
-    const xepaSet = new Set((rec?.xepaIds || []).map(String));
-
-    playersForCols.forEach((p) => {
-      const td = document.createElement("td");
-      td.style.textAlign = "center";
-
-      if (!isAliveInWeek(p, w)) {
-        td.textContent = "";
-      } else if (vipSet.has(String(p.id))) {
-        td.textContent = "VIP";
-      } else if (xepaSet.has(String(p.id))) {
-        td.textContent = "Xepa";
-      } else {
-        // Semana sem registro de VIP/Xepa: mantém o elenco visível com marcador de "não definido"
-        td.textContent = rec ? "" : "—";
-        if (!rec) td.style.opacity = "0.7";
-      }
-
-      tr.appendChild(td);
-    });
-
-    body.appendChild(tr);
-  });
-
-  head.querySelectorAll('th[data-player-head="1"]').forEach((th) => {
-    th.style.cursor = "pointer";
-    th.onclick = () => {
-      divisionSortMode = "name";
-      divisionNameDir = (divisionNameDir === "asc") ? "desc" : "asc";
-      renderDivisionTab();
-    };
-  });
 }
 
   function roleClassForPlayer(p) {
@@ -13746,12 +13456,7 @@ list.appendChild(tr);
 
     if (activeTab === "tabPopularidade") {
       renderPopularityTab();
- }
-
-    if (activeTab === "tabDivisao") {
-      renderDivisionTab();
     }
-   
 
     if (activeTab === "tabElims") {
     // Eliminações
