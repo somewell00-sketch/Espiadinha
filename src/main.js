@@ -318,8 +318,8 @@ function getWeekSnap(weekNumber) {
     leaderId: w.leaderId ?? null,
     anjoId: w.anjoId ?? null,
     imuneId: w.imuneId ?? null,
-      vipIds: (Array.isArray(w.vipIds) ? w.vipIds.slice() : (Array.isArray(state.divisionHistory?.[String(weekNumber)]?.vipIds) ? state.divisionHistory[String(weekNumber)].vipIds.slice() : [])),
-      xepaIds: (Array.isArray(w.xepaIds) ? w.xepaIds.slice() : (Array.isArray(state.divisionHistory?.[String(weekNumber)]?.xepaIds) ? state.divisionHistory[String(weekNumber)].xepaIds.slice() : [])),
+      vipIds: Array.isArray(w.vipIds) ? w.vipIds.slice() : [],
+      xepaIds: Array.isArray(w.xepaIds) ? w.xepaIds.slice() : [],
     indicadoLiderId: w.indicadoLiderId ?? null,
     contragolpeId: w.contragolpeId ?? null,
     indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
@@ -3907,7 +3907,7 @@ dayAdd(
     // Escolhe quem vai se abrir (puxa mais para quem está em risco/rejeição)
     const weighted = alive.map((p) => {
       const w = 1 + (p.attrs.rejeicao ?? 0) * 0.35 + (p.status.alvo ?? 0) * 0.25 + (p.status.strikes ?? 0) * 0.35;
-      return { item: p, w: Math.max(0.1, w) };
+      return { p, w: Math.max(0.1, w) };
     });
     const who = pickWeighted(weighted);
     const others = alive.filter((p) => p.id !== who.id);
@@ -4227,9 +4227,7 @@ function statusLabel(p) {
     final: { winnerId: null, secondId: null, thirdId: null },
     elimHistory: [],
     votesHistory: [],
-    
-      divisionHistory: {},
-relations: {},
+    relations: {},
     crushRevealed: {},
     crushReciprocalBonus: {},
     alliances: [],
@@ -4289,7 +4287,6 @@ relations: {},
 
       parsed.elimHistory = Array.isArray(parsed.elimHistory) ? parsed.elimHistory : [];
       parsed.votesHistory = Array.isArray(parsed.votesHistory) ? parsed.votesHistory : [];
-      parsed.divisionHistory = (parsed.divisionHistory && typeof parsed.divisionHistory === 'object') ? parsed.divisionHistory : {};
 
       parsed.final = parsed.final || { winnerId: null, secondId: null, thirdId: null };
       parsed.weekState = parsed.weekState || defaultState().weekState;
@@ -7805,9 +7802,6 @@ function defineVipXepa(leaderId) {
     state.weekState.vipIds = vip;
     state.weekState.xepaIds = xepa;
 
-    state.divisionHistory = (state.divisionHistory && typeof state.divisionHistory === 'object') ? state.divisionHistory : {};
-    state.divisionHistory[String(state.week)] = { vipIds: vip.slice(), xepaIds: xepa.slice() };
-
 
     // Ajuste social imediato: quem entra no VIP tende a gostar mais do líder;
     // quem fica na Xepa tende a gostar menos do líder.
@@ -8894,112 +8888,158 @@ if (state.weekState.houseTieBreak && state.weekState.houseTieBreak.tiedNames) {
 }
 
 function publicoElimPerc(paredao) {
-  // Modelo: voto para ELIMINAR. Popularidade maior => menos votos.
-  const k = POP_VOTE.k;
+    // Modelo: voto para ELIMINAR. Popularidade maior => menos votos.
+    // Queremos que pop 8 vs pop 2 gere ~4x mais votos para quem tem pop 2.
+    const k = POP_VOTE.k;
 
-  // 1) score base: rejeição/alvo/conflito puxam eliminação; social/pop blindam
-  const base = paredao.map((p) => {
-    const risk =
-      (p.attrs.rejeicao ?? 0) * 1.5 +
-      (p.attrs.conflito ?? 0) * 0.9 +
-      (p.status.alvo ?? 0) * 1.0 +
-      (10 - (p.attrs.emocional ?? 0)) * 0.25 +
-      (10 - (p.status.pop ?? 0)) * 0.7;
+    // 1) score base (como antes, mas comprimido)
+    const base = paredao.map((p) => {
+      const risk = p.attrs.rejeicao * 1.5 + p.attrs.conflito * 0.9 + p.status.alvo * 1.0 + (10 - p.attrs.emocional) * 0.25 + (10 - p.status.pop) * 0.7;
+      const shield = p.attrs.social * 1.0 + p.status.pop * 1.5 + p.attrs.estrategia * 0.1;
+      const raw = clamp(risk - shield + 8 + rnd(-1.2, 1.8), 0.4, 60);
+      return { id: p.id, p, raw };
+    });
 
-    const shield =
-      (p.attrs.social ?? 0) * 1.0 +
-      (p.status.pop ?? 0) * 1.5 +
-      (p.attrs.estrategia ?? 0) * 0.1;
+    // 2) peso por popularidade (exponencial no eixo (10 - pop))
+    //    pop baixo => exp(k*(10-pop)) alto.
+    base.forEach((x) => {
+      const pop = clamp(x.p.status.pop ?? 0, 0, 10);
+      const popWeight = Math.exp(k * (10 - pop));
+      // mistura com o score base (para manter rejeição/alvo relevantes)
+      const mixed = (1 - POP_VOTE.baseMix) * popWeight + POP_VOTE.baseMix * (x.raw / 10);
+      x.w = Math.max(0.05, mixed);
+    });
 
-    const raw = clamp(risk - shield + 8 + rnd(-1.2, 1.8), 0.4, 60);
-    return { id: p.id, p, raw, w: 1 };
-  });
+    // Favorito no paredão: votos contra ele caem pela metade
+    for (const x of base) {
+      if (isPublicFavorite(x.p)) x.w *= 0.5;
+    }
 
-  // 2) peso por popularidade (exponencial no eixo (10 - pop))
-  base.forEach((x) => {
-    const pop = clamp(x.p.status.pop ?? 0, 0, 10);
-    const popWeight = Math.exp(k * (10 - pop));
-    const mixed = (1 - POP_VOTE.baseMix) * popWeight + POP_VOTE.baseMix * (x.raw / 10);
-    x.w = Math.max(0.05, mixed);
-  });
 
-  // 3) Favorito no paredão: votos contra ele caem
-  for (const x of base) {
-    if (isPublicFavorite(x.p)) x.w *= 0.5;
-  }
+    // 3) Coalizão de torcidas (se dois são amigos fortes, as torcidas tendem a mirar no terceiro)
+    //    Aqui é explícito e só afeta paredão.
+    if (PUBLIC_COALITION.enabled && base.length === 3) {
+      const [a, b, c] = base.map((x) => x.p);
+      const relAB = relGet(a.id, b.id);
+      const relAC = relGet(a.id, c.id);
+      const relBC = relGet(b.id, c.id);
 
-  // 4) Coalizão de torcidas: amigos fortes tendem a mirar no terceiro (paredão de 3)
-  if (PUBLIC_COALITION.enabled && base.length === 3) {
-    const [a, b, c] = base.map((x) => x.p);
-    const relAB = relGet(a.id, b.id);
-    const relAC = relGet(a.id, c.id);
-    const relBC = relGet(b.id, c.id);
+      const pairs = [
+        { p1: a, p2: b, outsider: c, rel: relAB },
+        { p1: a, p2: c, outsider: b, rel: relAC },
+        { p1: b, p2: c, outsider: a, rel: relBC }
+      ].sort((x, y) => y.rel - x.rel);
 
-    const pairs = [
-      { p1: a, p2: b, outsider: c, rel: relAB },
-      { p1: a, p2: c, outsider: b, rel: relAC },
-      { p1: b, p2: c, outsider: a, rel: relBC },
-    ].sort((x, y) => y.rel - x.rel);
+      const best = pairs[0];
+      if (best.rel >= 0.65) {
+        const popGap = Math.abs((best.p1.status.pop ?? 0) - (best.p2.status.pop ?? 0));
+        const outsiderPop = best.outsider.status.pop ?? 0;
+        // gatilho: amizade forte + outsider bem mais fraco ou cenário provável de "duas torcidas contra uma"
+        const should = popGap <= 5 && ((best.p1.status.pop ?? 0) + (best.p2.status.pop ?? 0)) - outsiderPop >= PUBLIC_COALITION.minGapToTrigger;
+      
+if (PUBLIC_COALITION.enabled && base.length === 3) {
+  const ctx = (typeof dayCtx === "function") ? dayCtx() : null;
 
-    const best = pairs[0];
+  const [a, b, c] = base.map((x) => x.p);
+  const relAB = relGet(a.id, b.id);
+  const relAC = relGet(a.id, c.id);
+  const relBC = relGet(b.id, c.id);
 
-    if (best.rel >= 0.65) {
-      const p1Pop0 = clamp(best.p1.status.pop ?? 0, 0, 10);
-      const p2Pop0 = clamp(best.p2.status.pop ?? 0, 0, 10);
-      const outsiderPop0 = clamp(best.outsider.status.pop ?? 0, 0, 10);
+  const pairs = [
+    { p1: a, p2: b, outsider: c, rel: relAB },
+    { p1: a, p2: c, outsider: b, rel: relAC },
+    { p1: b, p2: c, outsider: a, rel: relBC }
+  ].sort((x, y) => y.rel - x.rel);
 
-      const popGap = Math.abs(p1Pop0 - p2Pop0);
+  const best = pairs[0];
 
-      const should =
-        popGap <= 5 &&
-        (p1Pop0 + p2Pop0) - outsiderPop0 >= PUBLIC_COALITION.minGapToTrigger;
+  if (best.rel >= 0.65) {
+    const p1Pop0 = clamp(best.p1.status.pop ?? 0, 0, 10);
+    const p2Pop0 = clamp(best.p2.status.pop ?? 0, 0, 10);
+    const outsiderPop0 = clamp(best.outsider.status.pop ?? 0, 0, 10);
 
-      if (should && Math.random() < PUBLIC_COALITION.chance) {
-        const relFactor = clamp((best.rel - 0.65) / 0.35, 0, 1);
-        const outsiderRej0 = clamp(best.outsider.attrs?.rejeicao ?? 0, 0, 10);
-        const duoPopAvg = (p1Pop0 + p2Pop0) / 2;
+    const popGap = Math.abs(p1Pop0 - p2Pop0);
 
-        const rejFactor = outsiderRej0 / 10;
-        const threatFactor = duoPopAvg / 10;
+    // gatilho: amizade forte + outsider bem mais fraco ou cenário provável de "duas torcidas contra uma"
+    const should =
+      popGap <= 5 &&
+      (p1Pop0 + p2Pop0) - outsiderPop0 >= PUBLIC_COALITION.minGapToTrigger;
 
-        const baseBoost = PUBLIC_COALITION.maxBoost / 100;
-        const boost = baseBoost * relFactor * (1 + 0.9 * rejFactor + 0.5 * threatFactor);
+    if (should && Math.random() < PUBLIC_COALITION.chance) {
+      // --- intensidades (0..1) para escalar o efeito ---
+      const relFactor = clamp((best.rel - 0.65) / 0.35, 0, 1);
 
-        // aumenta votos no outsider, reduz nos dois amigos
-        for (const x of base) {
-          if (x.p.id === best.outsider.id) x.w *= (1 + boost);
-          if (x.p.id === best.p1.id || x.p.id === best.p2.id) x.w *= (1 - boost * 0.60);
-        }
+      const outsiderRej0 = clamp(best.outsider.attrs?.rejeicao ?? 0, 0, 10);
+      const duoPopAvg = (p1Pop0 + p2Pop0) / 2;
 
-        // contra-ataque: torcida do outsider mira no menos popular do duo
-        const targetCounter = (p1Pop0 <= p2Pop0) ? best.p1 : best.p2;
-        const counterBoost = clamp(boost * 0.45, 0, 0.35);
+      const rejFactor = outsiderRej0 / 10;     // rejeição alta puxa coalizão
+      const threatFactor = duoPopAvg / 10;     // duo popular puxa coalizão
 
-        for (const x of base) {
-          if (x.p.id === targetCounter.id) x.w *= (1 + counterBoost);
-          if (x.p.id === best.outsider.id) x.w *= (1 - counterBoost * 0.25);
-        }
+      const baseBoost = (PUBLIC_COALITION.maxBoost / 100);
+
+      const boost =
+        baseBoost *
+        relFactor *
+        (1 + 0.9 * rejFactor + 0.5 * threatFactor);
+
+      // aplica: aumenta votos no outsider, reduz nos dois amigos
+      for (const x of base) {
+        if (x.p.id === best.outsider.id) x.w *= (1 + boost);
+        if (x.p.id === best.p1.id || x.p.id === best.p2.id) x.w *= (1 - boost * 0.60);
+      }
+
+      // --- contra-ataque: torcida do outsider mira no menos popular do duo ---
+      const targetCounter = (p1Pop0 <= p2Pop0) ? best.p1 : best.p2;
+      const counterBoost = clamp(boost * 0.45, 0, 0.35);
+
+      for (const x of base) {
+        if (x.p.id === targetCounter.id) x.w *= (1 + counterBoost);
+        if (x.p.id === best.outsider.id) x.w *= (1 - counterBoost * 0.25);
+      }
+
+      if (PUBLIC_COALITION.logIt && typeof gameAdd === "function") {
+        
+    // Fallback: nunca deixar o Xuitter sem comentários
+    if (pinned.length === 0 && others.length === 0) {
+      addTweet(tweet(pickOne(TEMPLATES.analyst)), true);
+    }
+const html = `
+          <div class="gameCard gameNeu" style="padding:6px 8px;font-size:12px;line-height:1.35;opacity:.95;">
+            <div>
+              Torcidas de <strong>${escapeHtml(displayName(best.p1))}</strong> e
+              <strong>${escapeHtml(displayName(best.p2))}</strong> se alinham e puxam votos em
+              <strong>${escapeHtml(displayName(best.outsider))}</strong>.
+            </div>
+            <div style="margin-top:4px;opacity:.92;">
+              Contra-ataque: torcida de <strong>${escapeHtml(displayName(best.outsider))}</strong> mira em
+              <strong>${escapeHtml(displayName(targetCounter))}</strong>.
+            </div>
+          </div>
+        `;
+        gameAdd(html);
       }
     }
   }
-
-  // 5) porcentagens finais
-  const sum = base.reduce((s, x) => s + x.w, 0) || 1;
-  const perc = {};
-  base.forEach((x) => (perc[x.id] = (x.w / sum) * 100));
-
-  // arredondamento estável para somar 100
-  const ids = Object.keys(perc);
-  const rounded = ids.map((id) => ({ id, p: Math.round(perc[id] * 100) / 100 }));
-  const total = rounded.reduce((s, x) => s + x.p, 0);
-  const diff = Math.round((100 - total) * 100) / 100;
-  rounded.sort((a, b) => b.p - a.p);
-  if (rounded.length) rounded[0].p = Math.round((rounded[0].p + diff) * 100) / 100;
-
-  const out = {};
-  rounded.forEach((x) => (out[x.id] = x.p));
-  return out;
 }
+      }
+    }
+
+    const sum = base.reduce((s, x) => s + x.w, 0) || 1;
+    const perc = {};
+    base.forEach((x) => (perc[x.id] = (x.w / sum) * 100));
+
+    // arredondamento estável
+    const ids = Object.keys(perc);
+    const rounded = ids.map((id) => ({ id, p: Math.round(perc[id] * 100) / 100 }));
+    const total = rounded.reduce((s, x) => s + x.p, 0);
+    const diff = Math.round((100 - total) * 100) / 100;
+    rounded.sort((a, b) => b.p - a.p);
+    if (rounded.length) rounded[0].p = Math.round((rounded[0].p + diff) * 100) / 100;
+
+    const out = {};
+    rounded.forEach((x) => (out[x.id] = x.p));
+    return out;
+  }
 
   // Final (Top 3): porcentagens do público para o vencedor
   
@@ -9092,8 +9132,8 @@ function publicoElimPerc(paredao) {
       leaderId: w.leaderId ?? null,
       anjoId: w.anjoId ?? null,
       imuneId: w.imuneId ?? null,
-      vipIds: (Array.isArray(w.vipIds) ? w.vipIds.slice() : (Array.isArray(state.divisionHistory?.[String(weekNumber)]?.vipIds) ? state.divisionHistory[String(weekNumber)].vipIds.slice() : [])),
-      xepaIds: (Array.isArray(w.xepaIds) ? w.xepaIds.slice() : (Array.isArray(state.divisionHistory?.[String(weekNumber)]?.xepaIds) ? state.divisionHistory[String(weekNumber)].xepaIds.slice() : [])),
+      vipIds: Array.isArray(w.vipIds) ? w.vipIds.slice() : [],
+      xepaIds: Array.isArray(w.xepaIds) ? w.xepaIds.slice() : [],
       indicadoLiderId: w.indicadoLiderId ?? null,
       contragolpeId: w.contragolpeId ?? null,
       indicadosCasaIds: Array.isArray(w.indicadosCasaIds) ? w.indicadosCasaIds.slice() : [],
@@ -12978,9 +13018,6 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
     const ctx = dayCtx();
     const activeTab = document.querySelector('.tabBtn.active')?.dataset?.tab || document.querySelector('.menuPanel.active')?.id || 'tabCasa';
 
-    // Semanas (1..semana atual). Usado por tabelas e gráficos (evita ReferenceError: allWeeks)
-    const allWeeks = Array.from({ length: Math.max(1, Number(state.week || 1)) }, (_, i) => ({ week: i + 1 }));
-
     // select do Histórico (participantes)
     const histWho = $("histWho");
     if (histWho) {
@@ -13338,7 +13375,7 @@ list.appendChild(tr);
       th0.textContent = "Participante";
       th0.style.width = "220px";
       trh.appendChild(th0);
-    allWeeks.forEach((w) => {
+      weeks.forEach((w) => {
         const th = document.createElement("th");
         th.textContent = `Sem ${w.week}`;
         trh.appendChild(th);
@@ -13383,7 +13420,8 @@ list.appendChild(tr);
         const tdName = document.createElement("td");
         tdName.innerHTML = `<strong>${escapeHtml(displayName(p))}</strong>${p.status?.alive ? '' : ' <span class="small">(fora)</span>'}`;
         tr.appendChild(tdName);
-    allWeeks.forEach((w) => {
+
+        weeks.forEach((w) => {
   const td = document.createElement("td");
   const cell = document.createElement("div");
   cell.className = "voteCell";
@@ -13437,7 +13475,7 @@ list.appendChild(tr);
         votesBody.appendChild(tr);
       });
 
-      if (!allWeeks.length) {
+      if (!weeks.length) {
         votesHead.innerHTML = '<tr><th>Participante</th><th>Semanas</th></tr>';
         votesBody.innerHTML = '<tr><td class="small" colspan="2">Sem dados ainda. A tabela é preenchida quando uma semana termina (na eliminação).</td></tr>';
       }
@@ -13545,16 +13583,6 @@ list.appendChild(tr);
     const hint = $("divHint");
     if (!head || !body) return;
 
-    // Se já existe líder na semana e ainda não foi definida a divisão, gera agora.
-    // Isso evita a aba aparecer "vazia" quando o estado veio de preset/load sem vip/xepa.
-    const curLeaderId = state.weekState?.leaderId;
-    const hasVip = Array.isArray(state.weekState?.vipIds) && state.weekState.vipIds.length > 0;
-    const hasXepa = Array.isArray(state.weekState?.xepaIds) && state.weekState.xepaIds.length > 0;
-    if (curLeaderId && (!hasVip || !hasXepa) && typeof defineVipXepa === "function") {
-      defineVipXepa(curLeaderId);
-      save();
-    }
-
     const sortSel = $("divSort");
     if (sortSel && !sortSel.__wired) {
       sortSel.__wired = true;
@@ -13565,32 +13593,6 @@ list.appendChild(tr);
       .slice()
       .sort((a, b) => Number(a.week || 0) - Number(b.week || 0));
 
-    // Também considera semanas registradas em divisionHistory (inclui semana atual mesmo antes da eliminação)
-    const divHist = (state.divisionHistory && typeof state.divisionHistory === 'object') ? state.divisionHistory : {};
-    const weeksFromDiv = Object.keys(divHist)
-      .map((k) => Number(k))
-      .filter((n) => Number.isFinite(n) && n > 0)
-      .sort((a, b) => a - b)
-      .map((n) => ({ week: n, vipIds: divHist[String(n)]?.vipIds || [], xepaIds: divHist[String(n)]?.xepaIds || [] }));
-
-    // Merge: votesHistory tem prioridade (porque também carrega leader/anjo etc)
-    const mergedByWeek = new Map();
-    weeksFromDiv.forEach((w) => mergedByWeek.set(Number(w.week || 0), w));
-    weeks.forEach((w) => mergedByWeek.set(Number(w.week || 0), { ...mergedByWeek.get(Number(w.week || 0)), ...w }));
-
-    // Inclui a semana atual se já houver vip/xepa definidos
-    const curW = Number(state.week || 0);
-    const curVip = Array.isArray(state.weekState?.vipIds) ? state.weekState.vipIds : [];
-    const curXepa = Array.isArray(state.weekState?.xepaIds) ? state.weekState.xepaIds : [];
-    if (curW > 0 && (curVip.length || curXepa.length)) {
-      mergedByWeek.set(curW, { ...(mergedByWeek.get(curW) || {}), week: curW, vipIds: curVip.slice(), xepaIds: curXepa.slice() });
-    }
-
-    const allWeeks = Array.from(mergedByWeek.values())
-      .filter((w) => Number(w.week || 0) > 0)
-      .sort((a, b) => Number(a.week || 0) - Number(b.week || 0));
-
-
     const allPlayers = (state.players || []).slice();
 
     // métricas para sorting
@@ -13600,7 +13602,8 @@ list.appendChild(tr);
       vipCount.set(p.id, 0);
       xepaCount.set(p.id, 0);
     });
-    allWeeks.forEach((w) => {
+
+    weeks.forEach((w) => {
       (w.vipIds || []).forEach((id) => vipCount.set(id, (vipCount.get(id) || 0) + 1));
       (w.xepaIds || []).forEach((id) => xepaCount.set(id, (xepaCount.get(id) || 0) + 1));
     });
@@ -13657,7 +13660,8 @@ list.appendChild(tr);
       if (title) td.title = title;
       return td;
     };
-    allWeeks.forEach((w) => {
+
+    weeks.forEach((w) => {
       const tr = document.createElement("tr");
 
       const tdW = document.createElement("td");
@@ -13685,7 +13689,7 @@ list.appendChild(tr);
       body.appendChild(tr);
     });
 
-    if (!allWeeks.length) {
+    if (!weeks.length) {
       head.innerHTML = `<tr><th>Semana</th><th>Participantes</th></tr>`;
       body.innerHTML = `<tr><td class="small" colspan="2">Sem dados ainda. A divisão é registrada quando uma semana termina (na eliminação).</td></tr>`;
       if (hint) hint.textContent = "—";
@@ -13693,7 +13697,7 @@ list.appendChild(tr);
     }
 
     if (hint) {
-      const last = allWeeks[allWeeks.length - 1];
+      const last = weeks[weeks.length - 1];
       hint.textContent = `Última semana registrada: S${Number(last.week || 0)} • VIP ${(last.vipIds || []).length} • Xepa ${(last.xepaIds || []).length}`;
     }
   }
