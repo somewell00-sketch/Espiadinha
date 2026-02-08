@@ -13741,12 +13741,12 @@ list.appendChild(tr);
 
     if (activeTab === "tabPopularidade") {
       renderPopularityTab();
-
+ }
 
     if (activeTab === "tabDivisao") {
       renderDivisionTab();
     }
-    }
+   
 
     if (activeTab === "tabElims") {
     // Eliminações
