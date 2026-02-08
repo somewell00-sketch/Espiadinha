@@ -95,6 +95,7 @@
   <button class="tabBtn" data-tab="tabCasa">Casa</button>
   <button class="tabBtn" data-tab="tabHistorico">Histórico</button>
   <button class="tabBtn" data-tab="tabRels">Relações</button>
+  <button class="tabBtn" data-tab="tabDivisao">Divisão</button>
   <button class="tabBtn" data-tab="tabPopularidade">Popularidade</button>
   <button class="tabBtn" data-tab="tabElims">Eliminações</button>
   <button class="tabBtn" data-tab="tabConfig">Config</button>
@@ -102,7 +103,26 @@
 
 
   <!-- 1) Participantes com histórico da temporada -->
-  <div class="menuPanel active" id="tabCasa">
+  <!-- Painel inicial deve bater com o botão ativo (Votações) -->
+  <div class="menuPanel active" id="tabVotos">
+    <div class="panel" style="border:none;">
+      <div class="hd">
+        <h2>Votações (semana a semana)</h2>
+        <div class="small">A tabela é preenchida quando uma semana termina (na eliminação).</div>
+      </div>
+      <div class="bd">
+        <div class="tableWrap">
+          <table class="table">
+            <thead id="votesHead"></thead>
+            <tbody id="votesBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1) Participantes com histórico da temporada -->
+  <div class="menuPanel" id="tabCasa">
     <div class="panel" style="border:none;">
       <div class="hd">
         <h2>Casa (participantes)</h2>
@@ -211,6 +231,25 @@
 </div>
 
 
+  <!-- Divisão: VIP e Xepa por semana -->
+  <div class="menuPanel" id="tabDivisao">
+    <div class="panel" style="border:none;">
+      <div class="hd">
+        <h2>Divisão (VIP e Xepa)</h2>
+        <div class="small">Histórico semanal do VIP e da Xepa. O Líder aparece marcado na semana em que definiu a divisão.</div>
+      </div>
+      <div class="bd">
+        <div class="tableWrap">
+          <table id="divisionTable">
+            <thead id="divisionHead"></thead>
+            <tbody id="divisionBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
 	<!-- Popularidade: comparação + filtros -->
 	<div class="menuPanel" id="tabPopularidade">
 	  <div class="panel" style="border:none;">
@@ -232,27 +271,6 @@
 	    </div>
 	  </div>
 	</div>
-
-
-
-  <!-- Votações: resumo por semana (histórico) -->
-  <div class="menuPanel" id="tabVotos">
-    <div class="panel" style="border:none;">
-      <div class="hd">
-        <h2>Votações</h2>
-        <div class="small">A cada eliminação, a semana é registrada aqui. Vivos ficam no topo; eliminados descem.</div>
-      </div>
-      <div class="bd">
-        <div class="tableWrap">
-          <table id="votesTable">
-            <thead id="votesHead"></thead>
-            <tbody id="votesBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Config: parâmetros e IO -->
   <div class="menuPanel" id="tabConfig">
     <div class="panel" style="border:none;">

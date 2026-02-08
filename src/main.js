@@ -4226,6 +4226,8 @@ function statusLabel(p) {
     final: { winnerId: null, secondId: null, thirdId: null },
     elimHistory: [],
     votesHistory: [],
+    // weekNumber (string) -> { leaderId, vipIds, xepaIds, ts }
+    divisionHistory: {},
     relations: {},
     crushRevealed: {},
     crushReciprocalBonus: {},
@@ -4286,6 +4288,7 @@ function statusLabel(p) {
 
       parsed.elimHistory = Array.isArray(parsed.elimHistory) ? parsed.elimHistory : [];
       parsed.votesHistory = Array.isArray(parsed.votesHistory) ? parsed.votesHistory : [];
+      parsed.divisionHistory = (parsed.divisionHistory && typeof parsed.divisionHistory === 'object') ? parsed.divisionHistory : {};
 
       parsed.final = parsed.final || { winnerId: null, secondId: null, thirdId: null };
       parsed.weekState = parsed.weekState || defaultState().weekState;
@@ -7800,6 +7803,18 @@ function defineVipXepa(leaderId) {
 
     state.weekState.vipIds = vip;
     state.weekState.xepaIds = xepa;
+
+    // Persistência: histórico semanal de divisão (VIP/Xepa)
+    try {
+      if (!state.divisionHistory || typeof state.divisionHistory !== 'object') state.divisionHistory = {};
+      const wk = String(state.week || 1);
+      state.divisionHistory[wk] = {
+        leaderId: leaderId || null,
+        vipIds: Array.isArray(vip) ? vip.slice() : [],
+        xepaIds: Array.isArray(xepa) ? xepa.slice() : [],
+        ts: Date.now()
+      };
+    } catch {}
 
 
     // Ajuste social imediato: quem entra no VIP tende a gostar mais do líder;
@@ -13332,6 +13347,76 @@ list.appendChild(tr);
     }
 
 
+    }
+
+    if (activeTab === "tabDivisao") {
+      const divHead = $("divisionHead");
+      const divBody = $("divisionBody");
+      if (divHead && divBody) {
+        const hist = (state.divisionHistory && typeof state.divisionHistory === 'object') ? state.divisionHistory : {};
+        const weeks = Object.keys(hist)
+          .map((k) => ({ k, n: Number(k) }))
+          .filter((x) => Number.isFinite(x.n) && x.n > 0)
+          .sort((a, b) => a.n - b.n);
+
+        const pById = (id) => state.players.find((x) => x.id === id) || null;
+        const nameOf = (id) => {
+          if (!id) return "—";
+          const p = pById(id);
+          return p ? displayName(p) : "—";
+        };
+        const listOf = (ids, leaderId) => {
+          const arr = Array.isArray(ids) ? ids.slice() : [];
+          const names = arr
+            .map((id) => {
+              const p = pById(id);
+              if (!p) return null;
+              const nm = escapeHtml(displayName(p));
+              return (id === leaderId) ? `${nm} <span class="small" style="opacity:.85;">(líder)</span>` : nm;
+            })
+            .filter(Boolean);
+          return names.length ? names.join(", ") : "—";
+        };
+
+        divHead.innerHTML = "";
+        const trh = document.createElement("tr");
+        ["Semana", "Líder", "VIP", "Xepa"].forEach((t, i) => {
+          const th = document.createElement("th");
+          th.textContent = t;
+          if (i === 0) th.style.width = "90px";
+          if (i === 1) th.style.width = "220px";
+          trh.appendChild(th);
+        });
+        divHead.appendChild(trh);
+
+        divBody.innerHTML = "";
+        weeks.forEach(({ k, n }) => {
+          const row = hist[k] || {};
+          const tr = document.createElement("tr");
+
+          const tdW = document.createElement("td");
+          tdW.textContent = `S${n}`;
+
+          const tdL = document.createElement("td");
+          tdL.innerHTML = `<strong>${escapeHtml(nameOf(row.leaderId))}</strong>`;
+
+          const tdVip = document.createElement("td");
+          tdVip.innerHTML = listOf(row.vipIds, row.leaderId);
+
+          const tdX = document.createElement("td");
+          tdX.innerHTML = listOf(row.xepaIds, row.leaderId);
+
+          tr.appendChild(tdW);
+          tr.appendChild(tdL);
+          tr.appendChild(tdVip);
+          tr.appendChild(tdX);
+          divBody.appendChild(tr);
+        });
+
+        if (!weeks.length) {
+          divBody.innerHTML = '<tr><td class="small" colspan="4">Sem dados ainda. O histórico aparece quando o Líder define o VIP pela primeira vez.</td></tr>';
+        }
+      }
     }
 
     if (activeTab === "tabVotos") {
