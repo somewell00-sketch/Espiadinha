@@ -2536,7 +2536,7 @@ function computeSeasonTitles() {
     return { title, subtitle, axis: main, secondary };
   };
 
-
+  };
 
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
@@ -13353,68 +13353,72 @@ list.appendChild(tr);
       const divHead = $("divisionHead");
       const divBody = $("divisionBody");
       if (divHead && divBody) {
-        const hist = (state.divisionHistory && typeof state.divisionHistory === 'object') ? state.divisionHistory : {};
+        const hist = (state.divisionHistory && typeof state.divisionHistory === "object") ? state.divisionHistory : {};
         const weeks = Object.keys(hist)
           .map((k) => ({ k, n: Number(k) }))
           .filter((x) => Number.isFinite(x.n) && x.n > 0)
           .sort((a, b) => a.n - b.n);
 
-        const pById = (id) => state.players.find((x) => x.id === id) || null;
-        const nameOf = (id) => {
-          if (!id) return "—";
-          const p = pById(id);
-          return p ? displayName(p) : "—";
-        };
-        const listOf = (ids, leaderId) => {
-          const arr = Array.isArray(ids) ? ids.slice() : [];
-          const names = arr
-            .map((id) => {
-              const p = pById(id);
-              if (!p) return null;
-              const nm = escapeHtml(displayName(p));
-              return (id === leaderId) ? `${nm} <span class="small" style="opacity:.85;">(líder)</span>` : nm;
-            })
-            .filter(Boolean);
-          return names.length ? names.join(", ") : "—";
+        const weekNums = weeks.map((w) => w.n);
+        const lastWeek = weekNums.length ? weekNums[weekNums.length - 1] : 0;
+
+        const statusFor = (playerId, weekN) => {
+          const row = hist[String(weekN)] || {};
+          const leaderId = row.leaderId || null;
+          const vip = Array.isArray(row.vipIds) ? row.vipIds : [];
+          const xepa = Array.isArray(row.xepaIds) ? row.xepaIds : [];
+          if (playerId === leaderId) return "LÍDER";
+          if (vip.includes(playerId)) return "VIP";
+          if (xepa.includes(playerId)) return "XEPA";
+          return "—";
         };
 
+        // Cabeçalho: Jogador + Semanas
         divHead.innerHTML = "";
         const trh = document.createElement("tr");
-        ["Semana", "Líder", "VIP", "Xepa"].forEach((t, i) => {
+        const thName = document.createElement("th");
+        thName.textContent = "Jogador";
+        thName.style.width = "240px";
+        trh.appendChild(thName);
+
+        weekNums.forEach((n) => {
           const th = document.createElement("th");
-          th.textContent = t;
-          if (i === 0) th.style.width = "90px";
-          if (i === 1) th.style.width = "220px";
+          th.textContent = `S${n}`;
           trh.appendChild(th);
         });
+
         divHead.appendChild(trh);
 
+        // Corpo: 1 linha por jogador
         divBody.innerHTML = "";
-        weeks.forEach(({ k, n }) => {
-          const row = hist[k] || {};
+
+        const orderedPlayers = state.players
+          .slice()
+          .sort((a, b) => (a.name || "").localeCompare((b.name || ""), "pt-BR", { sensitivity: "base" }));
+
+        orderedPlayers.forEach((p) => {
           const tr = document.createElement("tr");
 
-          const tdW = document.createElement("td");
-          tdW.textContent = `S${n}`;
+          const tdName = document.createElement("td");
+          tdName.className = "nameCell";
+          tdName.textContent = displayName(p);
+          tr.appendChild(tdName);
 
-          const tdL = document.createElement("td");
-          tdL.innerHTML = `<strong>${escapeHtml(nameOf(row.leaderId))}</strong>`;
+          weekNums.forEach((n) => {
+            const td = document.createElement("td");
+            const s = statusFor(p.id, n);
 
-          const tdVip = document.createElement("td");
-          tdVip.innerHTML = listOf(row.vipIds, row.leaderId);
+            if (s === "LÍDER") td.innerHTML = `<strong>${s}</strong>`;
+            else td.textContent = s;
 
-          const tdX = document.createElement("td");
-          tdX.innerHTML = listOf(row.xepaIds, row.leaderId);
+            tr.appendChild(td);
+          });
 
-          tr.appendChild(tdW);
-          tr.appendChild(tdL);
-          tr.appendChild(tdVip);
-          tr.appendChild(tdX);
           divBody.appendChild(tr);
         });
 
-        if (!weeks.length) {
-          divBody.innerHTML = '<tr><td class="small" colspan="4">Sem dados ainda. O histórico aparece quando o Líder define o VIP pela primeira vez.</td></tr>';
+        if (!lastWeek || !orderedPlayers.length) {
+          divBody.innerHTML = '<tr><td class="small" colspan="99">Sem dados ainda. O histórico aparece quando o Líder define o VIP pela primeira vez.</td></tr>';
         }
       }
     }
