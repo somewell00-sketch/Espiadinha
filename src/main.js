@@ -8553,6 +8553,7 @@ function doIndica() {
   }
 
   function doContragolpe() {
+    const formation = state.weekState.wallFormation;
     const alive = alivePlayers();
     const leaderId = state.weekState.leaderId;
     const imuneId = state.weekState.imuneId;
