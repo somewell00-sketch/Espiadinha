@@ -2536,7 +2536,6 @@ function computeSeasonTitles() {
     return { title, subtitle, axis: main, secondary };
   };
 
-  };
 
   function buildPlayerArc(playerId, totalRounds) {
     const p = state.players.find(x => x.id === playerId);
