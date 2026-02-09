@@ -6757,7 +6757,23 @@ function quitChanceFromSerenity(ser) {
   const s = clamp(Number(ser ?? 5), 0, 10);
   return (1 - s / 10) * 0.001;
 }
+	
+function checkGameOverAfterForcedExit(reason = "") {
+  const alive = alivePlayers();
 
+  if (alive.length <= 1) {
+    state.gameOver = true;
+
+    // snapshots finais (mesmo pipeline do final normal)
+    snapshotPopForWeek(state.week);
+    try { snapshotArchetypesForWeek(state.week); } catch {}
+    try { computeSeasonTitles(); } catch {}
+
+    return true; // jogo acabou
+  }
+
+  return false;
+}
 
 function maybeExpulsionByAggression(ctx) {
   if (state.gameOver) return false;
@@ -6765,7 +6781,7 @@ function maybeExpulsionByAggression(ctx) {
   const alive = alivePlayers();
   if (alive.length < 3) return false;
 
-  // 1% por dia (só tenta se houver candidato)
+  // 0.5% por dia
   const TRIGGER_P = 0.005;
 
   const candidates = [];
@@ -6774,10 +6790,8 @@ function maybeExpulsionByAggression(ctx) {
     const aConfl = clamp(Number(a.attrs?.conflito ?? 5), 0, 10);
     const aSer = clamp(Number(a.attrs?.serenidade ?? 5), 0, 10);
 
-    // precisa de “perfil de risco” mínimo
     if (aConfl < 6.5 || aSer > 4.5) continue;
 
-    // procura um inimigo forte
     let worst = null;
     let worstRel = 0;
 
@@ -6791,8 +6805,11 @@ function maybeExpulsionByAggression(ctx) {
     }
 
     if (worst && worstRel <= -4.0) {
-      // peso por conflito e “ódio”
-      const w = clamp((aConfl - aSer) + Math.abs(worstRel) * 0.9 + (ctx?.tension ? 1.0 : 0), 0.2, 12);
+      const w = clamp(
+        (aConfl - aSer) + Math.abs(worstRel) * 0.9 + (ctx?.tension ? 1.0 : 0),
+        0.2,
+        12
+      );
       candidates.push({ a, b: worst, w });
     }
   }
@@ -6800,44 +6817,57 @@ function maybeExpulsionByAggression(ctx) {
   if (!candidates.length) return false;
   if (Math.random() >= TRIGGER_P) return false;
 
-  const picked = pickWeighted(candidates.map((c) => ({ item: c, w: c.w })));
+  const picked = pickWeighted(candidates.map(c => ({ item: c, w: c.w })));
   if (!picked) return false;
 
   const DOUBLE_P = 0.25;
 
-if (Math.random() < DOUBLE_P) {
-  const okA = forceExitPlayer(
+  // 🔥 EXPULSÃO DUPLA
+  if (Math.random() < DOUBLE_P) {
+    const okA = forceExitPlayer(
+      picked.a,
+      "expulso",
+      `A briga com ${displayName(picked.b)} 👊 escalou e a produção expulsou os dois. 🧨`
+    );
+
+    const okB = (picked.b?.status?.alive)
+      ? forceExitPlayer(
+          picked.b,
+          "expulso",
+          `A briga com ${displayName(picked.a)} 👊 escalou e a produção expulsou os dois. 🧨`
+        )
+      : false;
+
+    // ✅ NOVO: checa fim de jogo
+    if (okA || okB) {
+      if (checkGameOverAfterForcedExit("expulsões no paredão")) {
+        return true; // ⛔ interrompe o dia
+      }
+    }
+
+    return !!(okA || okB);
+  }
+
+  // 🔥 EXPULSÃO SIMPLES
+  const ok = forceExitPlayer(
     picked.a,
     "expulso",
-    `A briga com ${displayName(picked.b)} 👊 escalou e a produção expulsou os dois. 🧨`
+    `Após um conflito com ${displayName(picked.b)} 👊, a produção interveio. 🧨`
   );
 
-  // só tenta expulsar o segundo se ainda estiver na casa
-  const okB = (picked.b?.status?.alive)
-    ? forceExitPlayer(
-        picked.b,
-        "expulso",
-        `A briga com ${displayName(picked.a)} 👊 escalou e a produção expulsou os dois. 🧨`
-      )
-    : false;
+  if (ok) {
+    // efeito leve no rival
+    if (picked.b?.status?.alive) {
+      bump(picked.b, { pop: -0.15 });
+    }
 
-  // se pelo menos um saiu, consideramos que o evento aconteceu
-  return !!(okA || okB);
-}
+    // ✅ NOVO: checa fim de jogo
+    if (checkGameOverAfterForcedExit("expulsão durante o paredão")) {
+      return true; // ⛔ interrompe o dia
+    }
+  }
 
-// caso normal: só um expulso
-const ok = forceExitPlayer(
-  picked.a,
-  "expulso",
-  `Após um conflito com ${displayName(picked.b)} 👊, a produção interveio. 🧨`
-);
-
-// Pequeno efeito no alvo (opcional)
-if (ok && picked.b?.status?.alive) {
-  bump(picked.b, { pop: -0.15 });
-}
-
-return ok;
+  return ok;
 }
 
 
@@ -9181,27 +9211,6 @@ function publicoElimPerc(paredao) {
       if (isPublicFavorite(x.p)) x.w *= 0.5;
     }
 
-
-    // 3) Coalizão de torcidas (se dois são amigos fortes, as torcidas tendem a mirar no terceiro)
-    //    Aqui é explícito e só afeta paredão.
-    if (PUBLIC_COALITION.enabled && base.length === 3) {
-      const [a, b, c] = base.map((x) => x.p);
-      const relAB = relGet(a.id, b.id);
-      const relAC = relGet(a.id, c.id);
-      const relBC = relGet(b.id, c.id);
-
-      const pairs = [
-        { p1: a, p2: b, outsider: c, rel: relAB },
-        { p1: a, p2: c, outsider: b, rel: relAC },
-        { p1: b, p2: c, outsider: a, rel: relBC }
-      ].sort((x, y) => y.rel - x.rel);
-
-      const best = pairs[0];
-      if (best.rel >= 0.65) {
-        const popGap = Math.abs((best.p1.status.pop ?? 0) - (best.p2.status.pop ?? 0));
-        const outsiderPop = best.outsider.status.pop ?? 0;
-        // gatilho: amizade forte + outsider bem mais fraco ou cenário provável de "duas torcidas contra uma"
-        const should = popGap <= 5 && ((best.p1.status.pop ?? 0) + (best.p2.status.pop ?? 0)) - outsiderPop >= PUBLIC_COALITION.minGapToTrigger;
       
 if (PUBLIC_COALITION.enabled && base.length === 3) {
   const ctx = (typeof dayCtx === "function") ? dayCtx() : null;
@@ -9425,16 +9434,25 @@ function snapshotPopForWeek(weekNumber) {
     }
   }
 
-  function doPublicoElim(opts = { advanceWeek: true, resetDayToWednesday: true, deferAdvance: false }) {
-  const paredao = (state.weekState.paredaoIds || [])
+ function doPublicoElim(opts = { advanceWeek: true, resetDayToWednesday: true, deferAdvance: false }) {
+  const paredaoAll = (state.weekState.paredaoIds || [])
     .map((id) => state.players.find((p) => p.id === id))
-    .filter(Boolean);
+    .filter((p) => p && p.status?.alive);
 
-  // todos que vão ao Bate e Volta aparecem no episódio
-  paredao.forEach(p => { p.status.didSomethingThisWeek = true; });
+  // se não há gente suficiente, não há eliminação
+  if (paredaoAll.length <= 1) return;
 
-  if (paredao.length !== 3) return;
+  // votação ocorre entre 2 ou 3
+  const paredao = paredaoAll.length >= 3
+    ? paredaoAll.slice(0, 3)
+    : paredaoAll.slice(0, 2);
 
+  // todos que vão ao paredão aparecem no episódio
+  paredao.forEach((p) => {
+    p.status.didSomethingThisWeek = true;
+  });
+
+  // percentuais do público
   const perc = publicoElimPerc(paredao);
   state.weekState.publicoPerc = perc;
 
@@ -9453,50 +9471,49 @@ function snapshotPopForWeek(weekNumber) {
     .filter((p) => p.id !== eliminado.id)
     .forEach((p) => bump(p, { pop: 0.32, alvo: -0.10 }));
 
-  // ---------- Favorito do público (mensagem vai para dentro do card) ----------
+  // ---------- Favorito do público ----------
   let favoriteMsgHtml = "";
   const survivors = paredao.filter((p) => p.id !== eliminado.id);
 
-  // Marca sobreviventes do paredão (para eventos de reação/confronto na semana seguinte)
   state.weekState = state.weekState || {};
-  state.weekState.lastParedaoSurvivorIds = survivors.map(s => s.id);
+  state.weekState.lastParedaoSurvivorIds = survivors.map((s) => s.id);
+
   survivors.forEach((s) => {
     s.status = s.status || {};
     s.status.returnedFromParedao = true;
     s.status.returnedFromParedaoWeek = state.week;
   });
 
-  // processa em ordem aleatória para evitar vieses
   survivors.sort(() => Math.random() - 0.5);
 
   for (const s of survivors) {
     if (Math.random() < 0.25) {
       addPublicFavorite(s);
-      favoriteMsgHtml = `<div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,.12); color:#fbe2d6;">
-        <strong>${escapeHtml(displayName(s))}</strong> ganha força e vira ${g(s, { M: "o favorito", F: "a favorita", O: "a favorite" })} da semana.
-      </div>`;
+      favoriteMsgHtml = `
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,.12); color:#fbe2d6;">
+          <strong>${escapeHtml(displayName(s))}</strong> ganha força e vira ${g(s, { M: "o favorito", F: "a favorita", O: "a favorite" })} da semana.
+        </div>`;
       break;
     }
   }
 
-  // ---------- história de despedida: quem mais/menos gostava ----------
-  const aliveOthers = state.players.filter((p) => p && p.status && p.status.alive && p.id !== eliminado.id);
+  // ---------- despedida ----------
+  const aliveOthers = state.players.filter(
+    (p) => p && p.status?.alive && p.id !== eliminado.id
+  );
 
   let bestFriend = null;
   let worstEnemy = null;
 
   if (aliveOthers.length) {
-    // quem MAIS gostava da eliminada: maior relGet(p -> eliminada)
     bestFriend = aliveOthers
       .slice()
       .sort((a, b) => (relGet(b.id, eliminado.id) - relGet(a.id, eliminado.id)) + rnd(-0.05, 0.05))[0];
 
-    // quem MENOS gostava: menor relGet(p -> eliminada)
     worstEnemy = aliveOthers
       .slice()
       .sort((a, b) => (relGet(a.id, eliminado.id) - relGet(b.id, eliminado.id)) + rnd(-0.05, 0.05))[0];
 
-    // evita ser a mesma pessoa nos dois papéis, se possível
     if (bestFriend && worstEnemy && bestFriend.id === worstEnemy.id && aliveOthers.length >= 2) {
       worstEnemy = aliveOthers
         .filter((x) => x.id !== bestFriend.id)
@@ -9507,20 +9524,19 @@ function snapshotPopForWeek(weekNumber) {
   const bestName = bestFriend ? escapeHtml(shortNameForEvents(bestFriend)) : "alguém";
   const worstName = worstEnemy ? escapeHtml(shortNameForEvents(worstEnemy)) : "alguém";
 
-  // ---------- montar linhas de porcentagem ----------
+  // ---------- porcentagens ----------
   const ordered = paredao
     .map((p) => ({ p, v: perc[p.id] ?? 0 }))
     .sort((a, b) => b.v - a.v);
 
-  const elimPerc = ordered.find((x) => x.p.id === eliminado.id)?.v ?? (perc[eliminado.id] ?? 0);
+  const elimPerc = ordered.find((x) => x.p.id === eliminado.id)?.v ?? 0;
   const others = ordered.filter((x) => x.p.id !== eliminado.id);
 
-  // Ex: "Aline: 29.26% • Eduardo: 27.53%"
   const othersLine = others
     .map((x) => `${escapeHtml(x.p.name)}: ${fmt2(x.v)}%`)
     .join(" • ");
 
-  // ---------- logging/histórico ----------
+  // ---------- histórico ----------
   const ctx = dayCtx();
   state.elimHistory.push({
     week: state.week,
@@ -9530,48 +9546,32 @@ function snapshotPopForWeek(weekNumber) {
     paredaoIds: paredao.map((p) => p.id)
   });
 
-  // snapshot da semana para a aba Votações
   snapshotVotesForWeek(state.week);
 
-  // ---------- card único (título + subtítulo + texto) ----------
+  // ---------- card ----------
   gameAdd(`
     <div class="gameCard gameParedao" style="flex-direction:column; align-items:flex-start; gap:6px;">
-      <div style="font-size:14px; font-weight:900; letter-spacing:.3px;">
-        Encerra a votação
-      </div>
-
-      <div style="font-size:12px; opacity:.92;">
-        Alguém dá adeus ao sonho de ganhar o programa
-      </div>
-
+      <div style="font-size:14px; font-weight:900;">Encerra a votação</div>
+      <div style="font-size:12px; opacity:.92;">Alguém dá adeus ao sonho de ganhar o programa</div>
       <div style="margin-top:6px; font-size:14px; font-weight:900;">
         Quem sai hoje é <span style="color:#fff">${escapeHtml(eliminado.name)}</span> com ${fmt2(elimPerc)}% dos votos.
       </div>
-
-      <div style="font-size:12px; opacity:.92;">
-        ${othersLine || "—"}
-      </div>
-
+      <div style="font-size:12px; opacity:.92;">${othersLine || "—"}</div>
       <div style="margin-top:6px; font-size:12px; opacity:.95; line-height:1.35;">
-        ${escapeHtml(shortNameForEvents(eliminado))} se despede dos amigos. <strong>${bestName}</strong> chora e acompanha até a porta.
-        <br>
+        ${escapeHtml(shortNameForEvents(eliminado))} se despede dos amigos.
+        <strong>${bestName}</strong> chora e acompanha até a porta.<br>
         <strong>${worstName}</strong> celebra a eliminação.
       </div>
-
       ${favoriteMsgHtml}
     </div>
   `);
-  // Planta: atualiza métrica semanal + chance de virar/deixar de ser
+
   endOfWeekPlantSystem(meta);
 
-
-  // Mantém snapshots e fluxo original do jogo
   snapshotPopForWeek(state.week);
-  // Arquétipos BBB: snapshot semanal
-  try { snapshotArchetypesForWeek(state.week); } catch { /* ignora */ }
-  try { computeSeasonTitles(); } catch { /* ignora */ }
-  snapshotArchetypesForWeek(state.week);
-  // Guarda o evento de eliminação para o 🦜 Xuitter (sem depender de weekState, que é resetado)
+  try { snapshotArchetypesForWeek(state.week); } catch {}
+  try { computeSeasonTitles(); } catch {}
+
   state.lastEvent = {
     type: "elimination",
     week: state.week,
@@ -9581,35 +9581,35 @@ function snapshotPopForWeek(weekNumber) {
     shown: false
   };
 
-  // Invalida cache do Xuitter imediatamente após uma eliminação.
-  // Motivo: o feed é cacheado por (semana+dia) e, se já tiver sido renderizado antes,
-  // a eliminação pode não aparecer até o usuário avançar o dia.
   try {
     state.narrative = state.narrative || {};
-    state.narrative.daily = {}; // simples e seguro
-  } catch { /* ignora */ }
+    state.narrative.daily = {};
+  } catch {}
 
-  // Resumo editorial da semana (narrativo)
   try {
-    if (typeof computeWeekThemeSummary === 'function') {
+    if (typeof computeWeekThemeSummary === "function") {
       const recap = computeWeekThemeSummary(state.week);
       ensureEditState();
       state.edit.weekRecaps.push(recap);
-      if (state.edit.weekRecaps.length > 80) state.edit.weekRecaps = state.edit.weekRecaps.slice(-80);
+      if (state.edit.weekRecaps.length > 80) {
+        state.edit.weekRecaps = state.edit.weekRecaps.slice(-80);
+      }
 
-      const lines = (recap?.narrative?.lines || []).slice(0, 6).map((s) =>
-        `<div style="margin-top:6px;">${escapeHtml(String(s))}</div>`
-      ).join('');
+      const lines = (recap?.narrative?.lines || [])
+        .slice(0, 6)
+        .map((s) => `<div style="margin-top:6px;">${escapeHtml(String(s))}</div>`)
+        .join("");
 
       gameAdd(`
         <div class="gameCard" style="flex-direction:column; align-items:flex-start; gap:6px;">
           <div style="font-size:12px; opacity:.92;">Resumo da semana ${recap.week}</div>
-          <div style="font-size:14px; font-weight:900; letter-spacing:.2px;">${escapeHtml(recap.title)}</div>
-          ${lines ? `<div style="font-size:12px; opacity:.95; line-height:1.35;">${lines}</div>` : ''}
+          <div style="font-size:14px; font-weight:900;">${escapeHtml(recap.title)}</div>
+          ${lines ? `<div style="font-size:12px; opacity:.95; line-height:1.35;">${lines}</div>` : ""}
         </div>
       `);
     }
-  } catch { /* ignora */ }
+  } catch {}
+
   resetWeekState();
 
   if (opts.advanceWeek) {
@@ -9621,6 +9621,7 @@ function snapshotPopForWeek(weekNumber) {
     }
   }
 }
+
 
   // Top 4: prova que define o finalista + paredão dos 3
   function doFinalProva() {
