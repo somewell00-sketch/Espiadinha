@@ -9183,138 +9183,140 @@ function doCasa() {
     </div>
   `);
 }
-function publicoElimPerc(paredao) {
-    // Modelo: voto para ELIMINAR. Popularidade maior => menos votos.
-    // Queremos que pop 8 vs pop 2 gere ~4x mais votos para quem tem pop 2.
-    const k = POP_VOTE.k;
 
-    // 1) score base (como antes, mas comprimido)
-    const base = paredao.map((p) => {
-      const risk = p.attrs.rejeicao * 1.5 + p.attrs.conflito * 0.9 + p.status.alvo * 1.0 + (10 - p.attrs.emocional) * 0.25 + (10 - p.status.pop) * 0.7;
-      const shield = p.attrs.social * 1.0 + p.status.pop * 1.5 + p.attrs.estrategia * 0.1;
-      const raw = clamp(risk - shield + 8 + rnd(-1.2, 1.8), 0.4, 60);
-      return { id: p.id, p, raw };
-    });
+	function publicoElimPerc(paredao) {
+  // Modelo: voto para ELIMINAR. Popularidade maior => menos votos.
+  const k = POP_VOTE.k;
 
-    // 2) peso por popularidade (exponencial no eixo (10 - pop))
-    //    pop baixo => exp(k*(10-pop)) alto.
-    base.forEach((x) => {
-      const pop = clamp(x.p.status.pop ?? 0, 0, 10);
-      const popWeight = Math.exp(k * (10 - pop));
-      // mistura com o score base (para manter rejeição/alvo relevantes)
-      const mixed = (1 - POP_VOTE.baseMix) * popWeight + POP_VOTE.baseMix * (x.raw / 10);
-      x.w = Math.max(0.05, mixed);
-    });
+  // 1) score base
+  const base = paredao.map((p) => {
+    const risk =
+      p.attrs.rejeicao * 1.5 +
+      p.attrs.conflito * 0.9 +
+      p.status.alvo * 1.0 +
+      (10 - p.attrs.emocional) * 0.25 +
+      (10 - p.status.pop) * 0.7;
 
-    // Favorito no paredão: votos contra ele caem pela metade
-    for (const x of base) {
-      if (isPublicFavorite(x.p)) x.w *= 0.5;
-    }
+    const shield =
+      p.attrs.social * 1.0 +
+      p.status.pop * 1.5 +
+      p.attrs.estrategia * 0.1;
 
-      
-if (PUBLIC_COALITION.enabled && base.length === 3) {
-  const ctx = (typeof dayCtx === "function") ? dayCtx() : null;
+    const raw = clamp(risk - shield + 8 + rnd(-1.2, 1.8), 0.4, 60);
+    return { id: p.id, p, raw };
+  });
 
-  const [a, b, c] = base.map((x) => x.p);
-  const relAB = relGet(a.id, b.id);
-  const relAC = relGet(a.id, c.id);
-  const relBC = relGet(b.id, c.id);
+  // 2) peso por popularidade
+  base.forEach((x) => {
+    const pop = clamp(x.p.status.pop ?? 0, 0, 10);
+    const popWeight = Math.exp(k * (10 - pop));
+    const mixed =
+      (1 - POP_VOTE.baseMix) * popWeight +
+      POP_VOTE.baseMix * (x.raw / 10);
 
-  const pairs = [
-    { p1: a, p2: b, outsider: c, rel: relAB },
-    { p1: a, p2: c, outsider: b, rel: relAC },
-    { p1: b, p2: c, outsider: a, rel: relBC }
-  ].sort((x, y) => y.rel - x.rel);
+    x.w = Math.max(0.05, mixed);
+  });
 
-  const best = pairs[0];
+  // Favorito no paredão: votos contra ele caem
+  for (const x of base) {
+    if (isPublicFavorite(x.p)) x.w *= 0.5;
+  }
 
-  if (best.rel >= 0.65) {
-    const p1Pop0 = clamp(best.p1.status.pop ?? 0, 0, 10);
-    const p2Pop0 = clamp(best.p2.status.pop ?? 0, 0, 10);
-    const outsiderPop0 = clamp(best.outsider.status.pop ?? 0, 0, 10);
+  // 3) Coalizão de torcidas (2 aliados vs 1)
+  if (PUBLIC_COALITION.enabled && base.length === 3) {
+    const [a, b, c] = base.map((x) => x.p);
 
-    const popGap = Math.abs(p1Pop0 - p2Pop0);
+    const pairs = [
+      { p1: a, p2: b, outsider: c, rel: relGet(a.id, b.id) },
+      { p1: a, p2: c, outsider: b, rel: relGet(a.id, c.id) },
+      { p1: b, p2: c, outsider: a, rel: relGet(b.id, c.id) }
+    ].sort((x, y) => y.rel - x.rel);
 
-    // gatilho: amizade forte + outsider bem mais fraco ou cenário provável de "duas torcidas contra uma"
-    const should =
-      popGap <= 5 &&
-      (p1Pop0 + p2Pop0) - outsiderPop0 >= PUBLIC_COALITION.minGapToTrigger;
+    const best = pairs[0];
 
-    if (should && Math.random() < PUBLIC_COALITION.chance) {
-      // --- intensidades (0..1) para escalar o efeito ---
-      const relFactor = clamp((best.rel - 0.65) / 0.35, 0, 1);
+    if (best.rel >= 0.65) {
+      const p1Pop = clamp(best.p1.status.pop ?? 0, 0, 10);
+      const p2Pop = clamp(best.p2.status.pop ?? 0, 0, 10);
+      const outPop = clamp(best.outsider.status.pop ?? 0, 0, 10);
 
-      const outsiderRej0 = clamp(best.outsider.attrs?.rejeicao ?? 0, 0, 10);
-      const duoPopAvg = (p1Pop0 + p2Pop0) / 2;
+      const popGap = Math.abs(p1Pop - p2Pop);
+      const should =
+        popGap <= 5 &&
+        (p1Pop + p2Pop) - outPop >= PUBLIC_COALITION.minGapToTrigger;
 
-      const rejFactor = outsiderRej0 / 10;     // rejeição alta puxa coalizão
-      const threatFactor = duoPopAvg / 10;     // duo popular puxa coalizão
+      if (should && Math.random() < PUBLIC_COALITION.chance) {
+        const relFactor = clamp((best.rel - 0.65) / 0.35, 0, 1);
+        const rejFactor = clamp(best.outsider.attrs?.rejeicao ?? 0, 0, 10) / 10;
+        const threatFactor = ((p1Pop + p2Pop) / 2) / 10;
 
-      const baseBoost = (PUBLIC_COALITION.maxBoost / 100);
+        const baseBoost = PUBLIC_COALITION.maxBoost / 100;
+        const boost =
+          baseBoost *
+          relFactor *
+          (1 + 0.9 * rejFactor + 0.5 * threatFactor);
 
-      const boost =
-        baseBoost *
-        relFactor *
-        (1 + 0.9 * rejFactor + 0.5 * threatFactor);
+        // coalizão: votos no outsider
+        for (const x of base) {
+          if (x.p.id === best.outsider.id) x.w *= (1 + boost);
+          if (x.p.id === best.p1.id || x.p.id === best.p2.id) {
+            x.w *= (1 - boost * 0.6);
+          }
+        }
 
-      // aplica: aumenta votos no outsider, reduz nos dois amigos
-      for (const x of base) {
-        if (x.p.id === best.outsider.id) x.w *= (1 + boost);
-        if (x.p.id === best.p1.id || x.p.id === best.p2.id) x.w *= (1 - boost * 0.60);
-      }
+        // contra-ataque do outsider
+        const target =
+          p1Pop <= p2Pop ? best.p1 : best.p2;
 
-      // --- contra-ataque: torcida do outsider mira no menos popular do duo ---
-      const targetCounter = (p1Pop0 <= p2Pop0) ? best.p1 : best.p2;
-      const counterBoost = clamp(boost * 0.45, 0, 0.35);
+        const counterBoost = clamp(boost * 0.45, 0, 0.35);
 
-      for (const x of base) {
-        if (x.p.id === targetCounter.id) x.w *= (1 + counterBoost);
-        if (x.p.id === best.outsider.id) x.w *= (1 - counterBoost * 0.25);
-      }
+        for (const x of base) {
+          if (x.p.id === target.id) x.w *= (1 + counterBoost);
+          if (x.p.id === best.outsider.id) x.w *= (1 - counterBoost * 0.25);
+        }
 
-      if (PUBLIC_COALITION.logIt && typeof gameAdd === "function") {
-        
-    // Fallback: nunca deixar o Xuitter sem comentários
-    if (pinned.length === 0 && others.length === 0) {
-      addTweet(tweet(pickOne(TEMPLATES.analyst)), true);
-    }
-const html = `
-          <div class="gameCard gameNeu" style="padding:6px 8px;font-size:12px;line-height:1.35;opacity:.95;">
-            <div>
-              Torcidas de <strong>${escapeHtml(displayName(best.p1))}</strong> e
-              <strong>${escapeHtml(displayName(best.p2))}</strong> se alinham e puxam votos em
-              <strong>${escapeHtml(displayName(best.outsider))}</strong>.
+        if (PUBLIC_COALITION.logIt && typeof gameAdd === "function") {
+          const html = `
+            <div class="gameCard gameNeu" style="padding:6px 8px;font-size:12px;line-height:1.35;opacity:.95;">
+              <div>
+                Torcidas de <strong>${escapeHtml(displayName(best.p1))}</strong> e
+                <strong>${escapeHtml(displayName(best.p2))}</strong> se unem contra
+                <strong>${escapeHtml(displayName(best.outsider))}</strong>.
+              </div>
+              <div style="margin-top:4px;opacity:.92;">
+                Contra-ataque mira em <strong>${escapeHtml(displayName(target))}</strong>.
+              </div>
             </div>
-            <div style="margin-top:4px;opacity:.92;">
-              Contra-ataque: torcida de <strong>${escapeHtml(displayName(best.outsider))}</strong> mira em
-              <strong>${escapeHtml(displayName(targetCounter))}</strong>.
-            </div>
-          </div>
-        `;
-        gameAdd(html);
+          `;
+          gameAdd(html);
+        }
       }
     }
   }
+
+  // 4) normalização FINAL
+  const sum = base.reduce((s, x) => s + x.w, 0) || 1;
+  const perc = {};
+  base.forEach((x) => (perc[x.id] = (x.w / sum) * 100));
+
+  // arredondamento estável
+  const ids = Object.keys(perc);
+  const rounded = ids.map((id) => ({
+    id,
+    p: Math.round(perc[id] * 100) / 100
+  }));
+
+  const total = rounded.reduce((s, x) => s + x.p, 0);
+  const diff = Math.round((100 - total) * 100) / 100;
+
+  rounded.sort((a, b) => b.p - a.p);
+  if (rounded.length) {
+    rounded[0].p = Math.round((rounded[0].p + diff) * 100) / 100;
+  }
+
+  const out = {};
+  rounded.forEach((x) => (out[x.id] = x.p));
+  return out;
 }
-      }
-    }
-
-    const sum = base.reduce((s, x) => s + x.w, 0) || 1;
-    const perc = {};
-    base.forEach((x) => (perc[x.id] = (x.w / sum) * 100));
-
-    // arredondamento estável
-    const ids = Object.keys(perc);
-    const rounded = ids.map((id) => ({ id, p: Math.round(perc[id] * 100) / 100 }));
-    const total = rounded.reduce((s, x) => s + x.p, 0);
-    const diff = Math.round((100 - total) * 100) / 100;
-    rounded.sort((a, b) => b.p - a.p);
-    if (rounded.length) rounded[0].p = Math.round((rounded[0].p + diff) * 100) / 100;
-
-    const out = {};
-    rounded.forEach((x) => (out[x.id] = x.p));
-    return out;
-  }
 
   // Final (Top 3): porcentagens do público para o vencedor
   
