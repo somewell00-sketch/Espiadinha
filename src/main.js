@@ -8614,7 +8614,7 @@ function doIndica() {
     return tiedPlayers[0] || null;
   }
 
- function doCasa() {
+function doCasa() {
   const alive = alivePlayers();
   const leaderId = state.weekState.leaderId;
   const imuneId = state.weekState.imuneId;
@@ -8624,14 +8624,20 @@ function doIndica() {
 
   const formation = state.weekState?.wallFormation || "LIDER_CASA_2";
 
-  // 1) Formação (primeira saída gerada por doCasa)
+  // --- Big Fone helpers (já existem no teu código) ---
+  const bf = state.weekState?.bigFone || {};
+  const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
+  const noVoteIds = bfNoVoteIds();
+  const extraIds = bfExtraParedaoIds();
+
+  // --- 0) Formação do paredão (primeira saída desta função) ---
   if (!state.weekState._formationGameLineShown) {
     state.weekState._formationGameLineShown = true;
 
     const formationLabel = (() => {
       switch (formation) {
         case "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO":
-          return "👑 Líder indica + Casa vota + Contragolpe do indicado do líder";
+          return "👑 Líder indica + Contragolpe do indicado do líder + Casa vota";
         case "LIDER_CASA_CONTRAGOLPE_MAISVOTADO":
           return "👑 Líder indica + Casa vota + Contragolpe do mais votado da casa";
         case "LIDER_CASA_PERDEDOR_PROVA":
@@ -8645,16 +8651,8 @@ function doIndica() {
     gameLine(null, `📋 Formação do paredão: ${formationLabel}`, "", "", "misto", "paredao");
   }
 
-  // Helpers do Big Fone (existem no teu código)
-  const bf = state.weekState?.bigFone || {};
-  const bfImm = Array.isArray(bf.immuneIds) ? bf.immuneIds : [];
-  const noVoteIds = bfNoVoteIds();
-  const extraIds = bfExtraParedaoIds();
-
-  // 2) Pré-contragolpe (SILENCIOSO) para "contragolpe do indicado do líder"
-  // Objetivo: o puxado NÃO pode ser votado pela casa, mas o card do contragolpe só aparece depois.
-  let pendingContragolpe = null;
-
+  // --- 1) Contragolpe do indicado do líder: LÍDER INDICA > CONTRAGOLPE > CASA VOTA ---
+  // Aqui o contragolpe precisa acontecer ANTES da votação e o puxado NÃO pode receber votos.
   if (
     formation === "LIDER_CASA_CONTRAGOLPE_LIDERINDICADO" &&
     indicadoLiderId &&
@@ -8666,7 +8664,7 @@ function doIndica() {
         [
           leaderId,
           imuneId,
-          indicadoLiderId, // puxador não pode puxar a si
+          indicadoLiderId,
           ...noVoteIds,
           ...extraIds,
           ...bfImm,
@@ -8677,30 +8675,27 @@ function doIndica() {
       if (candidates.length) {
         candidates.sort((a, b) => contragolpeTargetScore(puxador, b) - contragolpeTargetScore(puxador, a));
         const puxado = candidates[0];
-        pendingContragolpe = { puxadorId: puxador.id, puxadoId: puxado.id, label: "LIDERINDICADO" };
-        // não seta state.weekState.contragolpeId ainda (para não renderizar nada antes),
-        // mas já bloqueia o puxado da votação da casa:
-        state.weekState._preContragolpePuxadoId = puxado.id;
+
+        state.weekState.contragolpeId = puxado.id;
+
+        bump(puxado, { pop: -0.22, alvo: +0.85 });
+        state.relations[puxado.id] = state.relations[puxado.id] || {};
+        const r0 = relGet(puxado.id, puxador.id);
+        state.relations[puxado.id][puxador.id] = clamp(r0 - 0.6, -5, 5);
+
+        // ✅ aparece antes da votação da casa
+        gameAdd(
+          `<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(
+            shortNameForEvents(puxador)
+          )} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`
+        );
       }
     }
   }
 
-  // 3) protectedIds para votação da casa
-  // (inclui o puxado do pré-contragolpe do líder, se existir)
-  const protectedIds = new Set(
-    [
-      leaderId,
-      indicadoLiderId,
-      imuneId,
-      bf.noVoteId,
-      ...(Array.isArray(bf.noVoteIds) ? bf.noVoteIds : []),
-      bf.extraParedaoId,
-      ...(Array.isArray(bf.extraParedaoIds) ? bf.extraParedaoIds : []),
-      ...bfImm,
-      state.weekState._preContragolpePuxadoId, // ✅ bloqueia da votação da casa quando for "LIDERINDICADO"
-    ].filter(Boolean)
-  );
+  const contragolpeId = state.weekState.contragolpeId;
 
+  // --- 2) Votação da casa ---
   const voters = alive.filter((p) => p.id !== leaderId);
   const votes = [];
   const tally = new Map();
@@ -8709,10 +8704,25 @@ function doIndica() {
   const maxSoloVotes = Math.max(1, Math.floor(voters.length * 0.10));
   let soloVotesUsed = 0;
 
-  // ===== VOTO EM BLOCOS =====
+  // ===== VOTO EM BLOCOS (médio): quase sempre 2 blocos claros, mas alguns votam sozinhos =====
   const PROB_FOLLOW_BLOCK = 0.90;
   const PROB_SOLO_BASE = 0.10;
   const REL_MIN_JOIN = 0.20;
+
+  // protegidos não podem receber voto
+  const protectedIds = new Set(
+    [
+      leaderId,
+      indicadoLiderId,
+      contragolpeId, // ✅ se já houve contragolpe (liderindicado), não recebe voto
+      imuneId,
+      bf.noVoteId,
+      ...(Array.isArray(bf.noVoteIds) ? bf.noVoteIds : []),
+      bf.extraParedaoId,
+      ...(Array.isArray(bf.extraParedaoIds) ? bf.extraParedaoIds : []),
+      ...bfImm,
+    ].filter(Boolean)
+  );
 
   function pickWhips() {
     const cand = voters.filter((p) => p.status.alive);
@@ -8746,7 +8756,7 @@ function doIndica() {
   const whipA = state.players.find((p) => p.id === whipIds[0]) || null;
   const whipB = state.players.find((p) => p.id === whipIds[1]) || null;
 
-  const blockOf = {};
+  const blockOf = {}; // voterId -> 0/1
   const blocks = [[], []];
 
   if (whipA) {
@@ -8758,6 +8768,7 @@ function doIndica() {
     blocks[1].push(whipB);
   }
 
+  // atribui membros a quem eles mais confiam
   for (const v of voters) {
     if (!v || !v.status.alive) continue;
     if (blockOf[v.id] !== undefined) continue;
@@ -8800,6 +8811,7 @@ function doIndica() {
   }
   fillSmallBlock();
 
+  // garante que todo mundo caia em um lado
   for (const v of voters) {
     if (!v.status.alive) continue;
     if (blockOf[v.id] !== undefined) continue;
@@ -8845,7 +8857,6 @@ function doIndica() {
   if (blocks[0].length) bt[0] = blockTarget(blocks[0]);
   if (blocks[1].length) bt[1] = blockTarget(blocks[1]);
 
-  // (opcional) clima
   const reveal = Math.random() < 0.65;
   if (reveal && (blocks[0].length >= 3 || blocks[1].length >= 3)) {
     const nameA = whipA ? shortNameForEvents(whipA) : "Bloco A";
@@ -8864,7 +8875,6 @@ function doIndica() {
     `);
   }
 
-  // 4) Votação
   const shuffled = voters.slice().sort(() => Math.random() - 0.5);
 
   for (const voter of shuffled) {
@@ -8901,11 +8911,9 @@ function doIndica() {
     .map(([id, count]) => ({ id, count }))
     .sort((a, b) => b.count - a.count);
 
-  // guarda votos
   state.weekState = state.weekState || {};
   state.weekState.lastCasaVotes = votes.slice();
 
-  // 5) Define indicados da casa (nom1/nom2) já com desempate do líder dentro
   function pickNom(excludeIds, slotLabel) {
     const remaining = counts.filter((x) => !excludeIds.has(x.id));
     if (!remaining.length) return null;
@@ -8945,7 +8953,7 @@ function doIndica() {
   state.weekState.houseVotes = votes;
   state.weekState.tally = Object.fromEntries(Array.from(tally.entries()));
 
-  // 6) Render Votação + Contagem (antes de qualquer contragolpe)
+  // Render Votação + Contagem
   const voteLines = votes
     .map((v) => {
       const fromP = state.players.find((p) => p.id === v.fromId);
@@ -8967,7 +8975,7 @@ function doIndica() {
   gameAdd(`<div class="gameCard gameNeu"><strong>Votação da casa</strong>: <br/> ${voteLines || "—"}</div>`);
   gameAdd(`<div class="gameCard gameNeu"><strong>Contagem</strong>: ${tallyLine || "—"}</div>`);
 
-  // 7) Render desempate do líder (se houve)
+  // Desempate do líder (após contagem)
   if (state.weekState.houseTieBreak && state.weekState.houseTieBreak.tiedNames) {
     const tb = state.weekState.houseTieBreak;
     const l = tb.leaderId ? state.players.find((p) => p.id === tb.leaderId) : leader;
@@ -8985,7 +8993,7 @@ function doIndica() {
     }
   }
 
-  // 8) Contragolpe do MAIS VOTADO DA CASA: só depois de votação + contagem + desempate
+  // --- 3) Contragolpe do mais votado da casa: LÍDER INDICA > CASA VOTA > CONTRAGOLPE ---
   if (formation === "LIDER_CASA_CONTRAGOLPE_MAISVOTADO" && nom1 && !state.weekState.contragolpeId) {
     const puxador = nom1;
 
@@ -9022,30 +9030,7 @@ function doIndica() {
     }
   }
 
-  // 9) Finaliza o contragolpe "LIDERINDICADO" (se tinha pendente) só agora
-  if (pendingContragolpe && !state.weekState.contragolpeId) {
-    const puxador = state.players.find((p) => p.id === pendingContragolpe.puxadorId);
-    const puxado = state.players.find((p) => p.id === pendingContragolpe.puxadoId);
-    if (puxador && puxado) {
-      state.weekState.contragolpeId = puxado.id;
-
-      bump(puxado, { pop: -0.22, alvo: +0.85 });
-      state.relations[puxado.id] = state.relations[puxado.id] || {};
-      const r0 = relGet(puxado.id, puxador.id);
-      state.relations[puxado.id][puxador.id] = clamp(r0 - 0.6, -5, 5);
-
-      gameAdd(
-        `<div class="gameCard gameParedao"><strong>Contragolpe</strong>: ${escapeHtml(
-          shortNameForEvents(puxador)
-        )} puxa <strong>${escapeHtml(shortNameForEvents(puxado))}</strong></div>`
-      );
-    }
-  }
-
-  // cleanup do pré-contragolpe
-  delete state.weekState._preContragolpePuxadoId;
-
-  // 10) Monta paredão final (ordem correta: depois do contragolpe existir, se existir)
+  // --- 4) Monta paredão final ---
   const set = new Map();
 
   const ind = indicadoLiderId ? state.players.find((p) => p.id === indicadoLiderId) : null;
@@ -9058,20 +9043,17 @@ function doIndica() {
   const pux = puxId ? state.players.find((p) => p.id === puxId) : null;
   if (pux) set.set(pux.id, pux);
 
-  // Formação: Líder indica + Casa vota + perdedor da Prova do Líder
   if (formation === "LIDER_CASA_PERDEDOR_PROVA") {
     const loserId = state.weekState.leaderLoserId;
     const loser = loserId ? state.players.find((p) => p.id === loserId) : null;
     if (loser && loser.status.alive) set.set(loser.id, loser);
   }
 
-  // Big Fone pode adicionar extras
   for (const extraId of extraIds) {
     const extra = state.players.find((p) => p.id === extraId);
     if (extra && extra.status.alive) set.set(extra.id, extra);
   }
 
-  // fallback: garante pelo menos 3
   const desiredMin = 3;
   if (set.size < desiredMin) {
     for (const p of alive) {
@@ -9085,7 +9067,6 @@ function doIndica() {
   state.weekState.paredaoIds = paredao.map((p) => p.id);
   paredao.forEach((p) => bump(p, { strikes: +1 }));
 
-  // 11) Linha final de paredão formado
   const names = paredao.map((p) => p.name).join(", ");
   gameLine(names, "paredão formado", "a tensão sobe", "alianças e blocos ficam expostos", "misto", "paredao");
 }
