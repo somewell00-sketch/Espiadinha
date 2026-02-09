@@ -8613,7 +8613,6 @@ function doIndica() {
     tiedPlayers.sort((a, b) => leaderTargetScore(leader, b) - leaderTargetScore(leader, a));
     return tiedPlayers[0] || null;
   }
-
 function doCasa() {
   const alive = alivePlayers();
   const leaderId = state.weekState.leaderId;
@@ -9070,7 +9069,6 @@ function doCasa() {
   const names = paredao.map((p) => p.name).join(", ");
   gameLine(names, "paredão formado", "a tensão sobe", "alianças e blocos ficam expostos", "misto", "paredao");
 }
-
 
 
 
