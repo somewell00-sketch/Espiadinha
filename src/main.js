@@ -7912,8 +7912,11 @@ const { winner: leader, ranked } = runProva("Líder", pool, "gameLeader");
 	    // Guarda ranking da prova do líder (para promoção se o líder sair)
   state.weekState.leaderRankedIds = Array.isArray(ranked) ? ranked.map(p => p.id) : [];
   state.weekState.leaderRunnerUpId = Array.isArray(ranked) ? (ranked.find(p => p && p.id !== leader.id)?.id || null) : null;
-  state.weekState.leaderLoserId = Array.isArray(ranked) && ranked.length ? (ranked[ranked.length - 1]?.id || null) : null;
-
+state.weekState.leaderLoserId =
+  Array.isArray(ranked) && ranked.length
+    ? (ranked[0]?.id || null)
+    : null;
+	
   state.weekState.leaderId = leader.id;
     leader.status.wonSomethingThisWeek = true;
   leader.status.leaderCount = (leader.status.leaderCount ?? 0) + 1;
