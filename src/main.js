@@ -9073,6 +9073,7 @@ function doCasa() {
 
 
 
+
   function undoParedaoStrike(p) {
     if (!p || !p.status) return;
     if (p.status.strikes !== undefined) p.status.strikes = Math.max(0, (p.status.strikes || 0) - 1);
