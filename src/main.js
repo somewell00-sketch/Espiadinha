@@ -9221,77 +9221,89 @@ function doCasa() {
   for (const x of base) {
     if (isPublicFavorite(x.p)) x.w *= 0.5;
   }
+// 3) Coalizão de torcidas (2 aliados vs 1)
+// Dupla guiada por laços (proximidade relativa). Outsider mantém lógica de contra-ataque no mais fraco.
+if (PUBLIC_COALITION.enabled && base.length === 3) {
+  const [a, b, c] = base.map((x) => x.p);
 
-  // 3) Coalizão de torcidas (2 aliados vs 1)
-  if (PUBLIC_COALITION.enabled && base.length === 3) {
-    const [a, b, c] = base.map((x) => x.p);
+  const pairs = [
+    { p1: a, p2: b, outsider: c, rel: relGet(a.id, b.id) },
+    { p1: a, p2: c, outsider: b, rel: relGet(a.id, c.id) },
+    { p1: b, p2: c, outsider: a, rel: relGet(b.id, c.id) }
+  ].sort((x, y) => y.rel - x.rel);
 
-    const pairs = [
-      { p1: a, p2: b, outsider: c, rel: relGet(a.id, b.id) },
-      { p1: a, p2: c, outsider: b, rel: relGet(a.id, c.id) },
-      { p1: b, p2: c, outsider: a, rel: relGet(b.id, c.id) }
-    ].sort((x, y) => y.rel - x.rel);
+  const best = pairs[0];
 
-    const best = pairs[0];
+  // laço mínimo pra considerar "dupla"
+  const minRel = PUBLIC_COALITION.minRelToPair ?? 0.65;
 
-    if (best.rel >= 0.65) {
+  if (best.rel >= minRel) {
+    // proximidade do duo com o outsider (se for baixa, outsider é "menos próximo")
+    const r1o = relGet(best.p1.id, best.outsider.id);
+    const r2o = relGet(best.p2.id, best.outsider.id);
+    const avgWithOut = (r1o + r2o) / 2;
+
+    // quanto a dupla é mais próxima entre si do que do outsider
+    const relGap = best.rel - avgWithOut;
+
+    const minGap = PUBLIC_COALITION.minRelGapToTrigger ?? 0.45;
+
+    // gatilho guiado por laços (não por popularidade)
+    const should = relGap >= minGap;
+
+    if (should && Math.random() < PUBLIC_COALITION.chance) {
+      // fatores (0..1)
+      const relFactor = clamp((best.rel - minRel) / 0.35, 0, 1);
+      const gapFactor = clamp((relGap - minGap) / 1.5, 0, 1);
+
+      const outsiderRej0 = clamp(best.outsider.attrs?.rejeicao ?? 0, 0, 10);
+      const rejFactor = outsiderRej0 / 10;
+
+      const baseBoost = (PUBLIC_COALITION.maxBoost / 100);
+
+      // boost prioriza laços; rejeição só intensifica um pouco
+      const boost =
+        baseBoost *
+        (0.55 + 0.45 * relFactor) *
+        (0.60 + 0.40 * gapFactor) *
+        (1 + 0.60 * rejFactor);
+
+      // coalizão: votos no outsider, leve redução nos dois aliados
+      for (const x of base) {
+        if (x.p.id === best.outsider.id) x.w *= (1 + boost);
+        if (x.p.id === best.p1.id || x.p.id === best.p2.id) x.w *= (1 - boost * 0.55);
+      }
+
+      // contra-ataque do outsider: mira no mais fraco (menos popular) dos dois
       const p1Pop = clamp(best.p1.status.pop ?? 0, 0, 10);
       const p2Pop = clamp(best.p2.status.pop ?? 0, 0, 10);
-      const outPop = clamp(best.outsider.status.pop ?? 0, 0, 10);
+      const target = (p1Pop <= p2Pop) ? best.p1 : best.p2;
 
-      const popGap = Math.abs(p1Pop - p2Pop);
-      const should =
-        popGap <= 5 &&
-        (p1Pop + p2Pop) - outPop >= PUBLIC_COALITION.minGapToTrigger;
+      const counterBoost = clamp(boost * 0.45, 0, 0.35);
 
-      if (should && Math.random() < PUBLIC_COALITION.chance) {
-        const relFactor = clamp((best.rel - 0.65) / 0.35, 0, 1);
-        const rejFactor = clamp(best.outsider.attrs?.rejeicao ?? 0, 0, 10) / 10;
-        const threatFactor = ((p1Pop + p2Pop) / 2) / 10;
+      for (const x of base) {
+        if (x.p.id === target.id) x.w *= (1 + counterBoost);
+        if (x.p.id === best.outsider.id) x.w *= (1 - counterBoost * 0.25);
+      }
 
-        const baseBoost = PUBLIC_COALITION.maxBoost / 100;
-        const boost =
-          baseBoost *
-          relFactor *
-          (1 + 0.9 * rejFactor + 0.5 * threatFactor);
-
-        // coalizão: votos no outsider
-        for (const x of base) {
-          if (x.p.id === best.outsider.id) x.w *= (1 + boost);
-          if (x.p.id === best.p1.id || x.p.id === best.p2.id) {
-            x.w *= (1 - boost * 0.6);
-          }
-        }
-
-        // contra-ataque do outsider
-        const target =
-          p1Pop <= p2Pop ? best.p1 : best.p2;
-
-        const counterBoost = clamp(boost * 0.45, 0, 0.35);
-
-        for (const x of base) {
-          if (x.p.id === target.id) x.w *= (1 + counterBoost);
-          if (x.p.id === best.outsider.id) x.w *= (1 - counterBoost * 0.25);
-        }
-
-        if (PUBLIC_COALITION.logIt && typeof gameAdd === "function") {
-          const html = `
-            <div class="gameCard gameNeu" style="padding:6px 8px;font-size:12px;line-height:1.35;opacity:.95;">
-              <div>
-                Torcidas de <strong>${escapeHtml(displayName(best.p1))}</strong> e
-                <strong>${escapeHtml(displayName(best.p2))}</strong> se unem contra
-                <strong>${escapeHtml(displayName(best.outsider))}</strong>.
-              </div>
-              <div style="margin-top:4px;opacity:.92;">
-                Contra-ataque mira em <strong>${escapeHtml(displayName(target))}</strong>.
-              </div>
+      if (PUBLIC_COALITION.logIt && typeof gameAdd === "function") {
+        const html = `
+          <div class="gameCard gameNeu" style="padding:6px 8px;font-size:12px;line-height:1.35;opacity:.95;">
+            <div>
+              Torcidas de <strong>${escapeHtml(displayName(best.p1))}</strong> e
+              <strong>${escapeHtml(displayName(best.p2))}</strong> se unem contra
+              <strong>${escapeHtml(displayName(best.outsider))}</strong>.
             </div>
-          `;
-          gameAdd(html);
-        }
+            <div style="margin-top:4px;opacity:.92;">
+              Contra-ataque mira em <strong>${escapeHtml(displayName(target))}</strong>.
+            </div>
+          </div>
+        `;
+        gameAdd(html);
       }
     }
   }
+}
 
   // 4) normalização FINAL
   const sum = base.reduce((s, x) => s + x.w, 0) || 1;
