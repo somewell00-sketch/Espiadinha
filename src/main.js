@@ -4408,7 +4408,12 @@ p.attrs = p.attrs || { provas: 5, estrategia: 5, social: 5, emocional: 5, confli
       const full = (String(p.firstName ?? p.name ?? "").trim() + " " + String(p.lastName ?? "").trim()).trim();
       p.name = full || p.name || "Sem nome";
     });
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    // Não persistir objetos com funções (ex: engine de eventos)
+    localStorage.setItem(LS_KEY, JSON.stringify(state, (k, v) => {
+      if (k === '_eventEngine') return undefined;
+      if (typeof v === 'function') return undefined;
+      return v;
+    }));
   }
 
   function alivePlayers() {
@@ -7524,9 +7529,21 @@ for (const p of featured) {
 
 
   /* ===== EventEngine (Convivência em 3 atos: manhã / tarde / noite) ===== */
+  // Engine não pode ser persistido no localStorage (funções somem no JSON).
+  // Mantemos um singleton em memória e reconstruímos se vier "quebrado" do state.
+  let __evEngineSingleton = null;
   function getEventEngine() {
-    state._eventEngine = state._eventEngine || createEventEngine();
-    return state._eventEngine;
+    if (__evEngineSingleton && typeof __evEngineSingleton.beginDay === 'function') return __evEngineSingleton;
+
+    // Se veio do state (pós-load), pode ter virado um objeto vazio pelo JSON.
+    if (state._eventEngine && typeof state._eventEngine.beginDay === 'function') {
+      __evEngineSingleton = state._eventEngine;
+      return __evEngineSingleton;
+    }
+
+    __evEngineSingleton = createEventEngine();
+    state._eventEngine = __evEngineSingleton; // só para acesso rápido em runtime
+    return __evEngineSingleton;
   }
 
   function createEventEngine() {
