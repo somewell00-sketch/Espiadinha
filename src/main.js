@@ -7497,7 +7497,9 @@ for (const p of featured) {
 
   function enqueueDailySequences(ctx, alive, cap) {
     state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
-    state.eventQueue.length = 0;
+    // NÃO zerar aqui: o EventEngine já zera a fila no começo do dia.
+    // Isso permite micro-arcos (provocação → reação → confronto) viverem junto
+    // com as sequências automáticas, sem serem apagados.
     if (!alive?.length) return;
 
     // 1 sequência sempre; 2 em dias mais "de episódio" (festa, domingo, segunda)
@@ -7523,6 +7525,234 @@ for (const p of featured) {
   }
 
   function createEventEngine() {
+    // ===== NarrativeDirector: perfil → texto, alvo real da semana e micro-arcos =====
+    const getDominantId = (p) => {
+      try {
+        const wk = String(state?.week ?? 1);
+        const snap = p?.status?.archetypeWeek?.[wk] || getLastArchetypeSnapForPlayer(p);
+        return String(snap?.dominantId || '').trim() || 'planta';
+      } catch { return 'planta'; }
+    };
+
+    const getProfile = (p) => {
+      const dom = getDominantId(p);
+      if (dom === 'strategist' || dom === 'antagonista') return 'strategist';
+      if (dom === 'vilao' || dom === 'caotico') return 'barraqueiro';
+      if (dom === 'queridinho' || dom === 'amado_odiado' || dom === 'gala') return 'queridinho';
+      if (dom === 'rejeitado') return 'rejeitado';
+      if (dom === 'perseguidor') return 'vitima';
+      if (dom === 'alivio') return 'alivio';
+      if (dom === 'palestrinha') return 'palestrinha';
+      if (dom === 'justiceiro') return 'justiceiro';
+      if (dom === 'sabio') return 'sabio';
+      return 'planta';
+    };
+
+    const fillAB = (tpl, A, B, C, T) => {
+      return String(tpl || '')
+        .replaceAll('{A}', A?.name || 'A')
+        .replaceAll('{B}', B?.name || 'B')
+        .replaceAll('{C}', C?.name || 'C')
+        .replaceAll('{T}', T?.name || 'alvo');
+    };
+
+    const templates = {
+      // 3 atos: provocação (m), reação (a), confronto (n)
+      voteArc: {
+        strategist: {
+          prov: [
+            '{A} puxa {C} pra um canto e diz que o voto em {B} era o movimento mais seguro da semana',
+            '{A} fala baixo com {C}: "se a casa fechar em {B}, ninguém se expõe"'
+          ],
+          react: [
+            '{C} alerta {B} que {A} está articulando voto e a conversa vira matemática de paredão',
+            '{B} ouve de {C} que o nome de {B} está circulando e tenta mapear quem está junto de {A}'
+          ],
+          conf: [
+            '{B} encosta em {A} e cobra coerência sobre o voto, sem levantar a voz mas deixando recado',
+            '{A} diz pra {B} que não foi pessoal, foi jogo... e {B} responde que vai lembrar disso'
+          ]
+        },
+        barraqueiro: {
+          prov: [
+            '{A} desabafa com {C} que {B} está jogando sujo e que vai bater de frente na primeira chance',
+            '{A} comenta alto demais com {C} que {B} merece ir pro paredão'
+          ],
+          react: [
+            '{C} repassa pra {B} o que ouviu e {B} perde a paciência na hora',
+            '{B} descobre por {C} que {A} está espalhando voto e decide tirar satisfação'
+          ],
+          conf: [
+            '{B} confronta {A} na cozinha sobre o voto e a casa inteira presta atenção',
+            '{A} e {B} discutem sobre traição e voto, e o clima fica pesado pelo resto da noite'
+          ]
+        },
+        queridinho: {
+          prov: [
+            '{A} diz pra {C} que não queria votar em {B}, mas sente que a casa empurrou pra isso',
+            '{A} confessa pra {C} que está com medo de se queimar com o público por causa do voto'
+          ],
+          react: [
+            '{B} fica magoado ao saber por {C} que {A} votou nele e questiona se era mesmo necessário',
+            '{C} tenta acalmar {B} dizendo que {A} está confuso, mas {B} não compra a ideia'
+          ],
+          conf: [
+            '{A} tenta conversar com {B} pra evitar briga, mas {B} deixa claro que se sentiu traído',
+            '{B} cobra {A} olhando nos olhos: "se era jogo, por que não falou comigo antes?"'
+          ]
+        },
+        rejeitado: {
+          prov: [
+            '{A} diz pra {C} que {B} está puxando a casa contra ele e que não vai aceitar ser bode expiatório',
+            '{A} fala com {C} que sente perseguição e que {B} está liderando isso nos bastidores'
+          ],
+          react: [
+            '{B} ouve de {C} que {A} está dizendo que é perseguição e responde que não tem vítima aqui',
+            '{C} comenta com {B} que {A} está inflamado e {B} prefere cortar o assunto'
+          ],
+          conf: [
+            '{A} pressiona {B} sobre o voto e diz que está cansado de ser alvo fácil',
+            '{B} rebate {A} dizendo que o jogo é consequência e a conversa termina atravessada'
+          ]
+        },
+        default: {
+          prov: ['{A} comenta com {C} que {B} virou opção de voto na casa'],
+          react: ['{C} comenta com {B} que o nome de {B} está sendo citado'],
+          conf: ['{B} chama {A} pra conversar sobre o voto e tenta entender o que está acontecendo']
+        }
+      },
+
+      // conversa estratégica baseada em alvo real
+      targetTalk: {
+        strategist: [
+          '{A} diz pra {B} que o alvo mais lógico agora é {T} e que qualquer desvio só espalha votos',
+          '{A} sugere pra {B} que mirar em {T} evita exposição e deixa a casa parecer unida'
+        ],
+        barraqueiro: [
+          '{A} fala pra {B} que {T} está se fazendo de vítima e que hoje vai ser dia de deixar isso claro',
+          '{A} diz que se {T} cair no paredão, ele não vai sentir culpa nenhuma'
+        ],
+        queridinho: [
+          '{A} comenta com {B} que votar em {T} pode pegar mal, mas talvez seja o único caminho',
+          '{A} diz que tem medo de ir contra a casa e acabar virando o próximo alvo'
+        ],
+        planta: [
+          '{A} pergunta pra {B} se o alvo da semana é {T}, tentando entender pra onde a casa vai',
+          '{A} ouve {B} falar sobre {T} e decide só observar por enquanto'
+        ],
+        default: [
+          '{A} conversa com {B} sobre como {T} virou o centro das atenções nesta semana'
+        ]
+      },
+
+      // pós-eliminação na quarta (possibilidades)
+      wednesdayElim: {
+        strategist: [
+          '{A} comenta com {B} que a saída de {T} abriu espaço pra um novo alvo e que agora tudo muda',
+          '{A} diz pra {B} que a eliminação de {T} mostra que o voto da casa está mais forte do que parecia'
+        ],
+        queridinho: [
+          '{A} diz pra {B} que ficou sentido com a saída de {T}, e teme como o público está lendo a casa',
+          '{A} comenta com {B} que a eliminação de {T} deixou um vazio e que ninguém quer ser o próximo'
+        ],
+        barraqueiro: [
+          '{A} fala pra {B} que {T} saiu porque mereceu e que agora não tem espaço pra jogo morno',
+          '{A} diz que a casa precisa parar de fingir e assumir quem quer tirar agora'
+        ],
+        default: [
+          '{A} e {B} comentam a saída de {T} e como isso mexeu com o clima da casa'
+        ]
+      },
+
+      // festa em arco: faísca → cutucada → estoura
+      partyArc: {
+        spark: [
+          'Na festa, {A} solta uma ironia pra {B} que parece brincadeira, mas tem recado',
+          '{A} repara em {B} na pista e faz um comentário atravessado no meio da música'
+        ],
+        react: [
+          '{B} comenta com {C} que {A} passou do limite na festa e a tensão começa a subir',
+          '{C} tenta segurar {B}, mas {B} já está decidido a responder {A}'
+        ],
+        blow: [
+          '{B} cobra {A} na frente de todo mundo durante a festa e o clima muda na hora',
+          '{A} e {B} batem boca perto da pista e vários participantes tentam apartar'
+        ]
+      }
+    };
+
+    const pickTpl = (pack, key, profile) => {
+      const p = pack?.[profile] || pack?.default;
+      const arr = p?.[key] || p;
+      return pickOne(Array.isArray(arr) ? arr : [String(arr || '')]);
+    };
+
+    const computeMainTarget = (alive) => {
+      const wk = state.weekState || {};
+      const byId = new Map(alive.map(p => [String(p.id), p]));
+
+      const leaderInd = wk.indicadoLiderId && byId.get(String(wk.indicadoLiderId));
+      if (leaderInd) return leaderInd;
+
+      const casaIds = (wk.indicadosCasaIds || []).map(String);
+      for (const id of casaIds) {
+        const p = byId.get(id);
+        if (p) return p;
+      }
+
+      // fallback: maior tally (se existir)
+      try {
+        const tally = wk.tally || {};
+        const best = Object.keys(tally)
+          .map(id => ({ id, c: Number(tally[id] || 0) }))
+          .sort((a,b) => b.c - a.c)[0];
+        const p = best && byId.get(String(best.id));
+        if (p) return p;
+      } catch {}
+
+      // fallback: maior rejeição
+      return alive.slice().sort((a,b) => Number(b?.attrs?.rejeicao ?? 0) - Number(a?.attrs?.rejeicao ?? 0))[0] || null;
+    };
+
+    const enqueueByPeriod = (ev) => {
+      if (!ev) return;
+      const per = String(ev.period || 'any');
+      ev._period = per;
+      state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
+      state.eventQueue.push(ev);
+    };
+
+    const shiftMatching = (queue, period) => {
+      if (!Array.isArray(queue) || !queue.length) return null;
+      // prioridade: evento que declara period igual; depois, evento sem period.
+      let idx = queue.findIndex(e => String(e?._period || e?.period || '') === period);
+      if (idx < 0) idx = queue.findIndex(e => !e?._period && !e?.period);
+      if (idx < 0) idx = 0;
+      return queue.splice(idx, 1)[0];
+    };
+
+    const buildVoteArc = (alive, target) => {
+      const wk = state.weekState || {};
+      const votes = Array.isArray(wk.lastCasaVotes) ? wk.lastCasaVotes : [];
+      if (!votes.length) return null;
+
+      // prioriza um voto envolvendo o alvo, se possível
+      const cand = target ? votes.filter(v => String(v.toId) === String(target.id)) : votes;
+      const pick = pickOne(cand.length ? cand : votes);
+      const A = alive.find(p => p.id === pick.fromId);
+      const B = alive.find(p => p.id === pick.toId);
+      if (!A || !B) return null;
+      const C = pickOne(alive.filter(p => p.id !== A.id && p.id !== B.id)) || pickOne(alive);
+      const prof = getProfile(A);
+      const pack = templates.voteArc;
+      return {
+        A, B, C,
+        prov: fillAB(pickTpl(pack, 'prov', prof), A, B, C, target),
+        react: fillAB(pickTpl(pack, 'react', prof), A, B, C, target),
+        conf: fillAB(pickTpl(pack, 'conf', prof), A, B, C, target)
+      };
+    };
+
     const splitCaps = (total, ctx) => {
       // total já vem clampado (6..10). Cada período fica entre 2 e 5; máximo 10 no dia.
       const caps = { morning: 2, afternoon: 2, night: 2 };
@@ -7757,6 +7987,9 @@ for (const p of featured) {
         const alive = alivePlayers();
         if (!alive.length) return { skipAll: true };
 
+        // fila narrativa do dia (micro-arcos + sequências)
+        state.eventQueue = [];
+
         this._madeTotal = 0;
         this._nightQueue = [];
         this._prepared = true;
@@ -7788,31 +8021,159 @@ for (const p of featured) {
         try { if (typeof maybeVulnerabilityMoment === 'function') maybeVulnerabilityMoment(ctx); } catch {}
         try { if (typeof maybeUnbreakableFriendship === 'function') maybeUnbreakableFriendship(ctx); } catch {}
 
-        // Quarta: comentários sobre eliminação (apenas possibilidade)
+        // ===== Micro-arcos direcionais (com base no alvo real + votos) =====
+        let mainTarget = null;
+        try { mainTarget = computeMainTarget(alive); } catch {}
+
+        // Conversa estratégica baseada no alvo real (puxa o jogo pro concreto)
+        try {
+          if (mainTarget && Math.random() < (ctx?.key === 'dom' ? 0.95 : 0.55)) {
+            const A = pickOne(alive);
+            const B = pickOne(alive.filter(p => p.id !== A.id)) || pickOne(alive);
+            const prof = getProfile(A);
+            const tpl = pickOne(templates.targetTalk?.[prof] || templates.targetTalk?.default || []);
+            enqueueByPeriod({
+              eid: 'target_talk',
+              period: (ctx?.key === 'dom' ? 'night' : (Math.random() < 0.55 ? 'afternoon' : 'night')),
+              theme: 'default',
+              people: `${A.name} e ${B.name}`,
+              desc: fillAB(tpl, A, B, null, mainTarget),
+              vt: 'estratégia, alvo',
+              scope: 'coletivo',
+              a: A, b: B,
+              deltaA: { alvo: 0.07, pop: rnd(-0.03, 0.05) },
+              deltaB: { alvo: 0.06, pop: rnd(-0.03, 0.05) },
+              relDelta: rnd(-0.15, 0.55),
+              directed: true
+            });
+          }
+        } catch {}
+
+        // Arco de voto: provocação → reação → confronto (usa lastCasaVotes quando existir)
+        try {
+          const arc = buildVoteArc(alive, mainTarget);
+          if (arc && Math.random() < (ctx?.key === 'dom' ? 0.80 : 0.45)) {
+            enqueueByPeriod({
+              eid: 'vote_arc_prov',
+              period: 'morning',
+              theme: 'default',
+              people: `${arc.A.name} e ${arc.C.name}`,
+              desc: arc.prov,
+              vt: 'estratégia, voto',
+              scope: 'privado',
+              a: arc.A, b: arc.C,
+              deltaA: { alvo: 0.06, pop: rnd(-0.02, 0.06) },
+              deltaB: { alvo: 0.04, pop: rnd(-0.02, 0.05) },
+              relDelta: rnd(0.10, 0.60),
+              directed: true
+            });
+
+            enqueueByPeriod({
+              eid: 'vote_arc_react',
+              period: 'afternoon',
+              theme: 'default',
+              people: `${arc.C.name} e ${arc.B.name}`,
+              desc: arc.react,
+              vt: 'paranoia, voto',
+              scope: 'privado',
+              a: arc.C, b: arc.B,
+              deltaA: { alvo: 0.05, pop: rnd(-0.02, 0.05) },
+              deltaB: { alvo: 0.08, pop: rnd(-0.04, 0.08) },
+              relDelta: rnd(-0.10, 0.45),
+              directed: true
+            });
+
+            enqueueByPeriod({
+              eid: 'vote_arc_conf',
+              period: 'night',
+              theme: 'default',
+              people: `${arc.B.name} e ${arc.A.name}`,
+              desc: arc.conf,
+              vt: 'confronto, voto',
+              scope: 'coletivo',
+              a: arc.B, b: arc.A,
+              deltaA: { alvo: 0.10, pop: rnd(-0.05, 0.10) },
+              deltaB: { alvo: 0.09, pop: rnd(-0.05, 0.10) },
+              relDelta: rnd(-0.55, 0.25),
+              directed: true
+            });
+          }
+        } catch {}
+
+        // Festa com micro-arco (faísca → reage → estoura) distribuído no dia
+        try {
+          if (ctx?.festa && alive.length >= 3 && Math.random() < 0.70) {
+            const A = pickOne(alive);
+            const B = pickOne(alive.filter(p => p.id !== A.id));
+            const C = pickOne(alive.filter(p => p.id !== A.id && p.id !== B.id)) || pickOne(alive);
+            enqueueByPeriod({
+              eid: 'party_arc_spark',
+              period: 'afternoon',
+              theme: 'party',
+              people: `${A.name} e ${B.name}`,
+              desc: fillAB(pickOne(templates.partyArc.spark), A, B, C, mainTarget),
+              vt: 'festa, provocação',
+              scope: 'coletivo',
+              a: A, b: B,
+              deltaA: { pop: rnd(-0.03, 0.06), alvo: 0.05 },
+              deltaB: { pop: rnd(-0.03, 0.06), alvo: 0.05 },
+              relDelta: rnd(-0.35, 0.30),
+              directed: true
+            });
+            enqueueByPeriod({
+              eid: 'party_arc_react',
+              period: 'night',
+              theme: 'party',
+              people: `${B.name} e ${C.name}`,
+              desc: fillAB(pickOne(templates.partyArc.react), A, B, C, mainTarget),
+              vt: 'festa, tensão',
+              scope: 'privado',
+              a: B, b: C,
+              deltaA: { pop: rnd(-0.05, 0.08), alvo: 0.08 },
+              deltaB: { pop: rnd(-0.03, 0.06), alvo: 0.06 },
+              relDelta: rnd(-0.25, 0.35),
+              directed: true
+            });
+            // o "estouro" entra como eco na noite via _nightQueue pra não atropelar cap
+            this._nightQueue = Array.isArray(this._nightQueue) ? this._nightQueue : [];
+            this._nightQueue.push({
+              eid: 'party_arc_blow',
+              theme: 'party',
+              people: `${B.name} e ${A.name}`,
+              desc: fillAB(pickOne(templates.partyArc.blow), A, B, C, mainTarget),
+              vt: 'festa, confronto',
+              scope: 'coletivo',
+              a: B, b: A,
+              deltaA: { pop: rnd(-0.10, 0.12), alvo: 0.12 },
+              deltaB: { pop: rnd(-0.10, 0.12), alvo: 0.12 },
+              relDelta: rnd(-0.75, 0.15),
+              directed: true
+            });
+          }
+        } catch {}
+
+        // Quarta: comentários sobre eliminação (apenas possibilidade), com tom por perfil
         try {
           state.weekState = state.weekState || {};
           if (ctx?.key === 'qua' && state.weekState.lastElimTalkDays > 0 && state.weekState.lastEliminatedName) {
             if (Math.random() < 0.85) {
               const A = pickOne(alive);
-              const B = pickOne(alive.filter(p => p.id !== A.id));
-              const nm = escapeHtml(String(state.weekState.lastEliminatedName));
-              // entra cedo, pra garantir que aparece na quarta
-              state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
-              state.eventQueue.unshift({
+              const B = pickOne(alive.filter(p => p.id !== A.id)) || pickOne(alive);
+              const T = { name: String(state.weekState.lastEliminatedName) };
+              const prof = getProfile(A);
+              const tpl = pickOne(templates.wednesdayElim?.[prof] || templates.wednesdayElim?.default || []);
+              enqueueByPeriod({
                 eid: 'wednesday_elim_recap',
+                period: 'morning',
                 theme: 'default',
                 people: `${A.name} e ${B.name}`,
-                desc: pickOne([
-                  `{A} comenta com {B} sobre a saída de ${nm} e pergunta se a casa aprendeu alguma coisa`,
-                  `{A} e {B} falam de ${nm} e tentam entender por que o público decidiu assim`,
-                  `{A} diz pra {B} que a eliminação de ${nm} foi um recado e que todo mundo precisa se reposicionar`
-                ]),
+                desc: fillAB(tpl, A, B, null, T),
                 vt: 'eliminação, leitura',
                 scope: 'coletivo',
                 a: A, b: B,
-                deltaA: { alvo: 0.05, pop: rnd(-0.02, 0.06) },
-                deltaB: { alvo: 0.05, pop: rnd(-0.02, 0.06) },
-                relDelta: rnd(-0.20, 0.50),
+                deltaA: { alvo: 0.06, pop: rnd(-0.03, 0.06) },
+                deltaB: { alvo: 0.05, pop: rnd(-0.03, 0.06) },
+                relDelta: rnd(-0.20, 0.55),
                 directed: true
               });
             }
@@ -7911,7 +8272,7 @@ for (const p of featured) {
 
         // Consome fila narrativa primeiro
         while (state.eventQueue && state.eventQueue.length && made < cap && this._madeTotal < 10) {
-          const ev = state.eventQueue.shift();
+          const ev = shiftMatching(state.eventQueue, period);
           if (ev) {
             applyEventBlock(ev);
             made++;
