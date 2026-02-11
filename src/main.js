@@ -7515,6 +7515,463 @@ for (const p of featured) {
     }
   }
 
+
+  /* ===== EventEngine (Convivência em 3 atos: manhã / tarde / noite) ===== */
+  function getEventEngine() {
+    state._eventEngine = state._eventEngine || createEventEngine();
+    return state._eventEngine;
+  }
+
+  function createEventEngine() {
+    const splitCaps = (total, ctx) => {
+      // total já vem clampado (6..10). Cada período fica entre 2 e 5; máximo 10 no dia.
+      const caps = { morning: 2, afternoon: 2, night: 2 };
+      let rem = Math.max(0, Number(total || 0) - 6);
+      const bias = (ctx?.key === 'dom')
+        ? ['night', 'night', 'afternoon', 'night', 'morning']
+        : ['night', 'afternoon', 'morning', 'night', 'afternoon'];
+      let i = 0;
+      while (rem > 0 && i < 40) {
+        const k = bias[i % bias.length];
+        if (caps[k] < 5) {
+          caps[k] += 1;
+          rem -= 1;
+        }
+        i++;
+      }
+      return caps;
+    };
+
+    const buildCandidates = (alive, ctx, period) => {
+      const festaBoost = (ctx?.festa ? 0.10 : 0) + (ctx?.tension ? 0.05 : 0);
+      const isDom = String(ctx?.key || '') === 'dom';
+
+      return alive
+        .map((p) => {
+          const social = Number(p?.attrs?.social ?? 0);
+          const conflito = Number(p?.attrs?.conflito ?? 0);
+          const estrategia = Number(p?.attrs?.estrategia ?? 0);
+          const rejeicao = Number(p?.attrs?.rejeicao ?? 0);
+
+          let base = 0.22 + social * 0.03 + conflito * 0.015 + estrategia * 0.015 - rejeicao * 0.01;
+
+          if (period === 'morning') {
+            base += 0.05 + (social * 0.01);
+            base -= (conflito * 0.006) + (estrategia * 0.004);
+          } else if (period === 'afternoon') {
+            base += 0.02 + festaBoost;
+          } else {
+            // night
+            base += 0.04 + (estrategia * 0.01) + (conflito * 0.007) + (isDom ? 0.04 : 0) + festaBoost;
+          }
+
+          return { p, chance: clamp(base, 0.10, 0.88) };
+        })
+        .sort((a, b) => b.chance - a.chance);
+    };
+
+    const makeSpecialReaction = (kind, ctx, alive, meta) => {
+      const wk = state.weekState || {};
+      const pick2 = () => {
+        const a = pickOne(alive);
+        const b = pickOne(alive.filter(x => x.id !== a.id));
+        return { a, b };
+      };
+
+      if (!alive?.length) return [];
+
+      if (kind === 'party' && ctx?.festa) {
+        const { a, b } = pick2();
+        return [{
+          eid: 'party_recap',
+          theme: 'party',
+          people: `${a.name} e ${b.name}`,
+          desc: pickOne([
+            `{A} e {B} comentam como a festa pode mudar a leitura do público`,
+            `{A} puxa {B} pra dançar... mas a conversa vira jogo`,
+            `{A} repara em {B} na festa e começa a desconfiar de alianças` 
+          ]),
+          vt: 'festa, público',
+          scope: 'coletivo',
+          a, b,
+          deltaA: { pop: rnd(-0.02, 0.08), alvo: 0.04 },
+          deltaB: { pop: rnd(-0.02, 0.08), alvo: 0.04 },
+          relDelta: rnd(-0.20, 0.55),
+          directed: true
+        }];
+      }
+
+      if (kind === 'leader' && wk.leaderId) {
+        const leader = alive.find(p => p.id === wk.leaderId);
+        const { a, b } = pick2();
+        const A = leader || a;
+        const B = leader && b.id === leader.id ? a : b;
+        return [{
+          eid: 'leader_talk',
+          theme: 'default',
+          people: `${A.name} e ${B.name}`,
+          desc: pickOne([
+            `{A} comenta com {B} que a liderança muda tudo e que agora é hora de mirar certo`,
+            `{A} puxa {B} e deixa no ar quem pode virar alvo do Líder`,
+            `{A} e {B} tentam ler o Líder e montar um plano antes que o paredão se forme`
+          ]),
+          vt: 'liderança, estratégia',
+          scope: 'coletivo',
+          a: A, b: B,
+          deltaA: { alvo: 0.06, pop: rnd(-0.02, 0.06) },
+          deltaB: { alvo: 0.06, pop: rnd(-0.02, 0.06) },
+          relDelta: rnd(-0.25, 0.70),
+          directed: true
+        }];
+      }
+
+      if (kind === 'anjo' && wk.anjoId) {
+        const anjo = alive.find(p => p.id === wk.anjoId);
+        const { a, b } = pick2();
+        const A = anjo || a;
+        const B = anjo && b.id === anjo.id ? a : b;
+        return [{
+          eid: 'anjo_talk',
+          theme: 'default',
+          people: `${A.name} e ${B.name}`,
+          desc: pickOne([
+            `{A} comenta com {B} que o Anjo pode bagunçar o paredão`,
+            `{A} tenta descobrir com {B} quem deve ser protegido pelo Anjo`,
+            `{A} e {B} especulam se o Anjo vai ser usado como escudo ou como recado`
+          ]),
+          vt: 'anjo, estratégia',
+          scope: 'coletivo',
+          a: A, b: B,
+          deltaA: { alvo: 0.05, pop: rnd(-0.02, 0.06) },
+          deltaB: { alvo: 0.05, pop: rnd(-0.02, 0.06) },
+          relDelta: rnd(-0.20, 0.65),
+          directed: true
+        }];
+      }
+
+      if (kind === 'monstro' && (wk.monstroIds || []).length) {
+        const m = alive.find(p => p.id === wk.monstroIds[0]);
+        const { a, b } = pick2();
+        const A = m || a;
+        const B = m && b.id === m.id ? a : b;
+        return [{
+          eid: 'monstro_talk',
+          theme: 'default',
+          people: `${A.name} e ${B.name}`,
+          desc: pickOne([
+            `{A} desabafa com {B} sobre o Monstro e diz que isso vai pesar no voto`,
+            `{A} conta pra {B} que o Monstro foi recado direto e a casa fica em alerta`,
+            `{A} e {B} discutem se o Monstro virou munição pra justificar voto`
+          ]),
+          vt: 'monstro, tensão',
+          scope: 'coletivo',
+          a: A, b: B,
+          deltaA: { alvo: 0.08, pop: rnd(-0.06, 0.08) },
+          deltaB: { alvo: 0.05, pop: rnd(-0.03, 0.06) },
+          relDelta: rnd(-0.35, 0.40),
+          directed: true
+        }];
+      }
+
+      if (kind === 'bigfone' && wk.bigfoneTouchedId) {
+        const bf = alive.find(p => p.id === wk.bigfoneTouchedId) || pickOne(alive);
+        const { a, b } = pick2();
+        const A = bf;
+        const B = bf && b.id === bf.id ? a : b;
+        return [{
+          eid: 'bigfone_talk',
+          theme: 'default',
+          people: `${A.name} e ${B.name}`,
+          desc: pickOne([
+            `{A} conta pra {B} como foi o Big Fone e a paranoia toma conta da casa`,
+            `{A} e {B} reconstroem o Big Fone em detalhes e tentam prever o próximo passo`,
+            `{A} comenta com {B} que ninguém vai dormir tranquilo depois desse Big Fone`
+          ]),
+          vt: 'big fone, paranoia',
+          scope: 'coletivo',
+          a: A, b: B,
+          deltaA: { alvo: 0.10, pop: rnd(-0.04, 0.10) },
+          deltaB: { alvo: 0.08, pop: rnd(-0.04, 0.08) },
+          relDelta: rnd(-0.30, 0.55),
+          directed: true
+        }];
+      }
+
+      if (kind === 'paredao' && (wk.paredaoIds || []).length) {
+        const emp = alive.find(p => p.id === wk.paredaoIds[0]) || pickOne(alive);
+        const { a, b } = pick2();
+        const A = emp;
+        const B = emp && b.id === emp.id ? a : b;
+        return [{
+          eid: 'paredao_talk',
+          theme: 'default',
+          people: `${A.name} e ${B.name}`,
+          desc: pickOne([
+            `{A} conversa com {B} sobre o paredão e tenta entender de onde veio o voto`,
+            `{A} pede pra {B} segurar a onda e promete lealdade depois da votação`,
+            `{A} e {B} revisam os votos e a casa inteira vira tabuleiro`
+          ]),
+          vt: 'paredão, estratégia',
+          scope: 'coletivo',
+          a: A, b: B,
+          deltaA: { alvo: 0.12, pop: rnd(-0.06, 0.10) },
+          deltaB: { alvo: 0.06, pop: rnd(-0.04, 0.08) },
+          relDelta: rnd(-0.40, 0.55),
+          directed: true
+        }];
+      }
+
+      if (kind === 'elimination') {
+        const elimName = String(wk.lastEliminatedName || 'quem saiu');
+        const { a, b } = pick2();
+        return [{
+          eid: 'elim_talk',
+          theme: 'default',
+          people: `${a.name} e ${b.name}`,
+          desc: pickOne([
+            `{A} e {B} comentam a saída de ${elimName} e tentam adivinhar quem vira alvo agora`,
+            `{A} diz pra {B} que a eliminação de ${elimName} mudou o jogo e ninguém pode vacilar`,
+            `{A} e {B} relembram a eliminação de ${elimName} e a casa sente o baque`
+          ]),
+          vt: 'eliminação, leitura',
+          scope: 'coletivo',
+          a, b,
+          deltaA: { alvo: 0.05, pop: rnd(-0.02, 0.06) },
+          deltaB: { alvo: 0.05, pop: rnd(-0.02, 0.06) },
+          relDelta: rnd(-0.15, 0.35),
+          directed: true
+        }];
+      }
+
+      return [];
+    };
+
+    const eng = {
+      _caps: { morning: 0, afternoon: 0, night: 0 },
+      _madeTotal: 0,
+      _nightQueue: [],
+      _prepared: false,
+
+      beginDay(meta) {
+        const ctx = meta?.ctx;
+        const alive = alivePlayers();
+        if (!alive.length) return { skipAll: true };
+
+        this._madeTotal = 0;
+        this._nightQueue = [];
+        this._prepared = true;
+
+        // Final 3: nostalgia toma o dia
+        if (alive.length === 3) {
+          try { runFinalThreeNostalgia(ctx, alive); } catch {}
+          return { skipAll: true };
+        }
+
+        // Saídas especiais (podem encerrar a convivência do dia)
+        if (maybeExpulsionByAggression(ctx)) return { skipAll: true };
+        if (maybeExpulsionByHarassment(ctx)) return { skipAll: true };
+        if (maybeQuitEvent(ctx)) return { skipAll: true };
+
+        if (ctx?.festa) {
+          if (ctx.festaType === 'patrocinador') dayAdd(sponsorPartyBannerHtml());
+          else dayAdd(partyBannerHtml());
+          // reação vai aparecer na noite
+          try { this.injectSpecial(meta, 'party'); } catch {}
+        }
+
+        // Ecos do que já aconteceu
+        try { if (typeof consumeDailyEchos === 'function') consumeDailyEchos(ctx, alive); } catch {}
+
+        // 1 gatilho por dia
+        try { maybeTriggeredConfrontations(ctx, alive); } catch {}
+        try { if (typeof maybeSpecialFightEvent === 'function') maybeSpecialFightEvent(ctx); } catch {}
+        try { if (typeof maybeVulnerabilityMoment === 'function') maybeVulnerabilityMoment(ctx); } catch {}
+        try { if (typeof maybeUnbreakableFriendship === 'function') maybeUnbreakableFriendship(ctx); } catch {}
+
+        // Quarta: comentários sobre eliminação (apenas possibilidade)
+        try {
+          state.weekState = state.weekState || {};
+          if (ctx?.key === 'qua' && state.weekState.lastElimTalkDays > 0 && state.weekState.lastEliminatedName) {
+            if (Math.random() < 0.85) {
+              const A = pickOne(alive);
+              const B = pickOne(alive.filter(p => p.id !== A.id));
+              const nm = escapeHtml(String(state.weekState.lastEliminatedName));
+              // entra cedo, pra garantir que aparece na quarta
+              state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
+              state.eventQueue.unshift({
+                eid: 'wednesday_elim_recap',
+                theme: 'default',
+                people: `${A.name} e ${B.name}`,
+                desc: pickOne([
+                  `{A} comenta com {B} sobre a saída de ${nm} e pergunta se a casa aprendeu alguma coisa`,
+                  `{A} e {B} falam de ${nm} e tentam entender por que o público decidiu assim`,
+                  `{A} diz pra {B} que a eliminação de ${nm} foi um recado e que todo mundo precisa se reposicionar`
+                ]),
+                vt: 'eliminação, leitura',
+                scope: 'coletivo',
+                a: A, b: B,
+                deltaA: { alvo: 0.05, pop: rnd(-0.02, 0.06) },
+                deltaB: { alvo: 0.05, pop: rnd(-0.02, 0.06) },
+                relDelta: rnd(-0.20, 0.50),
+                directed: true
+              });
+            }
+            state.weekState.lastElimTalkDays = Math.max(0, Number(state.weekState.lastElimTalkDays || 0) - 1);
+          }
+        } catch {}
+
+        // Domingo (formação): garante um mini-bloco estratégico
+        try {
+          state.weekState = state.weekState || {};
+          state.weekState.triggered = state.weekState.triggered || {};
+          if (ctx?.key === 'dom' && !state.weekState.triggered.campaign && alive.length >= 3) {
+            state.weekState.triggered.campaign = true;
+            state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
+
+            const a = pickOne(alive);
+            const b = pickOne(alive.filter(p => p.id !== a.id));
+            const c = pickOne(alive.filter(p => p.id !== a.id && p.id !== b.id));
+
+            const stratDesc = pickOne([
+              `{A} chama {B} pra um canto e tenta fechar voto, dizendo que o paredão vai definir a semana`,
+              `{A} sonda {B} com cuidado e tenta montar um plano antes que a casa decida por eles`,
+              `{A} combina com {B} um movimento 'seguro'… mas ninguém sabe se é mesmo`,
+              `{A} puxa {B} pra conversa e tenta alinhar o discurso pra não se complicar no ao vivo`
+            ]);
+
+            const pleaDesc = pickOne([
+              `{A} procura {B} e faz um apelo emotivo pra não virar alvo, prometendo fidelidade`,
+              `{A} chega em {B} com aquele papo de 'tô contigo'… bem na véspera do paredão`,
+              `{A} tenta ganhar {B} no carinho, porque na matemática não tá confortável`,
+              `{A} pede pra {B} segurar a onda e não comprar a narrativa da casa`
+            ]);
+
+            state.eventQueue.push({
+              eid: 'campaign_strategy',
+              theme: 'default',
+              people: `${a.name} e ${b.name}`,
+              desc: stratDesc,
+              vt: 'estratégia, paranoia',
+              scope: 'coletivo',
+              a, b,
+              deltaA: { pop: rnd(-0.03, 0.06), alvo: 0.08 },
+              deltaB: { pop: rnd(-0.03, 0.06), alvo: 0.06 },
+              relDelta: rnd(0.25, 0.85),
+              directed: true
+            });
+
+            state.eventQueue.push({
+              eid: 'campaign_plea',
+              theme: 'default',
+              people: `${c.name} e ${a.name}`,
+              desc: pleaDesc,
+              vt: 'emocional, campanha',
+              scope: 'coletivo',
+              a: c, b: a,
+              deltaA: { pop: rnd(-0.05, 0.10), alvo: 0.10 },
+              deltaB: { pop: rnd(-0.02, 0.06), alvo: 0.04 },
+              relDelta: rnd(0.15, 0.70),
+              directed: true
+            });
+          }
+        } catch {}
+
+        const totalCap = clamp(Math.round(rnd(7, 10) + (ctx?.festa ? 1 : 0) + (ctx?.tension ? 1 : 0)), 6, 10);
+        this._caps = splitCaps(totalCap, ctx);
+
+        // Mini-arcos do dia: enfileira 1–2 sequências antes do aleatório (respeitando teto do dia)
+        enqueueDailySequences(ctx, alive, totalCap);
+
+        return { skipAll: false, caps: this._caps, totalCap };
+      },
+
+      runPart(meta, period) {
+        const ctx = meta?.ctx;
+        const alive = alivePlayers();
+        if (!alive.length) return;
+
+        // injeta reações guardadas (para realmente ecoarem na noite)
+        if (period === 'night' && this._nightQueue?.length) {
+          state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
+          state.eventQueue = this._nightQueue.concat(state.eventQueue);
+          this._nightQueue = [];
+        }
+
+        const capRaw = Number(this._caps?.[period] || 0);
+        if (capRaw <= 0) return;
+
+        const remaining = Math.max(0, 10 - Number(this._madeTotal || 0));
+        if (remaining <= 0) return;
+
+        const cap = clamp(Math.min(capRaw, remaining), 0, 5);
+        if (cap <= 0) return;
+
+        const candidates = buildCandidates(alive, ctx, period);
+        let made = 0;
+
+        // Consome fila narrativa primeiro
+        while (state.eventQueue && state.eventQueue.length && made < cap && this._madeTotal < 10) {
+          const ev = state.eventQueue.shift();
+          if (ev) {
+            applyEventBlock(ev);
+            made++;
+            this._madeTotal++;
+          }
+        }
+
+        for (const c of candidates) {
+          if (made >= cap || this._madeTotal >= 10) break;
+          if (Math.random() < c.chance) {
+            applyEventBlock(genEventForPlayer(c.p, ctx, alive));
+            made++;
+            this._madeTotal++;
+          }
+        }
+
+        // garante um mínimo de 2 eventos por período (quando houver jogadores), sem passar do teto diário
+        const minNeed = Math.min(2, cap);
+        if (made < minNeed) {
+          let iForce = 0;
+          while (made < minNeed && iForce < candidates.length && this._madeTotal < 10) {
+            const fp = candidates[iForce] && candidates[iForce].p;
+            if (fp) {
+              applyEventBlock(genEventForPlayer(fp, ctx, alive));
+              made++;
+              this._madeTotal++;
+            }
+            iForce++;
+          }
+        }
+
+                // fecha o dia (apenas na noite) com efeitos globais
+        if (period === 'night') {
+          try { applyExclusionPopularityBoost(ctx); } catch {}
+          alive.forEach((p) => {
+            const fatigue = 0.010 + p.status.pop * 0.007;
+            bump(p, { pop: -fatigue + rnd(-0.01, 0.01) });
+          });
+        }
+      },
+
+      injectSpecial(meta, kind) {
+        const ctx = meta?.ctx;
+        const alive = alivePlayers();
+        if (!alive.length) return;
+
+        // por padrão, o "eco" entra na noite
+        const evs = makeSpecialReaction(kind, ctx, alive, meta);
+        if (!evs.length) return;
+        this._nightQueue = Array.isArray(this._nightQueue) ? this._nightQueue : [];
+
+        // 1–2 eventos no máximo, pra não estourar o teto do dia
+        const maxAdd = Math.min(2, evs.length);
+        for (let i = 0; i < maxAdd; i++) this._nightQueue.push(evs[i]);
+      }
+    };
+
+    return eng;
+  }
+
   function generateDayEvents(ctx) {
     const alive = alivePlayers();
     if (!alive.length) return;
@@ -9474,6 +9931,12 @@ function snapshotPopForWeek(weekNumber) {
   const eliminado = state.players.find((p) => p.id === elimId);
   if (!eliminado) return;
 
+  state.weekState = state.weekState || {};
+  state.weekState.lastEliminatedId = eliminado.id;
+  state.weekState.lastEliminatedName = eliminado.name;
+  state.weekState.lastElimWeek = state.week;
+  state.weekState.lastElimTalkDays = 3;
+
   state.weekState.eliminadoId = eliminado.id;
   markEliminated(eliminado);
 
@@ -10270,7 +10733,13 @@ function bootStart() {
     // efeitos do Monstro (isolamento e laço entre monstros)
     tickMonstroDaily(meta);
 
-    generateDayEvents(ctxFrozen);
+    // Convivência em 3 atos (manhã / tarde / noite)
+    const evEngine = getEventEngine();
+    const dayRun = evEngine.beginDay(meta);
+    if (!dayRun?.skipAll) {
+      evEngine.runPart(meta, "morning");
+      evEngine.runPart(meta, "afternoon");
+    }
 
 	    // Favorito do público pode surgir durante a Festa (Quarta) a partir da semana 2.
 	    // Chance máxima 5%, modulada por Social e Emocional.
@@ -10312,19 +10781,23 @@ if (ctxFrozen.key === "seg") {
         doFinalProva();
       } else if (aliveN > 3) {
         doLeader();
+        try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "leader"); } catch {}
       }
     }
 
     // SEXTA: Big Fone (30% de chance; até Top 7)
     if (ctxFrozen.key === "sex") {
       doBigFone(meta);
+      try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "bigfone"); } catch {}
     }
 
 // SÁBADO: Anjo + Monstro + Festa do Patrocinador
     if (ctxFrozen.key === "sab") {
       if (!top6 && aliveN > 6) doAnjo();
+      try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "anjo"); } catch {}
       // Sábado: Anjo coloca 2 pessoas no Monstro
       if (!top6 && aliveN > 6 && state.weekState.anjoId) doMonstro(meta);
+      try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "monstro"); } catch {}
     }
 
 // DOMINGO:
@@ -10333,6 +10806,7 @@ if (ctxFrozen.key === "seg") {
     if (ctxFrozen.key === "dom") {
       if (isTop4) {
         doPublicoElim({ advanceWeek: false, resetDayToWednesday: false });
+        try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "elimination"); } catch {}
       } else {
         if (!state.weekState.leaderId && aliveN > 3) doLeader();
         if (!top6 && aliveN > 6) doImune();
@@ -10342,6 +10816,7 @@ if (ctxFrozen.key === "seg") {
 	          doCasa();
           // Se o Big Fone gerou 4 nomes no paredão, rola Bate e Volta (sorte)
           doBateVoltaIfNeeded();
+        try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "paredao"); } catch {}
         }
       }
     }
@@ -10361,8 +10836,16 @@ if (ctxFrozen.key === "seg") {
           doBateVoltaIfNeeded();
         }
         doPublicoElim({ advanceWeek: true, resetDayToWednesday: true, deferAdvance: true });
+        try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "elimination"); } catch {}
       }
     }
+
+    // Noite: reação aos eventos do dia (inclui liderança/anjo/big fone/votação/eliminações)
+    try {
+      if (typeof evEngine !== "undefined") {
+        if (!dayRun?.skipAll) evEngine.runPart(meta, "night");
+      }
+    } catch { /* ignora */ }
 
     // decay do favorito (10% por dia)
     const favs = currentFavorites();
@@ -10478,16 +10961,10 @@ const alive = (typeof alivePlayers === "function") ? alivePlayers() : [];
     }
   } catch { /* ignora */ }
 
-
-  const order = alive.slice();
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const t = order[i];
-    order[i] = order[j];
-    order[j] = t;
-  }
+  const order = sinceraoProtagonists(alive);
 
   for (const p of order) {
+
     if (!p || !p.status?.alive) continue;
     applySinceraoAction(p, type);
   }
@@ -10514,6 +10991,44 @@ const alive = (typeof alivePlayers === "function") ? alivePlayers() : [];
 	  }
 }
 
+
+function sinceraoProtagonists(alive) {
+  const pool = Array.isArray(alive) ? alive.filter(p => p && p.status?.alive) : [];
+  if (!pool.length) return [];
+
+  const ws = state.weekState || {};
+  const ids = [];
+  if (ws.leaderId) ids.push(String(ws.leaderId));
+  if (ws.anjoId) ids.push(String(ws.anjoId));
+
+  // Monstro: pode ser array ou único
+  const mon = Array.isArray(ws.monstroIds) ? ws.monstroIds : (ws.monstroId ? [ws.monstroId] : []);
+  mon.forEach(id => { if (id != null) ids.push(String(id)); });
+
+  // Emparedados (sempre que existir)
+  const par = Array.isArray(ws.paredaoIds) ? ws.paredaoIds : [];
+  par.forEach(id => { if (id != null) ids.push(String(id)); });
+
+  const uniq = [];
+  const seen = new Set();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const p = pool.find(x => String(x.id) === id);
+    if (p) {
+      seen.add(id);
+      uniq.push(p);
+    }
+  }
+
+  // Se por algum motivo não houver protagonistas definidos, faz uma seleção pequena para não quebrar o bloco.
+  if (!uniq.length) {
+    const shuffled = pool.slice().sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, Math.min(6, shuffled.length));
+  }
+
+  // Embaralha para não ficar sempre na mesma ordem
+  return uniq.slice().sort(() => Math.random() - 0.5);
+}
 function sinceraoMultiplier(p) {
   let mult = 1;
   const e = Number(p?.attrs?.estrategia ?? 5);
