@@ -5278,6 +5278,11 @@ function markEliminated(p) {
     const s = String(line ?? "");
     const trimmed = s.trim();
 
+    // Limite duro: no máximo 10 cards na Convivência por dia.
+    // VT-only não conta como card; ele é anexado no último.
+    const isDayCard = trimmed.includes('class="dayCard');
+    if (isDayCard && dayBuffer.length >= 10) return;
+
     // Se for APENAS a linha de VT, anexa no último card ao invés de criar um novo.
     const isVtOnly =
       trimmed.startsWith('<span class="vtLine"') &&
@@ -7952,7 +7957,12 @@ for (const p of featured) {
       }
 
       if (kind === 'elimination') {
-        const elimName = String(wk.lastEliminatedName || 'quem saiu');
+        // Conversa sobre eliminação deve aparecer na Quarta (eco), não no mesmo dia da eliminação.
+        if (ctx?.key !== 'qua') return [];
+        const elimName = String(wk.lastEliminatedName || '').trim();
+        const talkDays = Number(wk.lastElimTalkDays || 0);
+        if (!elimName || talkDays <= 0) return [];
+
         const { a, b } = pick2();
         return [{
           eid: 'elim_talk',
@@ -8014,6 +8024,18 @@ for (const p of featured) {
 
         // Ecos do que já aconteceu
         try { if (typeof consumeDailyEchos === 'function') consumeDailyEchos(ctx, alive); } catch {}
+
+        // Quarta: conversa sobre a última eliminação (apenas possibilidade)
+        try {
+          if (ctx?.key === 'qua') {
+            const evs = makeSpecialReaction('elimination', ctx, alive, meta) || [];
+            if (evs.length && Math.random() < 0.70) {
+              const ev = Object.assign({}, evs[0]);
+              ev.period = (Math.random() < 0.55 ? 'morning' : 'afternoon');
+              enqueueByPeriod(ev);
+            }
+          }
+        } catch {}
 
         // 1 gatilho por dia
         try { maybeTriggeredConfrontations(ctx, alive); } catch {}
