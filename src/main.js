@@ -8374,11 +8374,13 @@ for (const p of featured) {
         // Consome fila narrativa primeiro
         while (state.eventQueue && state.eventQueue.length && made < cap && this._madeTotal < 10) {
           const ev = shiftMatching(state.eventQueue, period);
-          if (ev) {
-            applyEventBlock(ev);
-            made++;
-            this._madeTotal++;
-          }
+          // Se não houver evento compatível para este período, não adianta continuar:
+          // shiftMatching() não consome nada quando só restam eventos de outros períodos.
+          if (!ev) break;
+
+          applyEventBlock(ev);
+          made++;
+          this._madeTotal++;
         }
 
         for (const c of candidates) {
@@ -11076,8 +11078,54 @@ async function loadPresetJson(path) {
 }
 
 /* ===== Boot Start ===== */
+function ensureDebugOverlay() {
+  try {
+    if (document.getElementById('debugOverlay')) return;
+    const el = document.createElement('div');
+    el.id = 'debugOverlay';
+    el.style.cssText = [
+      'position:fixed',
+      'left:12px',
+      'right:12px',
+      'bottom:12px',
+      'z-index:99999',
+      'background:rgba(0,0,0,0.85)',
+      'color:#fff',
+      'padding:10px 12px',
+      'border-radius:10px',
+      'font:12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial',
+      'display:none',
+      'max-height:40vh',
+      'overflow:auto'
+    ].join(';');
+    el.innerHTML = '<b>Erro:</b> <span id="debugOverlayMsg"></span><div style="margin-top:6px;opacity:.8">Dica: recarregue a página. Se persistir, copie esta mensagem.</div>';
+    document.body.appendChild(el);
+
+    const show = (msg) => {
+      const box = document.getElementById('debugOverlay');
+      const m = document.getElementById('debugOverlayMsg');
+      if (!box || !m) return;
+      m.textContent = String(msg || 'Erro desconhecido');
+      box.style.display = 'block';
+    };
+
+    window.addEventListener('error', (e) => {
+      const msg = e?.error?.stack || e?.message || 'Erro (window.error)';
+      show(msg);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      const msg = e?.reason?.stack || e?.reason?.message || String(e?.reason || 'Promise rejeitada');
+      show(msg);
+    });
+  } catch { /* noop */ }
+}
+
 function bootStart() {
+  ensureDebugOverlay();
   if (state.gameOver) return;
+
+  // Ajuda a diagnosticar travamentos quando o console não está acessível.
+  ensureDebugOverlay();
 
   // Quartos
   ensureRoomsState();
