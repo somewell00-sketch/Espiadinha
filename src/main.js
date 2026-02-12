@@ -8038,6 +8038,9 @@ for (const p of featured) {
         this._divAdded = {};
         this._prepared = true;
 
+        this._partyBannerAdded = false;
+        this._isPartyDay = !!ctx?.festa;
+
         // Final 3: nostalgia toma o dia
         if (alive.length === 3) {
           try { runFinalThreeNostalgia(ctx, alive); } catch {}
@@ -8048,13 +8051,8 @@ for (const p of featured) {
         if (maybeExpulsionByAggression(ctx)) return { skipAll: true };
         if (maybeExpulsionByHarassment(ctx)) return { skipAll: true };
         if (maybeQuitEvent(ctx)) return { skipAll: true };
-
-        if (ctx?.festa) {
-          if (ctx.festaType === 'patrocinador') dayAdd(sponsorPartyBannerHtml());
-          else dayAdd(partyBannerHtml());
-          // reação vai aparecer na noite
-          try { this.injectSpecial(meta, 'party'); } catch {}
-        }
+        // dia com festa: a festa (tema/eventos) só acontece à noite.
+        this._isPartyDay = !!ctx?.festa;
 
         // Ecos do que já aconteceu
         try { if (typeof consumeDailyEchos === 'function') consumeDailyEchos(ctx, alive); } catch {}
@@ -8158,13 +8156,13 @@ for (const p of featured) {
 
         // Festa com micro-arco (faísca → reage → estoura) distribuído no dia
         try {
-          if (ctx?.festa && alive.length >= 3 && Math.random() < 0.70) {
+          if (this._isPartyDay && alive.length >= 3 && Math.random() < 0.70) {
             const A = pickOne(alive);
             const B = pickOne(alive.filter(p => p.id !== A.id));
             const C = pickOne(alive.filter(p => p.id !== A.id && p.id !== B.id)) || pickOne(alive);
             enqueueByPeriod({
               eid: 'party_arc_spark',
-              period: 'afternoon',
+              period: 'night',
               theme: 'party',
               people: `${A.name} e ${B.name}`,
               desc: fillAB(pickOne(templates.partyArc.spark), A, B, C, mainTarget),
@@ -8329,6 +8327,17 @@ for (const p of featured) {
         const alive = alivePlayers();
         if (!alive.length) return;
 
+        // Banner de festa só entra no bloco da noite
+        if (period === 'night' && baseCtx?.festa && !this._partyBannerAdded) {
+          this._partyBannerAdded = true;
+          try {
+            if (baseCtx.festaType === 'patrocinador') dayAdd(sponsorPartyBannerHtml());
+            else dayAdd(partyBannerHtml());
+          } catch {}
+          // reação/eco de festa entra na fila da noite
+          try { this.injectSpecial(meta, 'party'); } catch {}
+        }
+
         // injeta reações guardadas (para realmente ecoarem na noite)
         if (period === 'night' && this._nightQueue?.length) {
           state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
@@ -8355,14 +8364,6 @@ for (const p of featured) {
         if (!this._divAdded[period]) {
           const label = period === 'morning' ? 'Manhã' : (period === 'afternoon' ? 'Tarde' : (ctx?.festa ? 'Noite (Festa)' : 'Noite'));
           dayAdd(`<div class="dayDivider"><span>${label}</span></div>`);
-
-          // Banner de festa: só aparece no bloco da noite (quando ctx.festa true aqui).
-          if (period === 'night' && ctx?.festa) {
-            try {
-              if (ctx.festaType === 'patrocinador') dayAdd(sponsorPartyBannerHtml());
-              else dayAdd(partyBannerHtml());
-            } catch {}
-          }
           this._divAdded[period] = true;
         }
 
