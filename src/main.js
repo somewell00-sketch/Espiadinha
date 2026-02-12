@@ -7769,7 +7769,8 @@ for (const p of featured) {
       // prioridade: evento que declara period igual; depois, evento sem period.
       let idx = queue.findIndex(e => String(e?._period || e?.period || '') === period);
       if (idx < 0) idx = queue.findIndex(e => !e?._period && !e?.period);
-      if (idx < 0) idx = 0;
+      // Se não tiver nada compatível, não consume nada (evita "roubar" eventos da noite na tarde, etc.)
+      if (idx < 0) return null;
       return queue.splice(idx, 1)[0];
     };
 
@@ -8327,17 +8328,6 @@ for (const p of featured) {
         const alive = alivePlayers();
         if (!alive.length) return;
 
-        // Banner de festa só entra no bloco da noite
-        if (period === 'night' && baseCtx?.festa && !this._partyBannerAdded) {
-          this._partyBannerAdded = true;
-          try {
-            if (baseCtx.festaType === 'patrocinador') dayAdd(sponsorPartyBannerHtml());
-            else dayAdd(partyBannerHtml());
-          } catch {}
-          // reação/eco de festa entra na fila da noite
-          try { this.injectSpecial(meta, 'party'); } catch {}
-        }
-
         // injeta reações guardadas (para realmente ecoarem na noite)
         if (period === 'night' && this._nightQueue?.length) {
           state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
@@ -8365,6 +8355,17 @@ for (const p of featured) {
           const label = period === 'morning' ? 'Manhã' : (period === 'afternoon' ? 'Tarde' : (ctx?.festa ? 'Noite (Festa)' : 'Noite'));
           dayAdd(`<div class="dayDivider"><span>${label}</span></div>`);
           this._divAdded[period] = true;
+        }
+
+        // Banner e ecos da festa: somente na noite (e sempre depois da divisória)
+        if (period === 'night' && baseCtx?.festa && !this._partyBannerAdded) {
+          this._partyBannerAdded = true;
+          try {
+            if (baseCtx.festaType === 'patrocinador') dayAdd(sponsorPartyBannerHtml());
+            else dayAdd(partyBannerHtml());
+          } catch {}
+          // reação/eco de festa entra na fila da noite (usando ctx ajustado, com festa=true)
+          try { this.injectSpecial({ ...meta, ctx }, 'party'); } catch {}
         }
 
         const candidates = buildCandidates(alive, ctx, period);
