@@ -153,6 +153,32 @@
 .dayBox .c .small{ color:#e7ecf5; }
 .dayBox .c div{ margin:0 0 8px 0; }
 
+/* Divisória sutil por período (Manhã / Tarde / Noite) */
+.dayDivider{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:10px 2px 8px 2px;
+  opacity:.75;
+  font-size:11px;
+  letter-spacing:.25px;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.dayDivider:before, .dayDivider:after{
+  content:"";
+  flex:1;
+  height:1px;
+  background:var(--stroke);
+  opacity:.6;
+}
+.dayDivider span{
+  padding:2px 10px;
+  border:1px solid var(--stroke);
+  border-radius:999px;
+  background:var(--panel-2);
+}
+
 .sideItem{
   border-radius:10px;
   padding:6px 8px;

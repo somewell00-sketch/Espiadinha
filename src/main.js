@@ -4811,7 +4811,10 @@ function resolveDisplayName(p) {
 }
 
 function ensureBaseNames() {
-  (state.players || []).forEach((p) => {
+  const arr = (state.players || []);
+
+  // 1) define baseName a partir de nickname (manual) ou autoNick estável
+  arr.forEach((p) => {
     // se tiver apelido manual, ele manda
     const manual = String(p.nickname ?? "").trim();
     if (manual) {
@@ -4826,6 +4829,23 @@ function ensureBaseNames() {
 
     // garante baseName
     p.baseName = String(p._autoNick ?? "").trim() || String(p.firstName ?? p.name ?? "").trim();
+  });
+
+  // 2) impede baseName duplicado (dois jogadores com o mesmo apelido)
+  // não altera o campo nickname manual do usuário; só garante display único via baseName.
+  const used = new Set();
+  arr.forEach((p) => {
+    let base = String(p.baseName ?? "").trim();
+    if (!base) base = String(p.firstName ?? p.name ?? "").trim() || "Jogador";
+
+    let candidate = base;
+    let i = 2;
+    while (used.has(candidate.toLowerCase())) {
+      candidate = `${base} ${i}`;
+      i++;
+    }
+    p.baseName = candidate;
+    used.add(candidate.toLowerCase());
   });
 }
 
@@ -7776,22 +7796,18 @@ for (const p of featured) {
     };
 
     const splitCaps = (total, ctx) => {
-      // total já vem clampado (6..10). Cada período fica entre 2 e 5; máximo 10 no dia.
-      const caps = { morning: 2, afternoon: 2, night: 2 };
-      let rem = Math.max(0, Number(total || 0) - 6);
-      const bias = (ctx?.key === 'dom')
-        ? ['night', 'night', 'afternoon', 'night', 'morning']
-        : ['night', 'afternoon', 'morning', 'night', 'afternoon'];
-      let i = 0;
-      while (rem > 0 && i < 40) {
-        const k = bias[i % bias.length];
-        if (caps[k] < 5) {
-          caps[k] += 1;
-          rem -= 1;
-        }
-        i++;
-      }
-      return caps;
+      // Novo: 1 a 3 eventos por período (aleatório). Total do dia tende a 3..9.
+      const isDom = String(ctx?.key || '') === 'dom';
+
+      const r13 = () => (Math.random() < 0.45 ? 1 : (Math.random() < 0.70 ? 2 : 3));
+
+      // domingo puxa mais estratégia à noite: tende a 2–3.
+      const morning = r13();
+      const afternoon = r13();
+      const night = isDom ? (Math.random() < 0.35 ? 2 : 3) : r13();
+
+      // não usa "total" diretamente (mantemos compatibilidade com chamadas antigas)
+      return { morning, afternoon, night };
     };
 
     const buildCandidates = (alive, ctx, period) => {
@@ -8019,6 +8035,7 @@ for (const p of featured) {
 
         this._madeTotal = 0;
         this._nightQueue = [];
+        this._divAdded = {};
         this._prepared = true;
 
         // Final 3: nostalgia toma o dia
@@ -8276,7 +8293,7 @@ for (const p of featured) {
           }
         } catch {}
 
-        const totalCap = clamp(Math.round(rnd(7, 10) + (ctx?.festa ? 1 : 0) + (ctx?.tension ? 1 : 0)), 6, 10);
+        const totalCap = clamp(Math.round(rnd(4, 9) + (ctx?.festa ? 0.5 : 0) + (ctx?.tension ? 0.5 : 0)), 3, 10);
         this._caps = splitCaps(totalCap, ctx);
 
         // Mini-arcos do dia: enfileira 1–2 sequências antes do aleatório (respeitando teto do dia)
@@ -8303,8 +8320,16 @@ for (const p of featured) {
         const remaining = Math.max(0, 10 - Number(this._madeTotal || 0));
         if (remaining <= 0) return;
 
-        const cap = clamp(Math.min(capRaw, remaining), 0, 5);
+        const cap = clamp(Math.min(capRaw, remaining), 0, 3);
         if (cap <= 0) return;
+
+        // Divisória sutil por horário (não conta como evento).
+        this._divAdded = this._divAdded || {};
+        if (!this._divAdded[period]) {
+          const label = period === 'morning' ? 'Manhã' : (period === 'afternoon' ? 'Tarde' : 'Noite');
+          dayAdd(`<div class="dayDivider"><span>${label}</span></div>`);
+          this._divAdded[period] = true;
+        }
 
         const candidates = buildCandidates(alive, ctx, period);
         let made = 0;
@@ -8329,7 +8354,7 @@ for (const p of featured) {
         }
 
         // garante um mínimo de 2 eventos por período (quando houver jogadores), sem passar do teto diário
-        const minNeed = Math.min(2, cap);
+        const minNeed = Math.min(1, cap);
         if (made < minNeed) {
           let iForce = 0;
           while (made < minNeed && iForce < candidates.length && this._madeTotal < 10) {
@@ -11304,6 +11329,7 @@ if (ctxFrozen.key === "seg") {
   }
 function runSincerao(meta) {
 const alive = (typeof alivePlayers === "function") ? alivePlayers() : [];
+  const __sinceraoSpoken = new Set();
   if (alive.length <= 4) return; // não tem Sincerão no top 4
 
   const type = randomPick(["DISCURSO", "SAI_FICA", "ALVO", "TOP3"]);
@@ -11331,6 +11357,8 @@ const alive = (typeof alivePlayers === "function") ? alivePlayers() : [];
       const ag = alive.find(p => p.id === forced.aggressorId) || null;
       const tg = alive.find(p => p.id === forced.targetId) || null;
       if (ag && tg && ag.id !== tg.id) {
+        __sinceraoSpoken.add(String(ag.id));
+        __sinceraoSpoken.add(String(tg.id));
         // texto híbrido: narração + leve ironia
         const agN = displayName(ag);
         const tgN = displayName(tg);
@@ -11366,6 +11394,7 @@ const alive = (typeof alivePlayers === "function") ? alivePlayers() : [];
   for (const p of order) {
 
     if (!p || !p.status?.alive) continue;
+    if (__sinceraoSpoken.has(String(p.id))) continue;
     applySinceraoAction(p, type);
   }
 
