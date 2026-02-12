@@ -1712,7 +1712,35 @@ function computeSeasonTitles() {
           eid: 'echo_monster',
           theme: 'default',
           people: `${A.name} e ${B.name}`,
-          desc: `{A} joga na cara de {B} que o Monstro foi exagero e a treta volta a circular pela casa`,
+          desc: (() => {
+            try {
+              ensureEditState();
+              const k = echoKey('monster', A.id, B.id, w);
+              const step = (Number(state.edit.echoMeta.countByKey[k] || 0) + 1);
+              state.edit.echoMeta.countByKey[k] = step;
+              const pun = (state.weekState && state.weekState.monstroPun) ? state.weekState.monstroPun : null;
+              const punTxt = pun ? `ter que ${pun.acao} com fantasia de ${pun.fantasia} ${pun.recorrencia}` : 'o castigo do Monstro';
+              const pool1 = [
+                `{A} volta no assunto e diz pra {B} que ${punTxt} foi humilhação desnecessária`,
+                `{A} comenta com {B} que ${punTxt} ainda tá entalado e isso vai pesar no voto`,
+                `{A} e {B} retomam a conversa e a casa percebe que o Monstro não morreu`
+              ];
+              const pool2 = [
+                `{A} cobra {B} de novo e lembra que ${punTxt} virou recado público`,
+                `{A} e {B} discutem se ${punTxt} foi estratégico ou só crueldade, e o clima fecha`,
+                `{A} joga na cara de {B} que ${punTxt} foi exagero e a treta volta a circular`
+              ];
+              const pool3 = [
+                `{A} não engole: ${punTxt} vira motivo pra afastamento e a casa nota`,
+                `{A} diz pra {B} que ${punTxt} ainda rende e que agora virou pauta fixa`,
+                `{A} e {B} batem boca sobre ${punTxt} e a semana ganha mais um rancor`
+              ];
+              const pick = (step <= 1) ? pickOne(pool1) : (step === 2 ? pickOne(pool2) : pickOne(pool3));
+              return pick;
+            } catch {
+              return `{A} e {B} voltam no Monstro e o rancor continua`;
+            }
+          })(),
           vt: 'negativo, rancinho',
           scope: 'coletivo',
           a: A,
@@ -7923,15 +7951,37 @@ for (const p of featured) {
         const { a, b } = pick2();
         const A = m || a;
         const B = m && b.id === m.id ? a : b;
+        const pun = wk.monstroPun || null;
+        const punTxt = pun ? `ter que ${pun.acao} com fantasia de ${pun.fantasia} ${pun.recorrencia}` : 'estar pagando o castigo do Monstro';
+
+        // 3 sabores: humilhação (cômico), exaustão (pesa), leitura estratégica (recado)
+        const flavor = pickOne(['humilhacao', 'exaustao', 'estrategia']);
+        const desc = (() => {
+          if (flavor === 'humilhacao') {
+            return pickOne([
+              `{A} ri de nervoso com {B} e diz que ${punTxt} já virou meme na casa`,
+              `{A} conta pra {B} que ${punTxt} foi o auge da vergonha e que isso não vai passar batido`,
+              `{A} e {B} comentam como ${punTxt} virou assunto até de quem finge que não liga`
+            ]);
+          }
+          if (flavor === 'exaustao') {
+            return pickOne([
+              `{A} desabafa com {B} que ${punTxt} tá drenando energia e deixando tudo mais irritante`,
+              `{A} diz pra {B} que ${punTxt} atrapalhou o sono e a paciência já foi pro chão`,
+              `{A} e {B} conversam sobre como ${punTxt} pode estourar uma briga a qualquer momento`
+            ]);
+          }
+          return pickOne([
+            `{A} conta pra {B} que ${punTxt} foi recado direto e a casa entra em modo leitura`,
+            `{A} e {B} discutem se ${punTxt} virou munição pra justificar voto na formação`,
+            `{A} comenta com {B} que ${punTxt} pode redesenhar alianças porque ninguém quer pagar isso de novo`
+          ]);
+        })();
         return [{
           eid: 'monstro_talk',
           theme: 'default',
           people: `${A.name} e ${B.name}`,
-          desc: pickOne([
-            `{A} desabafa com {B} sobre o Monstro e diz que isso vai pesar no voto`,
-            `{A} conta pra {B} que o Monstro foi recado direto e a casa fica em alerta`,
-            `{A} e {B} discutem se o Monstro virou munição pra justificar voto`
-          ]),
+          desc,
           vt: 'monstro, tensão',
           scope: 'coletivo',
           a: A, b: B,
@@ -8028,6 +8078,12 @@ for (const p of featured) {
 
       beginDay(meta) {
         const ctx = meta?.ctx;
+        // IMPORTANT: no calendário existe "dia de festa", mas os efeitos/tema da festa
+        // só devem aparecer na NOITE. Durante o dia, tratamos como convivência normal
+        // para evitar vazamento de tema/cores em manhã e tarde.
+        const dayCtxNoParty = ctx?.festa
+          ? { ...ctx, festa: false, festaType: null, sponsor: null }
+          : ctx;
         const alive = alivePlayers();
         if (!alive.length) return { skipAll: true };
 
@@ -8056,11 +8112,11 @@ for (const p of featured) {
         this._isPartyDay = !!ctx?.festa;
 
         // Ecos do que já aconteceu
-        try { if (typeof consumeDailyEchos === 'function') consumeDailyEchos(ctx, alive); } catch {}
+        try { if (typeof consumeDailyEchos === 'function') consumeDailyEchos(dayCtxNoParty, alive); } catch {}
 
         // Quarta: conversa sobre a última eliminação (apenas possibilidade)
         try {
-          if (ctx?.key === 'qua') {
+          if (dayCtxNoParty?.key === 'qua') {
             const evs = makeSpecialReaction('elimination', ctx, alive, meta) || [];
             if (evs.length && Math.random() < 0.70) {
               const ev = Object.assign({}, evs[0]);
@@ -8070,11 +8126,41 @@ for (const p of featured) {
           }
         } catch {}
 
+        // Reações adiadas (liderança/anjo) — devem acontecer no dia seguinte ao evento
+        try {
+          state.weekState = state.weekState || {};
+          const pend = Array.isArray(state.weekState.pendingSpecial) ? state.weekState.pendingSpecial : [];
+          if (pend.length) {
+            const todayIdx = Number(state.dayIndex || 0);
+            const wkN = Number(state.week || meta?.week || 1);
+            const toRun = [];
+            const keep = [];
+            for (const it of pend) {
+              if (!it) continue;
+              const itWeek = Number(it.week || wkN);
+              const itDay = Number(it.dayIndex ?? -1);
+              if (itWeek === wkN && itDay === todayIdx) toRun.push(it);
+              else keep.push(it);
+            }
+            state.weekState.pendingSpecial = keep;
+
+            for (const it of toRun) {
+              const kind = String(it.kind || '');
+              if (!kind) continue;
+              const evs = makeSpecialReaction(kind, dayCtxNoParty, alive, meta) || [];
+              if (!evs.length) continue;
+              const ev = Object.assign({}, evs[0]);
+              ev.period = (Math.random() < 0.55 ? 'morning' : 'afternoon');
+              enqueueByPeriod(ev);
+            }
+          }
+        } catch {}
+
         // 1 gatilho por dia
-        try { maybeTriggeredConfrontations(ctx, alive); } catch {}
-        try { if (typeof maybeSpecialFightEvent === 'function') maybeSpecialFightEvent(ctx); } catch {}
-        try { if (typeof maybeVulnerabilityMoment === 'function') maybeVulnerabilityMoment(ctx); } catch {}
-        try { if (typeof maybeUnbreakableFriendship === 'function') maybeUnbreakableFriendship(ctx); } catch {}
+        try { maybeTriggeredConfrontations(dayCtxNoParty, alive); } catch {}
+        try { if (typeof maybeSpecialFightEvent === 'function') maybeSpecialFightEvent(dayCtxNoParty); } catch {}
+        try { if (typeof maybeVulnerabilityMoment === 'function') maybeVulnerabilityMoment(dayCtxNoParty); } catch {}
+        try { if (typeof maybeUnbreakableFriendship === 'function') maybeUnbreakableFriendship(dayCtxNoParty); } catch {}
 
         // ===== Micro-arcos direcionais (com base no alvo real + votos) =====
         let mainTarget = null;
@@ -8082,14 +8168,14 @@ for (const p of featured) {
 
         // Conversa estratégica baseada no alvo real (puxa o jogo pro concreto)
         try {
-          if (mainTarget && Math.random() < (ctx?.key === 'dom' ? 0.95 : 0.55)) {
+          if (mainTarget && Math.random() < (dayCtxNoParty?.key === 'dom' ? 0.95 : 0.55)) {
             const A = pickOne(alive);
             const B = pickOne(alive.filter(p => p.id !== A.id)) || pickOne(alive);
             const prof = getProfile(A);
             const tpl = pickOne(templates.targetTalk?.[prof] || templates.targetTalk?.default || []);
             enqueueByPeriod({
               eid: 'target_talk',
-              period: (ctx?.key === 'dom' ? 'night' : (Math.random() < 0.55 ? 'afternoon' : 'night')),
+              period: (dayCtxNoParty?.key === 'dom' ? 'night' : (Math.random() < 0.55 ? 'afternoon' : 'night')),
               theme: 'default',
               people: `${A.name} e ${B.name}`,
               desc: fillAB(tpl, A, B, null, mainTarget),
@@ -8107,7 +8193,7 @@ for (const p of featured) {
         // Arco de voto: provocação → reação → confronto (usa lastCasaVotes quando existir)
         try {
           const arc = buildVoteArc(alive, mainTarget);
-          if (arc && Math.random() < (ctx?.key === 'dom' ? 0.80 : 0.45)) {
+          if (arc && Math.random() < (dayCtxNoParty?.key === 'dom' ? 0.80 : 0.45)) {
             enqueueByPeriod({
               eid: 'vote_arc_prov',
               period: 'morning',
@@ -8308,7 +8394,8 @@ for (const p of featured) {
         }
 
         // Mini-arcos do dia: enfileira 1–2 sequências antes do aleatório (respeitando teto do dia)
-        enqueueDailySequences(ctx, alive, totalCap);
+        // Sequências do dia NÃO devem carregar tema de festa.
+        enqueueDailySequences(dayCtxNoParty, alive, totalCap);
 
         return { skipAll: false, caps: this._caps, totalCap };
       },
@@ -9408,6 +9495,8 @@ function pickMonstroPunishment() {
     relAdd(targets[0].id, targets[1].id, +0.9, "intimo");
 
     const pun = pickMonstroPunishment();
+    // guarda o castigo para dar coerência aos eventos/"ecos" nos dias seguintes
+    state.weekState.monstroPun = pun;
     const line1 = (`${anjo.name} coloca ${targets[0].name} e ${targets[1].name} no monstro`);
     const line2 = (`os monstros terão que ${pun.acao} com fantasia de ${pun.fantasia} ${pun.recorrencia}.`);
 
@@ -11192,6 +11281,26 @@ function bootStart() {
 }
 
 
+  // Agenda: algumas conversas precisam acontecer no dia seguinte ao evento
+  // (ex.: liderança e imunidade do Anjo), para não "adiantar" a narrativa.
+  function scheduleSpecialForNextDay(kind) {
+    try {
+      state.weekState = state.weekState || {};
+      state.weekState.pendingSpecial = Array.isArray(state.weekState.pendingSpecial)
+        ? state.weekState.pendingSpecial
+        : [];
+      state.weekState.pendingSpecial.push({
+        kind: String(kind || ''),
+        week: Number(state.week || 1),
+        dayIndex: (Number(state.dayIndex || 0) + 1) % 7
+      });
+      if (state.weekState.pendingSpecial.length > 20) {
+        state.weekState.pendingSpecial = state.weekState.pendingSpecial.slice(-20);
+      }
+    } catch { /* ignora */ }
+  }
+
+
   function simulateDay() {
     if (state.gameOver) return;
 
@@ -11291,7 +11400,8 @@ if (ctxFrozen.key === "seg") {
         doFinalProva();
       } else if (aliveN > 3) {
         doLeader();
-        try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "leader"); } catch {}
+        // Conversas sobre liderança devem acontecer no dia seguinte (ressaca do evento)
+        scheduleSpecialForNextDay("leader");
       }
     }
 
@@ -11303,8 +11413,11 @@ if (ctxFrozen.key === "seg") {
 
 // SÁBADO: Anjo + Monstro + Festa do Patrocinador
     if (ctxFrozen.key === "sab") {
-      if (!top6 && aliveN > 6) doAnjo();
-      try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "anjo"); } catch {}
+      if (!top6 && aliveN > 6) {
+        doAnjo();
+        // Conversas sobre imunidade do Anjo devem acontecer no dia seguinte
+        scheduleSpecialForNextDay("anjo");
+      }
       // Sábado: Anjo coloca 2 pessoas no Monstro
       if (!top6 && aliveN > 6 && state.weekState.anjoId) doMonstro(meta);
       try { if (typeof evEngine !== "undefined") evEngine.injectSpecial(meta, "monstro"); } catch {}
@@ -11442,8 +11555,8 @@ const alive = (typeof alivePlayers === "function") ? alivePlayers() : [];
       const ag = alive.find(p => p.id === forced.aggressorId) || null;
       const tg = alive.find(p => p.id === forced.targetId) || null;
       if (ag && tg && ag.id !== tg.id) {
-        __sinceraoSpoken.add(String(ag.id));
-        __sinceraoSpoken.add(String(tg.id));
+        // O confronto obrigatório é um "momento" extra.
+        // Mesmo quem participa aqui deve continuar participando da dinâmica principal.
         // texto híbrido: narração + leve ironia
         const agN = displayName(ag);
         const tgN = displayName(tg);
