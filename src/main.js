@@ -8315,7 +8315,17 @@ for (const p of featured) {
       },
 
       runPart(meta, period) {
-        const ctx = meta?.ctx;
+        // IMPORTANT: no calendário, há "dia de festa", mas a festa (tema/eventos) só acontece à noite.
+        // Manhã/tarde continuam como convivência normal.
+        const baseCtx = meta?.ctx;
+        const ctx = baseCtx
+          ? {
+              ...baseCtx,
+              festa: Boolean(baseCtx.festa && period === 'night'),
+              festaType: (baseCtx.festa && period === 'night') ? baseCtx.festaType : null,
+              sponsor: (baseCtx.festa && period === 'night') ? baseCtx.sponsor : null
+            }
+          : baseCtx;
         const alive = alivePlayers();
         if (!alive.length) return;
 
@@ -8343,8 +8353,16 @@ for (const p of featured) {
         // Divisória sutil por horário (não conta como evento).
         this._divAdded = this._divAdded || {};
         if (!this._divAdded[period]) {
-          const label = period === 'morning' ? 'Manhã' : (period === 'afternoon' ? 'Tarde' : 'Noite');
+          const label = period === 'morning' ? 'Manhã' : (period === 'afternoon' ? 'Tarde' : (ctx?.festa ? 'Noite (Festa)' : 'Noite'));
           dayAdd(`<div class="dayDivider"><span>${label}</span></div>`);
+
+          // Banner de festa: só aparece no bloco da noite (quando ctx.festa true aqui).
+          if (period === 'night' && ctx?.festa) {
+            try {
+              if (ctx.festaType === 'patrocinador') dayAdd(sponsorPartyBannerHtml());
+              else dayAdd(partyBannerHtml());
+            } catch {}
+          }
           this._divAdded[period] = true;
         }
 
