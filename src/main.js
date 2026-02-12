@@ -8293,8 +8293,20 @@ for (const p of featured) {
           }
         } catch {}
 
-        const totalCap = clamp(Math.round(rnd(4, 9) + (ctx?.festa ? 0.5 : 0) + (ctx?.tension ? 0.5 : 0)), 3, 10);
-        this._caps = splitCaps(totalCap, ctx);
+        // Caps por horário:
+        // - Dia normal: 1–3 por horário (máx 9 no dia)
+        // - Dia de festa: Manhã 1–2, Tarde 1–2, Festa à noite 5–6. (teto diário continua 10)
+        let totalCap;
+        if (ctx?.festa) {
+          const morningCap = clamp(Math.round(rnd(1, 2)), 1, 2);
+          const afternoonCap = clamp(Math.round(rnd(1, 2)), 1, 2);
+          const nightCap = clamp(Math.round(rnd(5, 6)), 5, 6);
+          this._caps = { morning: morningCap, afternoon: afternoonCap, night: nightCap };
+          totalCap = morningCap + afternoonCap + nightCap;
+        } else {
+          totalCap = clamp(Math.round(rnd(3, 9) + (ctx?.tension ? 0.5 : 0)), 3, 9);
+          this._caps = splitCaps(totalCap, ctx);
+        }
 
         // Mini-arcos do dia: enfileira 1–2 sequências antes do aleatório (respeitando teto do dia)
         enqueueDailySequences(ctx, alive, totalCap);
@@ -8320,7 +8332,12 @@ for (const p of featured) {
         const remaining = Math.max(0, 10 - Number(this._madeTotal || 0));
         if (remaining <= 0) return;
 
-        const cap = clamp(Math.min(capRaw, remaining), 0, 3);
+        // Limites por período:
+        // - Dia normal: 1–3 por período
+        // - Dia de festa: manhã/tarde 1–2, noite (festa) 5–6
+        let periodMax = 3;
+        if (ctx?.festa) periodMax = (period === 'night') ? 6 : 2;
+        const cap = clamp(Math.min(capRaw, remaining), 0, periodMax);
         if (cap <= 0) return;
 
         // Divisória sutil por horário (não conta como evento).
