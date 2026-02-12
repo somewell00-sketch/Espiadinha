@@ -1329,6 +1329,13 @@ function computeSeasonTitles() {
       switch (type) {
         case 'win_hoh': return `${aName} virou Líder na semana ${R}.`;
         case 'win_veto': return `${aName} ganhou a Prova do Anjo na semana ${R}.`;
+        case 'immunity_received': {
+          const byId = meta?.refs?.givenById;
+          const by = byId ? state.players.find(x => x.id === byId) : null;
+          return by ? `${aName} foi imunizado(a) por ${simpleName(by)} na semana ${R}.` : `${aName} ficou imune na semana ${R}.`;
+        }
+        case 'immunity_given': return B ? `${aName} deu a imunidade do Anjo para ${bName} na semana ${R}.` : `${aName} concedeu a imunidade do Anjo na semana ${R}.`;
+
         case 'nomination': return B ? `${aName} colocou ${bName} no Paredão.` : `${aName} indicou alguém ao Paredão.`;
         case 'house_target': return `${aName} virou alvo da casa e recebeu muitos votos.`;
         case 'close_call': return `${aName} se salvou no detalhe no Paredão.`;
@@ -2247,6 +2254,56 @@ function computeSeasonTitles() {
       "Efeito Montanha-Russa"
     ],
 
+    // Arcos editoriais extras (para finais mais variados)
+    phoenix: [
+      "Fênix da Temporada",
+      "Virou o Jogo",
+      "Renascimento",
+      "Cresceu na Hora Certa"
+    ],
+    fallen: [
+      "Queda do Favorito",
+      "Do Céu ao Paredão",
+      "Caiu em Desgraça",
+      "Perdeu a Mão"
+    ],
+    rollercoaster: [
+      "Altos e Baixos",
+      "Efeito Montanha-Russa",
+      "Oscilação Total",
+      "Uma Semana de Cada Vez"
+    ],
+    loyal_shield: [
+      "Protetor(a) Leal",
+      "Escudo de Alianças",
+      "Jogou pelo Grupo",
+      "Lealdade em Primeiro Lugar"
+    ],
+    silent_strategist: [
+      "Estrategista Silencioso(a)",
+      "Articulou no Baixo Volume",
+      "Controle Discreto",
+      "Xadrez sem VT"
+    ],
+    chaos_survivor: [
+      "Sobreviveu ao Caos",
+      "Sempre no Olho do Furacão",
+      "Resistência em Chamas",
+      "O Resistente do Furacão"
+    ],
+    persona_shifter: [
+      "Mudou de Personagem",
+      "Camaleão de Enredo",
+      "Várias Caras",
+      "Se Reinventou"
+    ],
+    tragic: [
+      "Protagonista Trágico(a)",
+      "Quase Virou",
+      "Virada Interrompida",
+      "Sonho Interrompido"
+    ],
+
     plant: [
       "Planta Decorativa",
       "Turista da Casa",
@@ -2397,6 +2454,26 @@ function computeSeasonTitles() {
       "Construiu caminho pelas relações e pela leitura da casa.",
       "Soube circular e se adaptar ao ambiente.",
       "Ganhou espaço pela conexão com as pessoas."
+    ],
+    redemption: [
+      "Parecia fora do jogo, mas conseguiu uma virada clara.",
+      "Começou em baixa e mudou o rumo da própria história.",
+      "Reverteu a leitura da casa quando mais precisava."
+    ],
+    whiplash: [
+      "Viveu a temporada em altas e baixas sucessivas.",
+      "A leitura sobre ele mudou rápido, semana após semana.",
+      "Oscilou entre risco e destaque sem estabilidade."
+    ],
+    loyalty: [
+      "Jogou a partir de lealdade e proteção de grupo.",
+      "Fez do vínculo com aliados a sua principal arma.",
+      "Se sustentou pela parceria e pela defesa dos seus."
+    ],
+    shadowplay: [
+      "Moveu o jogo com discrição, sem precisar virar VT todo dia.",
+      "Trabalhou por baixo, deixando o impacto aparecer nos votos.",
+      "Fez política de bastidor e colheu consequências na reta final."
     ]
   };
 
@@ -2430,6 +2507,77 @@ function computeSeasonTitles() {
       "Aos poucos, deixou de ser referência no jogo.",
       "Terminou sem protagonismo nos momentos finais.",
       "A presença foi se diluindo com o tempo."
+    ]
+  ,
+    redemption: [
+      "A virada ganhou força por acúmulo e timing.",
+      "A reconstrução veio por insistência e leitura fina.",
+      "O caminho mudou quando a casa subestimou o risco."
+    ],
+    whiplash: [
+      "Os movimentos criaram efeitos contraditórios semana após semana.",
+      "O jogo alternou proteção e exposição com rapidez.",
+      "Cada rodada reabriu a leitura do público e da casa."
+    ],
+    loyalty: [
+      "A defesa de aliados virou assinatura do jogo.",
+      "As escolhas priorizaram vínculo acima de conveniência.",
+      "A rede de proteção segurou a trajetória em momentos críticos."
+    ],
+    shadowplay: [
+      "As decisões apareceram mais nos votos do que nos discursos.",
+      "O impacto veio de alinhamentos e informação, não de palco.",
+      "A influência cresceu no bastidor e explodiu nos momentos certos."
+    ]
+};
+
+  
+
+  const ARC_LOGLINE_POOLS = {
+    phoenix: [
+      "Começou em baixa, mas ganhou corpo ao longo das semanas e virou pauta no fim.",
+      "Parecia fora do radar, até encontrar uma virada clara e crescer na reta final.",
+      "Saiu do risco para o controle emocional, construindo uma ascensão tardia."
+    ],
+    fallen: [
+      "Teve início forte, mas perdeu fôlego e viu a leitura virar com o tempo.",
+      "Começou por cima, mas a temporada foi cobrando decisões e a imagem se desgastou.",
+      "Parecia encaminhado, até a queda de popularidade e a pressão mudarem o cenário."
+    ],
+    rollercoaster: [
+      "Viveu uma temporada de altos e baixos, alternando destaque e vulnerabilidade.",
+      "A leitura oscilou semana após semana, sem estabilidade.",
+      "Foi imprevisível até no próprio enredo, com viradas sucessivas."
+    ],
+    loyal_shield: [
+      "Construiu jogo a partir de alianças, proteção e lealdade.",
+      "Jogou pelo grupo, sustentando o caminho com vínculos fortes.",
+      "Se manteve pelo compromisso com os seus, mesmo sob pressão."
+    ],
+    silent_strategist: [
+      "Trabalhou nos bastidores, mexendo as peças sem precisar de palco.",
+      "Articulou no baixo volume e deixou o impacto aparecer nos votos.",
+      "Fez política discreta, com decisões que mudaram o jogo por dentro."
+    ],
+    chaos_survivor: [
+      "Atraiu caos e risco, mas achou brechas para continuar.",
+      "Sobreviveu em clima instável, lidando com pressão recorrente.",
+      "A cada semana, precisou se adaptar ao furacão para não cair."
+    ],
+    persona_shifter: [
+      "Mudou de personagem ao longo da temporada e se reinventou em momentos chave.",
+      "Assumiu leituras diferentes e ajustou o estilo conforme o jogo pedia.",
+      "Teve mais de uma fase clara, com viradas de postura e percepção."
+    ],
+    tragic: [
+      "Construiu uma virada promissora, mas o jogo interrompeu antes do final.",
+      "Chegou perto de consolidar uma ascensão, mas a pressão cobrou caro.",
+      "Teve um caminho de crescimento, até a narrativa quebrar no momento decisivo."
+    ],
+    neutral: [
+      "Teve uma trajetória com picos pontuais, sem um domínio contínuo.",
+      "O enredo se formou em momentos específicos, sem controle total da narrativa.",
+      "Oscilou entre sombra e destaque, com decisões que marcaram a temporada."
     ]
   };
 
@@ -2475,6 +2623,67 @@ function computeSeasonTitles() {
     const hasConflict = (score('villain') >= 7) || Number(themes?.collapse?.score ?? 0) >= 2 || Number(themes?.chaos?.score ?? 0) >= 2;
     const isIsolated = Number(themes?.lone_wolf?.score ?? 0) >= 2;
 
+
+    const ps = (typeof popStats === 'function') ? popStats(p) : { avg: 0, start: 0, end: 0, growth: 0, range: 0, swing: 0 };
+    const tl = Array.isArray(n.timeline) ? n.timeline : [];
+    const countType = (tt) => tl.reduce((acc, e) => acc + (e && e.type === tt ? 1 : 0), 0);
+
+    const immGiven = countType('immunity_given');
+    const immRecv = countType('immunity_received');
+    const nomCount = countType('nomination');
+    const surviveCount = countType('eviction_survived');
+    const dangerCount = countType('danger') + countType('close_call');
+    const conflictCount = countType('conflict') + countType('betrayal') + countType('friendship_betrayed');
+    const friendshipCount = countType('friendship');
+
+    const personaDiversity = (() => {
+      try {
+        const wkMap = (p?.status?.archetypeWeek || {});
+        const keys = new Set();
+        const maxW = Math.max(1, Number(totalRounds || state.week || 1));
+        for (let wk = 1; wk <= maxW; wk++) {
+          const s = wkMap[String(wk)] || wkMap[wk];
+          if (!s) continue;
+          const dom = (s?.top3 || [])[0] || {};
+          const key = String(s?.comboTitle || dom?.id || dom?.label || '').trim();
+          if (key) keys.add(key);
+        }
+        return keys.size;
+      } catch { return 0; }
+    })();
+
+    const crushCount = (() => {
+      try {
+        const rel = p?.narrative?.relations || {};
+        let nC = 0;
+        for (const rid of Object.keys(rel)) {
+          const tags = rel[rid]?.tags;
+          if (Array.isArray(tags) && tags.includes('crush')) nC += 1;
+        }
+        return nC;
+      } catch { return 0; }
+    })();
+
+    const isPhoenix = (ps.growth >= 2.2 && ps.end >= 7.0 && ps.start <= 5.8 && (dangerCount >= 1 || surviveCount >= 1));
+    const isFallen = (ps.start >= 7.2 && ps.end <= 5.6 && ps.range >= 2.5);
+    const isRoller = (ps.range >= 3.0 && ps.swing >= 1.1);
+    const isPersonaShift = (personaDiversity >= 4 && ps.range >= 2.0);
+
+    const isLoyalShield = (
+      (score('loyal') >= 7 || (hasSocial && betrayals <= 1)) &&
+      (immGiven >= 1 || immRecv >= 1 || friendshipCount >= 2) &&
+      conflictCount <= 2
+    );
+
+    const isSilentStrategist = (hasStrategy && conflictCount <= 1 && (nomCount >= 1 || score('strategist') >= 8) && ps.avg >= 5.2);
+    const isChaosSurvivor = (hasSurvival && (Number(themes?.chaos?.score ?? 0) >= 2 || hasConflict) && dangerCount >= 2);
+
+    const isTragic = (
+      (isPhoenix && (Number.isFinite(rejectionPct) && rejectionPct >= 45)) ||
+      (isPhoenix && isFallen) ||
+      (crushCount >= 1 && dangerCount >= 2 && ps.end < ps.avg)
+    );
+
     // ===== Escolha de título (prioridade: específico > genérico) =====
     let main = 'neutral';
 
@@ -2489,6 +2698,24 @@ function computeSeasonTitles() {
     if (main === 'fav_flash' && !hasComp && hasSurvival) main = 'survival';
     // (3) favoritismo longo + muito conflito => vira polarização
     if (main === 'fav_long' && hasConflict) main = 'fav_mixed';
+
+
+    // upgrades editoriais (mantém coerência e aumenta variedade)
+    if (main === 'fav_late' && isPhoenix) main = 'phoenix';
+    if (main === 'fav_fallen' && isFallen) main = 'fallen';
+    if (main === 'fav_mixed' && isRoller) main = 'rollercoaster';
+
+    // quando não é fandom claro, prioriza leituras mais específicas
+    if (main === 'neutral') {
+      if (isTragic) main = 'tragic';
+      else if (isPhoenix) main = 'phoenix';
+      else if (isFallen) main = 'fallen';
+      else if (isChaosSurvivor) main = 'chaos_survivor';
+      else if (isSilentStrategist) main = 'silent_strategist';
+      else if (isLoyalShield) main = 'loyal_shield';
+      else if (isPersonaShift) main = 'persona_shifter';
+      else if (isRoller) main = 'rollercoaster';
+    }
 
     // se não veio de torcida/planta/rejeição, cai nos pilares
     if (main === 'neutral') {
@@ -2517,6 +2744,15 @@ function computeSeasonTitles() {
       if (main === 'rejected') return 'conflict';
       if (main === 'plant') return 'fade';
       if (main === 'fav_long' || main === 'fav_flash' || main === 'fav_late' || main === 'fav_fallen' || main === 'fav_mixed') return 'popularity';
+
+      if (main === 'phoenix') return 'redemption';
+      if (main === 'fallen') return 'popularity';
+      if (main === 'rollercoaster') return 'whiplash';
+      if (main === 'loyal_shield') return 'loyalty';
+      if (main === 'silent_strategist') return 'shadowplay';
+      if (main === 'chaos_survivor') return 'survival';
+      if (main === 'persona_shifter') return 'whiplash';
+      if (main === 'tragic') return 'popularity';
       if (main === 'power_flash') return 'power';
       if (main === 'comp') return 'power';
       if (main === 'survival') return 'survival';
@@ -2528,6 +2764,15 @@ function computeSeasonTitles() {
     })();
 
     const supportCat = (() => {
+
+      if (main === 'phoenix') return 'redemption';
+      if (main === 'fallen') return 'exposure';
+      if (main === 'rollercoaster') return 'whiplash';
+      if (main === 'loyal_shield') return 'loyalty';
+      if (main === 'silent_strategist') return 'shadowplay';
+      if (main === 'chaos_survivor') return 'risk';
+      if (main === 'persona_shifter') return 'social';
+      if (main === 'tragic') return 'risk';
       if (secondary === 'comp') return 'wins';
       if (secondary === 'survival') return 'risk';
       if (secondary === 'villain' || secondary === 'chaos') return 'conflict';
@@ -2598,43 +2843,119 @@ function computeSeasonTitles() {
       });
     };
 
+    const phaseUsed = new Set();
+
+    const formatParedao = (ids) => {
+      try {
+        const names = (ids || []).slice(0,3).map((id) => {
+          const q = state.players.find(x => x.id === id);
+          return q ? simpleName(q) : null;
+        }).filter(Boolean);
+        return names.length ? names.join(' e ') : null;
+      } catch { return null; }
+    };
+
+    const bucketOf = (type) => {
+      if (type === 'win_hoh' || type === 'win_veto') return 'win';
+      if (type === 'nomination' || type === 'house_target') return 'move';
+      if (type === 'danger' || type === 'close_call' || type === 'eviction_survived') return 'risk';
+      if (type === 'conflict' || type === 'betrayal' || type === 'friendship_betrayed') return 'heat';
+      if (type === 'friendship' || type === 'reconciliation') return 'bond';
+      if (type === 'monster_punished' || type === 'monster_sent') return 'monster';
+      if (type === 'vulnerability') return 'vuln';
+      return 'other';
+    };
+
+    const bucketPhrases = {
+      win: {
+        win_hoh: ['tomou a frente como Líder', 'assumiu a Liderança', 'conquistou a Liderança'],
+        win_veto: ['levou o Anjo', 'garantiu o Anjo', 'venceu a Prova do Anjo']
+      },
+      move: {
+        nomination: ['mirou {T} no Paredão', 'colocou {T} no Paredão', 'apontou {T} como alvo'],
+        house_target: ['virou alvo da casa', 'entrou no radar da casa', 'passou a ser o nome da semana']
+      },
+      risk: {
+        danger: ['ficou em risco no Paredão', 'foi parar no Paredão', 'encostou no perigo'],
+        close_call: ['se salvou no detalhe', 'escapou por pouco', 'passou raspando'],
+        eviction_survived: ['sobreviveu ao Paredão', 'voltou do Paredão', 'se manteve no jogo no voto']
+      },
+      heat: {
+        conflict: ['se envolveu em treta com {T}', 'bateu de frente com {T}', 'entrou em embate com {T}'],
+        betrayal: ['quebrou confiança no voto', 'fez um voto que pegou mal', 'gerou desconfiança com o próprio grupo'],
+        friendship_betrayed: ['rompeu um laço importante', 'viveu uma amizade traída', 'quebrou uma parceria forte']
+      },
+      bond: {
+        friendship: ['firmou uma amizade forte', 'ganhou base com aliados', 'fortaleceu vínculos na casa'],
+        reconciliation: ['baixou a poeira com {T}', 'fez as pazes com {T}', 'reduziu o climão com {T}']
+      },
+      monster: {
+        monster_punished: ['sofreu o Monstro', 'sentiu o peso do Monstro', 'pagou com o Monstro'],
+        monster_sent: ['aplicou o Monstro em {T}', 'colocou {T} no Monstro', 'pesou a mão no Monstro']
+      },
+      vuln: {
+        vulnerability: ['mostrou vulnerabilidade', 'se abriu e ganhou empatia', 'ficou mais exposto(a)']
+      },
+      other: {
+        other: ['viveu uma semana de ajustes', 'foi citado nas conversas', 'passou por movimentos menores']
+      }
+    };
+
+    const pickPhrase = (type, targetName, seed) => {
+      const b = bucketOf(type);
+      const dict = bucketPhrases[b] || {};
+      const pool = dict[type] || (bucketPhrases.other.other || []);
+      const chosen = pickDet(pool, seed, pool[0] || 'viveu a semana');
+      const out = String(chosen || '').replaceAll('{T}', targetName || 'alguém');
+      return out;
+    };
+
     const pickPhaseLine = (ph) => {
-      // Se a pessoa já tinha saído antes do começo da fase, não faz sentido forçar narrativa.
       const outWeek = Number(p?.status?.outWeek ?? NaN);
       if (Number.isFinite(outWeek) && ph.a > outWeek) return `Na fase ${ph.id}, não participou.`;
 
       const evs = tline.filter(e => e.round >= ph.a && e.round <= ph.b);
       if (!evs.length) return `Na fase ${ph.id}, sem grandes viradas.`;
 
-      const types = {};
-      for (const e of evs) types[e.type] = (types[e.type] || 0) + 1;
-
-      const parts = [];
-      if (types.win_hoh) parts.push('conquistou a Liderança');
-      if (types.win_veto) parts.push('levou o Anjo');
-      if (types.nomination) {
-        const tgs = listUniqueTargets(evs.filter(e => e.type === 'nomination'));
-        if (tgs.length) parts.push(`mirou ${tgs.join(' e ')} no Paredão`);
-        else parts.push('fez uma indicação ao Paredão');
+      const sorted = evs.slice().sort((a,b)=> (b.weight - a.weight) || (b.round - a.round));
+      const picks = [];
+      const usedBuckets = new Set();
+      for (const e of sorted) {
+        const b = bucketOf(e.type);
+        if (picks.length < 2 && !usedBuckets.has(b)) {
+          picks.push(e);
+          usedBuckets.add(b);
+        }
+        if (picks.length >= 2) break;
       }
-      if (types.conflict) parts.push('se envolveu em treta');
-      if (types.betrayal) parts.push('quebrou confiança no voto');
-      if (types.friendship) parts.push('firmou uma amizade forte');
-      if (types.friendship_betrayed) parts.push('viveu uma amizade traída');
-      if (types.vulnerability) parts.push('mostrou vulnerabilidade');
-      if (types.monster_punished) parts.push('sofreu o Monstro');
-      if (types.monster_sent) parts.push('aplicou o Monstro');
-      if (types.danger) parts.push('ficou em risco');
-      if (types.eviction_survived) parts.push('sobreviveu ao Paredão');
+      if (!picks.length) {
+        const top = sorted[0];
+        return stripSelfName(top?.text || `Na fase ${ph.id}, sem grandes viradas.`);
+      }
 
-      // Se tudo ficou genérico, usa o evento mais pesado e remove o nome do próprio jogador.
-      const top = evs.slice().sort((a,b) => (b.weight - a.weight) || (b.round - a.round))[0];
-      if (!parts.length) return stripSelfName(top?.text || '');
+      const render = (e) => {
+        const tId = e?.refs?.targetId;
+        const tP = tId ? state.players.find(x => x.id === tId) : null;
+        const tName = tP ? simpleName(tP) : null;
 
-      // Monta uma frase coerente (sem repetir o nome do jogador)
-      if (parts.length === 1) return `Nesta fase, ${parts[0]}.`;
-      if (parts.length === 2) return `Nesta fase, ${parts[0]} e ${parts[1]}.`;
-      return `Nesta fase, ${parts.slice(0,2).join(', ')} e ${parts[2]}.`;
+        if (e.type === 'danger') {
+          const ctx = formatParedao(e?.refs?.paredaoIds);
+          if (ctx) return `ficou em risco no Paredão com ${ctx}`;
+        }
+
+        const seed = `${p.id}|${ph.id}|${e.type}|${tId||''}|${e.round}`;
+        let phrase = pickPhrase(e.type, tName, seed);
+
+        const key = `${bucketOf(e.type)}|${phrase}`;
+        if (phaseUsed.has(key)) {
+          phrase = stripSelfName(e?.text || phrase);
+        }
+        phaseUsed.add(key);
+        return phrase.replace(/\.$/, '');
+      };
+
+      if (picks.length === 1) return `Na fase ${ph.id}, ${render(picks[0])}.`;
+      return `Na fase ${ph.id}, ${render(picks[0])}. Depois, ${render(picks[1])}.`;
     };
 
     const rep = p.narrative.reputation || {};
@@ -2698,24 +3019,30 @@ function computeSeasonTitles() {
       if (definingMoments.length >= 6) break;
     }
 
-        const logline = (() => {
-      const avgBond = rels.length ? (rels.reduce((sum,x)=>sum+x.bond,0) / rels.length) : 0;
-      const socialStatus = avgBond >= 65 ? 'muito bem conectad' : (avgBond >= 52 ? 'bem conectad' : 'mais isolad');
+    const logline = (() => {
+      const axis = String(arcTitle?.axis || 'neutral');
+      const basePool = ARC_LOGLINE_POOLS[axis] || ARC_LOGLINE_POOLS.neutral;
+      const base = pickDet(basePool, `${p.id}|${axis}|logline`, basePool[0] || 'Teve uma trajetória com picos pontuais.');
 
-      // Ajuste simples de gênero (o/a/e) para palavras que terminam em "ad"
-      const sufG = g(p, { M: 'o', F: 'a', O: 'e' });
-      const socialTxt = socialStatus + sufG;
+      const ps = (typeof popStats === 'function') ? popStats(p) : { avg: 0, start: 0, end: 0, growth: 0, range: 0, swing: 0 };
 
-      const mainConflict = (rep.underdog ?? 0) > 6
-        ? 'muita pressão'
-        : ((rep.villain ?? 0) > 6 ? 'muitos atritos' : 'um jogo instável');
+      const ally = closestAlly ? simpleName(closestAlly.o) : null;
+      const rival = biggestRival ? simpleName(biggestRival.o) : null;
 
-      const identity = title.toLowerCase();
+      const key = definingMoments[0]?.text ? String(definingMoments[0].text).replace(/\.$/, '') : null;
+      const keyMoment = key ? key.toLowerCase() : null;
 
-      const key = definingMoments[0]?.text ? String(definingMoments[0].text) : null;
-      const keyMoment = key ? key.replace(/\.$/, '') : `um momento forte na semana ${p.narrative.stats.biggestMoveRound ?? '—'}`;
+      const extraBits = [];
+      if (Number.isFinite(ps.growth) && Math.abs(ps.growth) >= 1.6) {
+        extraBits.push(ps.growth > 0 ? 'cresceu com o público' : 'perdeu fôlego com o público');
+      }
+      if (ally) extraBits.push(`teve parceria marcante com ${ally}`);
+      if (rival && rival !== ally) extraBits.push(`bateu de frente com ${rival}`);
 
-      return `Começou ${socialTxt}, enfrentou ${mainConflict} e se consolidou como ${identity}, com destaque para ${keyMoment.toLowerCase()}.`;
+      const extra = extraBits.length ? ` ${extraBits.slice(0,2).join(', ')}.` : '';
+
+      if (keyMoment) return `${base} Se destacou por ${keyMoment}.${extra}`.replace(/\.\./g,'.');
+      return `${base}${extra}`.replace(/\.\./g,'.');
     })();
     return {
       playerId: p.id,
@@ -2745,6 +3072,13 @@ function computeSeasonTitles() {
     // vitórias
     if (!prevWS.leaderId && ws.leaderId) applyNarrativeEvent({ type: 'win_hoh', actorId: ws.leaderId, round });
     if (!prevWS.anjoId && ws.anjoId) applyNarrativeEvent({ type: 'win_veto', actorId: ws.anjoId, round });
+
+    // imunidade do Anjo (registrada como memória de poder/segurança)
+    if (String(prevWS.imuneId || '') !== String(ws.imuneId || '') && ws.imuneId) {
+      applyNarrativeEvent({ type: 'immunity_received', actorId: ws.imuneId, round, meta: { weight: 1, refs: { givenById: ws.anjoId || null } } });
+      if (ws.anjoId) applyNarrativeEvent({ type: 'immunity_given', actorId: ws.anjoId, targetId: ws.imuneId, round, meta: { weight: 1, refs: {} } });
+    }
+
     // indicações (com pesos dinâmicos)
     ws._narrNomIdx = ws._narrNomIdx || {};
     const repeatCount = (actor, targetId) => {
@@ -13121,8 +13455,8 @@ const html = tweets.map((x) => `
         </div>`
       : '';
 
-    // --- Leitura da semana (micro) ---
-    // Estrutura fixa (sempre): Leitura da semana → Personagem → Descrição.
+    // --- Leitura da Semana (micro) ---
+    // Estrutura fixa (sempre): Leitura da Semana → Personagem → Descrição.
     // - Se houver combo, ele vira o Personagem.
     // - Se não houver, o Personagem deriva do arquétipo dominante.
     let editorialHtml = '';
@@ -13199,7 +13533,7 @@ const html = tweets.map((x) => `
 
       editorialHtml = `
         <div style="margin-top:12px;">
-          <div class="small" style="font-weight:900;">Leitura da semana</div>
+          <div class="small" style="font-weight:900;">Leitura da Semana</div>
           <div class="small" style="margin-top:8px; font-weight:900;">Personagem</div>
           <div class="small" style="margin-top:2px; opacity:.95;">${escapeHtml(persona.title || domTitle)}</div>
           ${persona.desc ? `<div class="small" style="margin-top:2px; opacity:.85;">${escapeHtml(persona.desc)}</div>` : ''}
@@ -13208,6 +13542,91 @@ const html = tweets.map((x) => `
         </div>
       `;
     }
+
+    // --- Memória da temporada (macro) ---
+    // Documenta "personagens" semana a semana (arquétipos) + estados de poder/vulnerabilidade + relações marcantes.
+    function buildPersonaTimeline(p, totalWeeks) {
+      const maxW = Math.max(1, Number(totalWeeks || state.week || 1));
+      const segs = [];
+      const wkMap = (p?.status?.archetypeWeek || {});
+      const getPersona = (wk) => {
+        const s = wkMap[String(wk)] || wkMap[wk] || null;
+        if (!s) return null;
+        const comboEmoji = s?.comboEmoji || '';
+        const comboTitle = s?.comboTitle || '';
+        const dom = (s?.top3 || [])[0] || {};
+        const emoji = comboEmoji || dom.emoji || '';
+        const title = comboTitle || dom.label || dom.title || '';
+        if (!title) return null;
+        return { emoji, title };
+      };
+
+      let cur = null;
+      for (let wk = 1; wk <= maxW; wk++) {
+        const per = getPersona(wk) || { emoji: '•', title: 'Sem leitura' };
+        const key = `${per.emoji}|${per.title}`;
+        if (!cur || cur.key !== key) {
+          cur = { key, a: wk, b: wk, emoji: per.emoji, title: per.title };
+          segs.push(cur);
+        } else {
+          cur.b = wk;
+        }
+      }
+      return segs;
+    }
+
+    const personaSegs = buildPersonaTimeline(p, totalRounds);
+    const personaLine = personaSegs
+      .filter(s => s && s.title && s.title !== 'Sem leitura')
+      .slice(0, 10)
+      .map(s => (s.a === s.b ? `Semana ${s.a}: ${s.emoji} ${s.title}` : `Semanas ${s.a}–${s.b}: ${s.emoji} ${s.title}`))
+      .join('<br>');
+
+    const powerWeeks = (() => {
+      const w = new Set();
+      for (const e of (p?.narrative?.timeline || [])) {
+        if (e?.type === 'win_hoh' || e?.type === 'win_veto' || e?.type === 'immunity_received') w.add(Number(e.round || 0));
+      }
+      return [...w].filter(x => x > 0).sort((a,b)=>a-b);
+    })();
+
+    const dangerWeeks = (() => {
+      const w = new Set();
+      for (const e of (p?.narrative?.timeline || [])) {
+        if (e?.type === 'danger' || e?.type === 'close_call') w.add(Number(e.round || 0));
+      }
+      return [...w].filter(x => x > 0).sort((a,b)=>a-b);
+    })();
+
+    const topRel = (() => {
+      try {
+        const rel = p?.narrative?.relations || {};
+        const entries = Object.keys(rel).map(id => ({ id, ...rel[id] }));
+        const byBond = entries.slice().sort((a,b)=> (b.bond||0)-(a.bond||0))[0];
+        const byRiv = entries.slice().sort((a,b)=> (b.rivalry||0)-(a.rivalry||0))[0];
+        const fmt = (x, label) => {
+          if (!x || !x.id) return '';
+          const q = state.players.find(pp => pp.id === x.id);
+          if (!q) return '';
+          return `${label}: ${simpleName(q)}`;
+        };
+        return [fmt(byBond,'Maior aliado'), fmt(byRiv,'Maior rival')].filter(Boolean);
+      } catch { return []; }
+    })();
+
+    const memoryHtml = (personaLine || powerWeeks.length || dangerWeeks.length || topRel.length) ? `
+      <div style="margin-top:12px;">
+        <div class="small" style="font-weight:900;">Memória da temporada</div>
+        ${personaLine ? `<div class="small" style="margin-top:6px; opacity:.94;"><span style="font-weight:900;">Personagens</span><br>${personaLine}</div>` : ''}
+        ${(powerWeeks.length || dangerWeeks.length) ? `
+          <div class="small" style="margin-top:8px; opacity:.92;">
+            ${powerWeeks.length ? `<div><span style="font-weight:900;">Em posição de poder</span>: semanas ${powerWeeks.join(', ')}</div>` : ''}
+            ${dangerWeeks.length ? `<div style="margin-top:2px;"><span style="font-weight:900;">No fio da navalha</span>: semanas ${dangerWeeks.join(', ')}</div>` : ''}
+          </div>
+        ` : ''}
+        ${topRel.length ? `<div class="small" style="margin-top:8px; opacity:.92;">${escapeHtml(topRel.join(' · '))}</div>` : ''}
+      </div>
+    ` : '';
 
     // Blending: arco manda, editorial explica
 
@@ -13254,14 +13673,15 @@ const seasonAccHtml = acc.length ? `
         <div class="c">
           ${seasonTitleHtml}
           ${seasonAccHtml}
+          ${editorialHtml}
 
           <div style="margin-top:6px;">
             <div class="small" style="font-weight:900;">Arco dominante</div>
             <div style="margin-top:6px;">${arcBody}</div>
           </div>
 
+          ${memoryHtml}
           ${momentsHtml}
-          ${editorialHtml}
         </div>
       </div>
     `;
