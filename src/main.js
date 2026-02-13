@@ -13575,6 +13575,8 @@ const html = tweets.map((x) => `
       return segs;
     }
 
+    // totalRounds is not in this scope; derive safely from current state.
+    const totalRounds = Math.max(1, Number(state?.week ?? 1));
     const personaSegs = buildPersonaTimeline(p, totalRounds);
     const personaLine = personaSegs
       .filter(s => s && s.title && s.title !== 'Sem leitura')
