@@ -8026,6 +8026,72 @@ for (const p of featured) {
         }
       },
 
+
+// versão pré-votação: não assume voto já realizado (usado no Domingo antes da votação)
+voteArcPre: {
+  strategist: {
+    prov: [
+      '{A} puxa {C} pra um canto e diz que a casa pode fechar em {B} se ninguém quiser se expor',
+      '{A} fala baixo com {C}: "se a gente alinhar em {B}, evita surpresa na hora do voto"'
+    ],
+    react: [
+      '{C} alerta {B} que o nome de {B} está circulando e que pode virar alvo da votação',
+      '{B} ouve de {C} que {A} está articulando em {B} e começa a mapear quem está junto'
+    ],
+    conf: [
+      '{B} encosta em {A} e pergunta direto por que {B} virou opção de voto',
+      '{A} diz pra {B} que não é pessoal, é jogo... e {B} responde que vai ficar de olho'
+    ]
+  },
+  barraqueiro: {
+    prov: [
+      '{A} comenta alto com {C} que hoje vai mirar em {B} e que não vai segurar a língua',
+      '{A} desabafa com {C} que {B} precisa sentir o peso do jogo no voto'
+    ],
+    react: [
+      '{C} repassa pra {B} o que ouviu e {B} já perde a paciência',
+      '{B} descobre por {C} que {A} está puxando voto e decide tirar satisfação'
+    ],
+    conf: [
+      '{B} confronta {A} sobre por que {B} virou pauta de voto e a casa presta atenção',
+      '{A} e {B} discutem sobre alvo e voto e o clima pesa'
+    ]
+  },
+  queridinho: {
+    prov: [
+      '{A} diz pra {C} que não queria mirar em {B}, mas sente que a casa está empurrando pra isso',
+      '{A} confessa pra {C} que tem medo de se queimar com o público por causa do voto em {B}'
+    ],
+    react: [
+      '{B} fica sentido ao saber por {C} que o nome de {B} entrou na conversa de voto',
+      '{C} tenta acalmar {B} dizendo que {A} está confuso, mas {B} não compra'
+    ],
+    conf: [
+      '{A} tenta conversar com {B} pra evitar briga, mas {B} deixa claro que ficou chateado',
+      '{B} cobra {A}: "se era jogo, por que não falou comigo antes?"'
+    ]
+  },
+  rejeitado: {
+    prov: [
+      '{A} diz pra {C} que {B} está puxando a casa contra ele e que não vai aceitar ser bode expiatório',
+      '{A} fala com {C} que sente perseguição e que {B} está liderando isso nos bastidores'
+    ],
+    react: [
+      '{B} ouve de {C} que {A} está gritando perseguição e responde que aqui ninguém é vítima',
+      '{C} comenta com {B} que {A} está inflamado e {B} prefere cortar o assunto'
+    ],
+    conf: [
+      '{A} pressiona {B} sobre o voto e diz que está cansado de ser alvo fácil',
+      '{B} rebate {A} dizendo que o jogo é consequência e a conversa termina atravessada'
+    ]
+  },
+  default: {
+    prov: ['{A} comenta com {C} que {B} virou opção de voto na casa'],
+    react: ['{C} comenta com {B} que o nome de {B} está sendo citado'],
+    conf: ['{B} chama {A} pra conversar sobre o voto e tenta entender o que está acontecendo']
+  }
+},
+
       // conversa estratégica baseada em alvo real
       targetTalk: {
         strategist: [
@@ -8136,10 +8202,28 @@ for (const p of featured) {
       return queue.splice(idx, 1)[0];
     };
 
-    const buildVoteArc = (alive, target) => {
+    const buildVoteArc = (alive, target, ctx) => {
       const wk = state.weekState || {};
       const votes = Array.isArray(wk.lastCasaVotes) ? wk.lastCasaVotes : [];
-      if (!votes.length) return null;
+
+      const isDom = String(ctx?.key || '') === 'dom';
+
+      // Domingo pré-votação: ainda não temos lastCasaVotes; montamos um arco especulativo sem assumir voto já realizado.
+      if (!votes.length) {
+        if (!isDom) return null;
+        const B = target || pickOne(alive);
+        const A = pickOne(alive.filter(p => p.id !== B?.id)) || pickOne(alive);
+        const C = pickOne(alive.filter(p => p.id !== A?.id && p.id !== B?.id)) || pickOne(alive);
+        if (!A || !B || !C) return null;
+        const prof = getProfile(A);
+        const pack = templates.voteArcPre || templates.voteArc;
+        return {
+          A, B, C,
+          prov: fillAB(pickTpl(pack, 'prov', prof), A, B, C, target),
+          react: fillAB(pickTpl(pack, 'react', prof), A, B, C, target),
+          conf: fillAB(pickTpl(pack, 'conf', prof), A, B, C, target)
+        };
+      }
 
       // prioriza um voto envolvendo o alvo, se possível
       const cand = target ? votes.filter(v => String(v.toId) === String(target.id)) : votes;
@@ -8526,7 +8610,7 @@ for (const p of featured) {
 
         // Arco de voto: provocação → reação → confronto (usa lastCasaVotes quando existir)
         try {
-          const arc = buildVoteArc(alive, mainTarget);
+          const arc = (dayCtxNoParty?.key === 'dom') ? buildVoteArc(alive, mainTarget, dayCtxNoParty) : null;
           if (arc && Math.random() < (dayCtxNoParty?.key === 'dom' ? 0.80 : 0.45)) {
             enqueueByPeriod({
               eid: 'vote_arc_prov',
