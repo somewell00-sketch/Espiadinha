@@ -96,6 +96,7 @@
   <button class="tabBtn" data-tab="tabHistorico">Histórico</button>
   <button class="tabBtn" data-tab="tabRels">Relações</button>
   <button class="tabBtn" data-tab="tabDivisao">Divisão</button>
+  <button class="tabBtn" data-tab="tabEstalecas">Estalecas</button>
   <button class="tabBtn" data-tab="tabPopularidade">Popularidade</button>
   <button class="tabBtn" data-tab="tabElims">Eliminações</button>
   <button class="tabBtn" data-tab="tabConfig">Config</button>
@@ -250,7 +251,58 @@
   </div>
 
 
-	<!-- Popularidade: comparação + filtros -->
+	<div class="menuPanel" id="tabEstalecas">
+    <div class="panel" style="border:none;">
+      <div class="hd">
+        <h2>Estalecas</h2>
+        <div class="small">Mercado da casa (sábado, tarde), punições e leilões raros.</div>
+      </div>
+      <div class="bd">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:10px;">
+          <label class="small" style="opacity:.9;">Histórico da semana
+            <select id="estalecasWeekSel" style="margin-left:8px;"></select>
+          </label>
+        </div>
+
+        <div id="estalecasWeekSummary"></div>
+
+        <div class="small" style="margin-top:12px;opacity:.9;"><b>Jogadores vivos</b></div>
+        <div class="tableWrap" style="margin-top:6px;">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Jogador</th>
+                <th>Estalecas</th>
+                <th>Início da semana</th>
+                <th>Delta</th>
+                <th>Última movimentação</th>
+              </tr>
+            </thead>
+            <tbody id="estalecasPlayersBody"></tbody>
+          </table>
+        </div>
+
+        <div class="small" style="margin-top:12px;opacity:.9;"><b>Semana selecionada</b></div>
+        <div class="tableWrap" style="margin-top:6px;">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Jogador</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Delta</th>
+              </tr>
+            </thead>
+            <tbody id="estalecasHistBody"></tbody>
+          </table>
+        </div>
+
+        <div id="estalecasLogs" style="margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!--<!-- Popularidade: comparação + filtros -->
 	<div class="menuPanel" id="tabPopularidade">
 	  <div class="panel" style="border:none;">
 	    <div class="hd">

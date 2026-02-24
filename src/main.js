@@ -4590,6 +4590,29 @@ function statusLabel(p) {
     votesHistory: [],
     // weekNumber (string) -> { leaderId, vipIds, xepaIds, ts }
     divisionHistory: {},
+    // Estalecas: economia da casa (mercado/punições/leilões)
+    estalecas: {
+      enabled: true,
+      config: {
+        startingAmount: 100,
+        weeklyAllowance: 0,
+        marketDay: { dayKey: 'sab', period: 'Tarde' },
+        auctionChance: 0.20,
+        minValue: 0
+      },
+      week: {
+        weekNumber: 1,
+        budgetTotal: 0,
+        spentTotal: 0,
+        marketLog: [],
+        punishLog: [],
+        auctionLog: [],
+        marketDone: false,
+        auctionDone: false
+      },
+      players: {},
+      historyByWeek: {}
+    },
     relations: {},
     crushRevealed: {},
     crushReciprocalBonus: {},
@@ -4628,6 +4651,566 @@ function statusLabel(p) {
   let popTabSelectedIds = null; // Set<string>
   let popTabSearchTerm = "";
   let logFilter = "all";
+
+
+  /* ===== Estalecas (BBB-like) ===== */
+  function normalizeDayKey(k) {
+    const s = String(k || "").trim().toLowerCase();
+    if (!s) return null;
+    const map = {
+      sun: "dom", sunday: "dom", dom: "dom",
+      mon: "seg", monday: "seg", seg: "seg",
+      tue: "ter", tuesday: "ter", ter: "ter",
+      wed: "qua", wednesday: "qua", qua: "qua",
+      thu: "qui", thursday: "qui", qui: "qui",
+      fri: "sex", friday: "sex", sex: "sex",
+      sat: "sab", saturday: "sab", sab: "sab"
+    };
+    return map[s] || s;
+  }
+
+  function ensureEstalecasState() {
+    state.estalecas = state.estalecas || {};
+    const e = state.estalecas;
+    if (e.enabled === undefined) e.enabled = true;
+
+    e.config = e.config || {};
+    const cfg = e.config;
+    if (cfg.startingAmount == null) cfg.startingAmount = 100;
+    if (cfg.weeklyAllowance == null) cfg.weeklyAllowance = 0;
+    if (!cfg.marketDay) cfg.marketDay = { dayKey: "sab", period: "Tarde" };
+    cfg.marketDay.dayKey = normalizeDayKey(cfg.marketDay.dayKey || "sab") || "sab";
+    if (!cfg.marketDay.period) cfg.marketDay.period = "Tarde";
+    if (cfg.auctionChance == null) cfg.auctionChance = 0.20;
+    if (cfg.minValue == null) cfg.minValue = 0;
+
+    e.week = e.week || {};
+    const wk = e.week;
+    if (wk.weekNumber == null) wk.weekNumber = Number(state.week || 1);
+    if (wk.budgetTotal == null) wk.budgetTotal = 0;
+    if (wk.spentTotal == null) wk.spentTotal = 0;
+    wk.marketLog = Array.isArray(wk.marketLog) ? wk.marketLog : [];
+    wk.punishLog = Array.isArray(wk.punishLog) ? wk.punishLog : [];
+    wk.auctionLog = Array.isArray(wk.auctionLog) ? wk.auctionLog : [];
+    if (wk.marketDone == null) wk.marketDone = false;
+    if (wk.auctionDone == null) wk.auctionDone = false;
+
+    e.players = (typeof e.players === "object" && e.players) ? e.players : {};
+    e.historyByWeek = (typeof e.historyByWeek === "object" && e.historyByWeek) ? e.historyByWeek : {};
+
+    // migração suave para saves antigos
+    (state.players || []).forEach((p) => {
+      if (!p || !p.id) return;
+      ensurePlayerEstalecas(p.id);
+    });
+  }
+
+  function ensurePlayerEstalecas(playerId) {
+    ensureEstalecasState();
+    const e = state.estalecas;
+    const cfg = e.config || {};
+    const id = String(playerId);
+    e.players[id] = e.players[id] || {};
+    const pe = e.players[id];
+    if (pe.current == null || !Number.isFinite(Number(pe.current))) pe.current = Number(cfg.startingAmount || 0);
+    if (pe.weekStart == null || !Number.isFinite(Number(pe.weekStart))) pe.weekStart = Number(pe.current || 0);
+    if (pe.weekDelta == null || !Number.isFinite(Number(pe.weekDelta))) pe.weekDelta = 0;
+    pe.history = Array.isArray(pe.history) ? pe.history : [];
+    return pe;
+  }
+
+  function getEstalecas(playerId) {
+    const pe = ensurePlayerEstalecas(playerId);
+    return clamp(Number(pe.current || 0), Number(state.estalecas?.config?.minValue ?? 0), 1e9);
+  }
+
+  function _estalecasAddHistory(playerId, delta, reason, meta) {
+    const pe = ensurePlayerEstalecas(playerId);
+    const wk = Number(state.week || 1);
+    const ctx = meta?.ctx || dayCtx();
+    const after = pe.current;
+    pe.history.push({
+      week: wk,
+      delta: Number(delta || 0),
+      reason: String(reason || ""),
+      after,
+      dayKey: normalizeDayKey(meta?.dayKey || ctx?.key || undefined),
+      period: meta?.period || undefined
+    });
+    if (pe.history.length > 220) pe.history = pe.history.slice(-220);
+  }
+
+  function setEstalecas(playerId, newValue, reason, meta) {
+    ensureEstalecasState();
+    const cfg = state.estalecas.config || {};
+    const pe = ensurePlayerEstalecas(playerId);
+    const before = Number(pe.current || 0);
+    const nv = clamp(Number(newValue || 0), Number(cfg.minValue || 0), 1e9);
+    const delta = nv - before;
+    if (delta === 0) return nv;
+    pe.current = nv;
+    pe.weekDelta = Number(pe.current || 0) - Number(pe.weekStart || 0);
+    _estalecasAddHistory(playerId, delta, reason, meta);
+    return nv;
+  }
+
+  function addEstalecas(playerId, delta, reason, meta) {
+    ensureEstalecasState();
+    const cur = getEstalecas(playerId);
+    const nv = setEstalecas(playerId, cur + Number(delta || 0), reason, meta);
+
+    const wk = state.estalecas.week || {};
+    const ctx = meta?.ctx || dayCtx();
+    const entry = {
+      ts: Date.now(),
+      week: Number(state.week || 1),
+      playerId: String(playerId),
+      playerName: (() => {
+        try {
+          const p = (state.players || []).find(pp => String(pp.id) === String(playerId));
+          return p ? displayName(p) : String(playerId);
+        } catch { return String(playerId); }
+      })(),
+      delta: Number(delta || 0),
+      after: nv,
+      reason: String(reason || ""),
+      dayKey: normalizeDayKey(meta?.dayKey || ctx?.key || undefined),
+      period: meta?.period || undefined,
+      kind: meta?.kind || "adjust"
+    };
+
+    if (entry.kind === "punish") wk.punishLog = (wk.punishLog || []).concat([entry]);
+    if (entry.kind === "auction") wk.auctionLog = (wk.auctionLog || []).concat([entry]);
+
+    const wn = Number(state.week || 1);
+    state.estalecas.historyByWeek = state.estalecas.historyByWeek || {};
+    state.estalecas.historyByWeek[wn] = state.estalecas.historyByWeek[wn] || {
+      start: {}, end: {}, deltas: {},
+      logs: { market: [], punish: [], auction: [] },
+      marketSummary: { budgetTotal: 0, spentTotal: 0 }
+    };
+    const hw = state.estalecas.historyByWeek[wn];
+    hw.logs = hw.logs || { market: [], punish: [], auction: [] };
+    if (entry.kind === "punish") hw.logs.punish = (hw.logs.punish || []).concat([entry]);
+    if (entry.kind === "auction") hw.logs.auction = (hw.logs.auction || []).concat([entry]);
+
+    return nv;
+  }
+
+  function applyEstalecaPunishment(playerId, amount, reason, meta) {
+    const amt = -Math.abs(Number(amount || 0));
+    return addEstalecas(playerId, amt, reason, { ...(meta || {}), kind: "punish" });
+  }
+
+  function estalecasPrevWeekBudgetReduction(prevWeekNumber) {
+    try {
+      const hw = state.estalecas?.historyByWeek?.[prevWeekNumber];
+      const pun = hw?.logs?.punish || [];
+      let mild = 0;
+      let grave = 0;
+      for (const x of pun) {
+        const d = Number(x?.delta || 0);
+        if (d >= 0) continue;
+        if (d <= -20) grave += 1;
+        else mild += 1;
+      }
+      return clamp(grave * 0.05 + mild * 0.02, 0, 0.30);
+    } catch {
+      return 0;
+    }
+  }
+
+  function estalecasWeekStart(weekNumber) {
+    ensureEstalecasState();
+    if (!state.estalecas.enabled) return;
+    const e = state.estalecas;
+    const wn = Number(weekNumber || state.week || 1);
+
+    e.week = e.week || {};
+    e.week.weekNumber = wn;
+    e.week.spentTotal = 0;
+    e.week.marketLog = [];
+    e.week.punishLog = [];
+    e.week.auctionLog = [];
+    e.week.marketDone = false;
+    e.week.auctionDone = false;
+
+    const alive = alivePlayers();
+    const baseBudget = alive.length * 40;
+    const red = estalecasPrevWeekBudgetReduction(wn - 1);
+    const budgetTotal = Math.floor(baseBudget * (1 - red));
+    e.week.budgetTotal = budgetTotal;
+
+    e.historyByWeek[wn] = e.historyByWeek[wn] || {
+      start: {}, end: {}, deltas: {},
+      logs: { market: [], punish: [], auction: [] },
+      marketSummary: { budgetTotal: 0, spentTotal: 0 }
+    };
+    const hw = e.historyByWeek[wn];
+    hw.logs = hw.logs || { market: [], punish: [], auction: [] };
+    hw.marketSummary = hw.marketSummary || { budgetTotal: 0, spentTotal: 0 };
+    hw.marketSummary.budgetTotal = budgetTotal;
+    hw.logs.market = [];
+    hw.logs.punish = [];
+    hw.logs.auction = [];
+
+    alive.forEach((p) => {
+      const pe = ensurePlayerEstalecas(p.id);
+      pe.weekStart = Number(pe.current || 0);
+      pe.weekDelta = 0;
+      hw.start[String(p.id)] = pe.weekStart;
+      if (Number(e.config?.weeklyAllowance || 0) > 0) {
+        addEstalecas(p.id, Number(e.config.weeklyAllowance), "Reajuste semanal", { kind: "adjust", dayKey: "qua", period: "Manhã" });
+      }
+    });
+
+    const hasAuction = Math.random() < Number(e.config?.auctionChance ?? 0.20);
+    e.week.auctionPlanned = hasAuction ? { dayKey: "sex", period: "Tarde" } : null;
+  }
+
+  function estalecasWeekClose(weekNumber) {
+    ensureEstalecasState();
+    if (!state.estalecas.enabled) return;
+    const e = state.estalecas;
+    const wn = Number(weekNumber || state.week || 1);
+    e.historyByWeek[wn] = e.historyByWeek[wn] || {
+      start: {}, end: {}, deltas: {},
+      logs: { market: [], punish: [], auction: [] },
+      marketSummary: { budgetTotal: 0, spentTotal: 0 }
+    };
+    const hw = e.historyByWeek[wn];
+    const alive = alivePlayers();
+    alive.forEach((p) => {
+      const pe = ensurePlayerEstalecas(p.id);
+      hw.end[String(p.id)] = Number(pe.current || 0);
+      const st = Number(hw.start[String(p.id)] ?? pe.weekStart ?? pe.current ?? 0);
+      hw.deltas[String(p.id)] = Number(pe.current || 0) - st;
+    });
+
+    hw.logs.market = Array.isArray(e.week?.marketLog) ? e.week.marketLog.slice() : (hw.logs.market || []);
+    hw.marketSummary = hw.marketSummary || {};
+    hw.marketSummary.budgetTotal = Number(e.week?.budgetTotal || hw.marketSummary.budgetTotal || 0);
+    hw.marketSummary.spentTotal = Number(e.week?.spentTotal || hw.marketSummary.spentTotal || 0);
+  }
+
+  const MARKET_CATALOG = {
+    proteina: [{ name: "frango", cost: 18 }, { name: "ovos", cost: 12 }, { name: "carne moída", cost: 22 }],
+    carbo: [{ name: "arroz", cost: 10 }, { name: "macarrão", cost: 9 }, { name: "pão", cost: 8 }],
+    limpeza: [{ name: "detergente", cost: 7 }, { name: "sabão", cost: 6 }, { name: "papel higiênico", cost: 10 }],
+    doces: [{ name: "chocolate", cost: 8 }, { name: "biscoito", cost: 6 }],
+    cafe: [{ name: "café", cost: 9 }, { name: "açúcar", cost: 5 }],
+    frutas: [{ name: "banana", cost: 7 }, { name: "maçã", cost: 8 }]
+  };
+
+  function simulateMarketOfWeek(meta) {
+    ensureEstalecasState();
+    if (!state.estalecas.enabled) return null;
+    const e = state.estalecas;
+    const wk = e.week || {};
+    if (wk.marketDone) return wk.marketLog || [];
+
+    const alive = alivePlayers();
+    const aliveN = alive.length;
+    const baseBudget = aliveN * 40;
+    const budgetTotal = Number(wk.budgetTotal || baseBudget);
+
+    const ws = state.weekState || {};
+    const punishPrev = Number((e.historyByWeek?.[Number(state.week || 1) - 1]?.logs?.punish || []).length || 0);
+    const chaos = clamp(0.22 + 0.10 * punishPrev + (ws.bigFight ? 0.15 : 0) + rnd(-0.05, 0.10), 0, 1);
+    const lowBudget = budgetTotal <= (0.70 * baseBudget);
+
+    // escolhe quem puxa decisões (peso por popularidade)
+    const weights = alive.map(p => clamp(Number(p?.status?.pop ?? 0), 0, 10) + 0.5);
+    const wSum = weights.reduce((a, b) => a + b, 0) || 1;
+    let rr = Math.random() * wSum;
+    let captain = alive[0];
+    for (let i = 0; i < alive.length; i++) {
+      rr -= weights[i];
+      if (rr <= 0) { captain = alive[i]; break; }
+    }
+
+    function pickItem(cat) {
+      const arr = MARKET_CATALOG[cat] || [];
+      return arr[Math.floor(Math.random() * arr.length)] || null;
+    }
+
+    function chooseBy(cat, idx) {
+      // mais chance do "capitão" ser citado
+      if (Math.random() < 0.52) return captain;
+      // um pouco de variedade
+      return alive[(idx + Math.floor(Math.random() * alive.length)) % Math.max(1, alive.length)] || captain;
+    }
+
+    const priority = ["proteina", "carbo", "limpeza", "cafe", "frutas", "doces"];
+    const desiredCounts = {
+      proteina: 2,
+      carbo: 2,
+      limpeza: 2,
+      cafe: 1,
+      frutas: lowBudget ? 0 : 1,
+      doces: lowBudget ? 0 : 1
+    };
+
+    // casa bagunçada: tende a errar prioridades
+    if (Math.random() < chaos) {
+      desiredCounts.limpeza = (Math.random() < 0.60) ? 0 : 1;
+      desiredCounts.doces += 1;
+    }
+
+    let spent = 0;
+    const log = [];
+    const chosenCounts = {};
+
+    function tryBuy(cat, idx) {
+      const item = pickItem(cat);
+      if (!item) return;
+      if (spent + item.cost > budgetTotal) return;
+      const who = chooseBy(cat, idx);
+      spent += item.cost;
+      const pid = String(who?.id || "");
+      chosenCounts[pid] = (chosenCounts[pid] || 0) + 1;
+      log.push({
+        category: cat,
+        itemName: item.name,
+        cost: item.cost,
+        chosenByPlayerId: pid,
+        note: cat === "doces" ? "clima de concessão" : (cat === "limpeza" ? "item essencial" : "prioridade da semana")
+      });
+    }
+
+    let idx = 0;
+    for (const cat of priority) {
+      for (let k = 0; k < (desiredCounts[cat] || 0); k++) {
+        tryBuy(cat, idx++);
+      }
+    }
+
+    // se sobrou grana, completa com carbo/proteína, senão doces
+    let safety = 0;
+    while (spent + 6 <= budgetTotal && safety < 40) {
+      safety += 1;
+      const cat = (Math.random() < (0.70 - chaos * 0.35)) ? (Math.random() < 0.55 ? "carbo" : "proteina") : (Math.random() < 0.60 ? "doces" : "frutas");
+      tryBuy(cat, idx++);
+    }
+
+    wk.spentTotal = spent;
+    wk.marketLog = log;
+    wk.marketDone = true;
+    e.week = wk;
+
+    const wn = Number(state.week || 1);
+    e.historyByWeek[wn] = e.historyByWeek[wn] || { start: {}, end: {}, deltas: {}, logs: { market: [], punish: [], auction: [] }, marketSummary: { budgetTotal: 0, spentTotal: 0 } };
+    e.historyByWeek[wn].logs.market = log.slice();
+    e.historyByWeek[wn].marketSummary = e.historyByWeek[wn].marketSummary || {};
+    e.historyByWeek[wn].marketSummary.budgetTotal = Number(wk.budgetTotal || 0);
+    e.historyByWeek[wn].marketSummary.spentTotal = spent;
+
+    // retorna também infos de gatilho
+    const dominant = Object.entries(chosenCounts).sort((a, b) => (b[1] || 0) - (a[1] || 0));
+    const domId = dominant[0]?.[0] || null;
+    const domCount = dominant[0]?.[1] || 0;
+    wk._marketMeta = { baseBudget, budgetTotal, spent, chaos, lowBudget, domId, domCount };
+
+    return log;
+  }
+
+  function enqueueEstalecasEvent(period, desc, a, b, tone, vt, scope) {
+    state.eventQueue = Array.isArray(state.eventQueue) ? state.eventQueue : [];
+    state.eventQueue.push({
+      eid: "estalecas",
+      period,
+      theme: "default",
+      people: a && b ? `${a.name} e ${b.name}` : (a ? a.name : "A casa"),
+      desc,
+      vt: vt || "jogo, casa",
+      scope: scope || "coletivo",
+      a: a || null,
+      b: b || null,
+      deltaA: tone === "neg" ? { pop: rnd(-0.08, 0.04), alvo: 0.05 } : (tone === "pos" ? { pop: rnd(0.04, 0.10), alvo: -0.03 } : { pop: rnd(-0.03, 0.05), alvo: 0.02 }),
+      deltaB: tone === "neg" ? { pop: rnd(-0.08, 0.04), alvo: 0.05 } : (tone === "pos" ? { pop: rnd(0.04, 0.10), alvo: -0.03 } : { pop: rnd(-0.03, 0.05), alvo: 0.02 }),
+      relDelta: (a && b) ? (tone === "neg" ? rnd(-0.55, -0.10) : tone === "pos" ? rnd(0.20, 0.65) : rnd(-0.10, 0.20)) : undefined,
+      directed: true
+    });
+  }
+
+  function enqueueMarketEvents(meta) {
+    ensureEstalecasState();
+    if (!state.estalecas.enabled) return;
+    const e = state.estalecas;
+    const wk = e.week || {};
+    const alive = alivePlayers();
+    if (!alive.length) return;
+
+    // 1) Antes do mercado (manhã): planejamento
+    if (!wk.marketDone && !wk._preEventDone) {
+      wk._preEventDone = true;
+      const a = pickOne(alive);
+      const b = pickOne(alive.filter(x => x.id !== a.id)) || null;
+      const baseBudget = alive.length * 40;
+      const bud = Number(wk.budgetTotal || baseBudget);
+      const low = bud <= (0.70 * baseBudget);
+      const desc = low
+        ? `{A} comenta que o orçamento do mercado veio menor e a casa já começa a discutir o que vai ter que cortar`
+        : `{A} tenta organizar a lista do mercado e quer evitar briga logo cedo`;
+      enqueueEstalecasEvent("morning", desc, a, b, "neu", "mercado, organização", "coletivo");
+    }
+
+    // 2) Depois do mercado (tarde): reação baseada em gatilhos
+    const mm = wk._marketMeta || null;
+    if (!mm) return;
+
+    const budgetLow = mm.lowBudget;
+    const nearCeil = Number(mm.spent || 0) >= 0.95 * Number(mm.budgetTotal || 1);
+    const hasCleaning = (wk.marketLog || []).some(x => x && x.category === "limpeza");
+    const sweetSpent = (wk.marketLog || []).filter(x => x.category === "doces").reduce((a, x) => a + Number(x.cost || 0), 0);
+    const sweetShare = (Number(mm.spent || 0) > 0) ? (sweetSpent / Number(mm.spent || 1)) : 0;
+    const tooMuchSweet = sweetShare > 0.20;
+    const dom = (mm.domCount || 0) >= 3 && mm.domId;
+    const domP = dom ? alive.find(p => String(p.id) === String(mm.domId)) : null;
+
+    const triggers = [];
+    if (budgetLow) triggers.push("budgetLow");
+    if (nearCeil) triggers.push("nearCeil");
+    if (!hasCleaning) triggers.push("noCleaning");
+    if (tooMuchSweet) triggers.push("tooMuchSweet");
+    if (dom && domP) triggers.push("dominated");
+
+    // garante pelo menos 1 evento após
+    const a = pickOne(alive);
+    const b = pickOne(alive.filter(x => x.id !== a.id)) || null;
+
+    if (!wk._postEventDone) {
+      wk._postEventDone = true;
+      enqueueEstalecasEvent("afternoon", `{A} olha as sacolas do mercado e já começa o debate sobre as escolhas da semana`, a, b, "neu", "mercado, casa", "coletivo");
+    }
+
+    // extras (até 3) se tiver gatilho forte
+    let extra = 0;
+    for (const t of triggers) {
+      if (extra >= 3) break;
+      extra += 1;
+      if (t == "budgetLow") {
+        enqueueEstalecasEvent("afternoon", `{A} reclama que por causa de punições e bagunça a casa vai ter que comer no aperto`, a, b, "neg", "reclamação, comida", "coletivo");
+      } else if (t == "nearCeil") {
+        enqueueEstalecasEvent("afternoon", `{A} aponta que gastaram praticamente tudo e cobra mais critério para a próxima semana`, a, b, "neg", "tensão, mercado", "coletivo");
+      } else if (t == "noCleaning") {
+        enqueueEstalecasEvent("afternoon", `{A} percebe que ninguém comprou coisa de limpeza e a bronca vira assunto na casa`, a, b, "neg", "casa, cobrança", "coletivo");
+      } else if (t == "tooMuchSweet") {
+        enqueueEstalecasEvent("afternoon", `{A} alfineta que gastaram demais em doce e isso pega mal pra convivência`, a, b, "neg", "ironia, mercado", "coletivo");
+      } else if (t == "dominated" && domP) {
+        const c = pickOne(alive.filter(x => x.id != domP.id)) || a;
+        enqueueEstalecasEvent("afternoon", `{A} diz que ${shortNameForEvents(domP)} quer mandar no mercado e isso gera resistência`, domP, c, "neg", "controle, casa", "coletivo");
+      }
+    }
+
+    e.week = wk;
+  }
+
+  function maybeApplyRandomEstalecaPunishment(meta) {
+    ensureEstalecasState();
+    if (!state.estalecas.enabled) return;
+    const alive = alivePlayers();
+    if (alive.length < 3) return;
+    const wk = state.estalecas.week || {};
+    if (!wk._punishTodayKey) wk._punishTodayKey = {};
+    const ctx = meta?.ctx || dayCtx();
+    const dayKey = normalizeDayKey(ctx?.key);
+    if (wk._punishTodayKey[dayKey]) return;
+
+    // chance baixa diária
+    if (Math.random() > 0.08) return;
+
+    wk._punishTodayKey[dayKey] = true;
+
+    const p = pickOne(alive);
+    const severe = Math.random() < 0.35;
+    const amt = severe ? 20 : 10;
+    const reason = severe ? "Punição grave" : "Punição";
+    applyEstalecaPunishment(p.id, amt, reason, { ctx, dayKey, period: "Manhã" });
+
+    const desc = severe
+      ? `{A} leva uma punição pesada e a casa já prevê impacto no mercado`
+      : `{A} leva uma punição e vira alvo de piada por um tempo`;
+    enqueueEstalecasEvent("morning", desc, p, pickOne(alive.filter(x => x.id !== p.id)) || null, severe ? "neg" : "neu", "punição, estalecas", "coletivo");
+
+    state.estalecas.week = wk;
+  }
+
+  function simulateAuctionOfWeek(meta) {
+    ensureEstalecasState();
+    if (!state.estalecas.enabled) return;
+    const e = state.estalecas;
+    const wk = e.week || {};
+    if (wk.auctionDone) return;
+
+    const planned = wk.auctionPlanned;
+    const ctx = meta?.ctx || dayCtx();
+    if (!planned) return;
+    if (normalizeDayKey(planned.dayKey) !== normalizeDayKey(ctx?.key)) return;
+
+    wk.auctionDone = true;
+
+    const alive = alivePlayers();
+    const perks = [
+      { key: "veto_prova", title: "Veto de prova", note: "veto único" },
+      { key: "block_vote", title: "Impedir um voto", note: "bloqueio único" },
+      { key: "see_votes", title: "Ver log de votos", note: "informação" }
+    ].sort(() => Math.random() - 0.5).slice(0, (Math.random() < 0.55 ? 1 : 2));
+
+    // participa quem tem estalecas suficientes
+    const eligible = alive.filter(p => getEstalecas(p.id) >= 20);
+    if (!eligible.length) {
+      enqueueEstalecasEvent("afternoon", `A produção anuncia um leilão surpresa, mas ninguém tem estalecas para dar lance`, pickOne(alive), null, "neu", "leilão, casa", "coletivo");
+      e.week = wk;
+      return;
+    }
+
+    const winners = [];
+    for (const perk of perks) {
+      // simula lance com base em estratégia e saldo
+      let best = null;
+      let bestBid = 0;
+      for (const p of eligible) {
+        const cur = getEstalecas(p.id);
+        const strat = clamp(Number(p?.attrs?.estrategia ?? 0), 0, 10) / 10;
+        const emo = clamp(Number(p?.attrs?.emocional ?? 0), 0, 10) / 10;
+        const will = (0.65 * strat + 0.20 * (1 - emo) + 0.15 * (Math.random()));
+        if (Math.random() > will) continue;
+        const bid = clamp(Math.round(rnd(20, Math.min(cur, 80))), 20, cur);
+        if (bid > bestBid) { bestBid = bid; best = p; }
+      }
+      if (!best) continue;
+
+      addEstalecas(best.id, -bestBid, `Leilão: ${perk.title}`, { kind: "auction", ctx, dayKey: ctx?.key, period: "Tarde" });
+      wk.auctionLog = (wk.auctionLog || []).concat([{ perk: perk.key, title: perk.title, cost: bestBid, winnerId: best.id, winnerName: displayName(best), note: perk.note }]);
+      winners.push({ perk, best, bid: bestBid });
+    }
+
+    if (!winners.length) {
+      enqueueEstalecasEvent("afternoon", `A produção abre um leilão, mas a casa hesita e ninguém fecha vantagem`, pickOne(alive), null, "neu", "leilão, indecisão", "coletivo");
+      e.week = wk;
+      return;
+    }
+
+    // evento do leilão
+    const a = winners[0].best;
+    const b = winners.length > 1 ? winners[1].best : null;
+    const perkLine = winners.map(w => `${w.perk.title} por ${w.bid}`).join(" e ");
+    enqueueEstalecasEvent("afternoon", `{A} compra vantagem no leilão e a casa comenta o lance: ${perkLine}`, a, b, "neu", "leilão, jogo", "coletivo");
+
+    // espelha no historyByWeek
+    const wn = Number(state.week || 1);
+    e.historyByWeek[wn] = e.historyByWeek[wn] || { start: {}, end: {}, deltas: {}, logs: { market: [], punish: [], auction: [] }, marketSummary: { budgetTotal: 0, spentTotal: 0 } };
+    e.historyByWeek[wn].logs.auction = (wk.auctionLog || []).slice();
+
+    e.week = wk;
+  }
+
+  // init estalecas (migração suave para saves antigos)
+  try { ensureEstalecasState(); } catch { /* noop */ }
+  if (state?.estalecas?.enabled && state?.estalecas?.week?.weekNumber !== Number(state.week || 1)) {
+    try { estalecasWeekStart(Number(state.week || 1)); } catch { /* noop */ }
+  }
 
   
   // Sorting unificado da tabela Casa: controlado por select e por clique no header.
@@ -11636,6 +12219,9 @@ function bootStart() {
 
   // Quartos
   ensureRoomsState();
+
+  // Estalecas
+  try { ensureEstalecasState(); } catch { /* noop */ }
   if (state.rooms?.assigned) applyRoomCssVars();
 
   // Se já existe log, a temporada já começou: não mexe em week/dayIndex.
@@ -11665,6 +12251,9 @@ function bootStart() {
 
   // Temporada nova (log vazio)
   resetWeekState();
+
+  // Estalecas: inicia semana 1
+  try { ensureEstalecasState(); estalecasWeekStart(1); } catch { /* noop */ }
 
   if (START_CONFIG.mode === "tuesday_empty_then_intro") {
     state.week = 1;
@@ -11770,11 +12359,44 @@ function bootStart() {
     // efeitos do Monstro (isolamento e laço entre monstros)
     tickMonstroDaily(meta);
 
+    // Estalecas: migração + início de semana (se necessário)
+    try { ensureEstalecasState(); } catch { /* noop */ }
+    if (state?.estalecas?.enabled) {
+      try {
+        const wn = Number(state.week || 1);
+        if (!state.estalecas.week || Number(state.estalecas.week.weekNumber || 0) !== wn || !state.estalecas.historyByWeek?.[wn]) {
+          estalecasWeekStart(wn);
+        }
+      } catch { /* noop */ }
+      try { maybeApplyRandomEstalecaPunishment(meta); } catch { /* noop */ }
+    }
+
     // Convivência em 3 atos (manhã / tarde / noite)
     const evEngine = getEventEngine();
     const dayRun = evEngine.beginDay(meta);
     if (!dayRun?.skipAll) {
+      // Estalecas: eventos do mercado (antes)
+      try {
+        const md = state?.estalecas?.config?.marketDay || { dayKey: 'sab', period: 'Tarde' };
+        const isMarketDay = normalizeDayKey(md.dayKey) === normalizeDayKey(ctxFrozen.key) && String(md.period || 'Tarde').toLowerCase().includes('tarde');
+        if (isMarketDay) enqueueMarketEvents(meta);
+      } catch { /* noop */ }
+
       evEngine.runPart(meta, "morning");
+
+      // Estalecas: mercado acontece no Sábado, Tarde (antes do domingo)
+      try {
+        const md = state?.estalecas?.config?.marketDay || { dayKey: 'sab', period: 'Tarde' };
+        const isMarketDay = normalizeDayKey(md.dayKey) === normalizeDayKey(ctxFrozen.key) && String(md.period || 'Tarde').toLowerCase().includes('tarde');
+        if (isMarketDay) {
+          simulateMarketOfWeek(meta);
+          enqueueMarketEvents(meta);
+        }
+      } catch { /* noop */ }
+
+      // Estalecas: leilão pontual (raro)
+      try { simulateAuctionOfWeek(meta); } catch { /* noop */ }
+
       evEngine.runPart(meta, "afternoon");
     }
 
@@ -11931,6 +12553,8 @@ if (ctxFrozen.key === "seg") {
     if (pendingAdvance) {
       state.week += pendingAdvance.weekDelta || 1;
       if (pendingAdvance.resetDayToWednesday) state.dayIndex = 0;
+      // inicia a nova semana de estalecas
+      try { if (state?.estalecas?.enabled) estalecasWeekStart(Number(state.week || 1)); } catch { /* noop */ }
       pendingAdvance = null;
       save();
       return;
@@ -13336,7 +13960,9 @@ const html = tweets.map((x) => `
 
     if (body) {
       const tags = tagsForPlayer(p);
-      const tagsHtml = (tags.length ? tags : [{ t: p.status.alive ? "Na casa" : statusLabel(p), cls: p.status.alive ? "" : "elim" }])
+      const estalecasVal = (() => { try { return getEstalecas(p.id); } catch { return 0; } })();
+
+    const tagsHtml = (tags.length ? tags : [{ t: p.status.alive ? "Na casa" : statusLabel(p), cls: p.status.alive ? "" : "elim" }])
         .map((x) => `<span class="tag ${x.cls || ""}">${escapeHtml(x.t)}</span>`)
         .join(" ");
 
@@ -13393,7 +14019,7 @@ const html = tweets.map((x) => `
       body.innerHTML = `
         <div class="drawerCard" style="margin-bottom:10px;">
           <div class="t">Tags</div>
-          <div class="c">${tagsHtml}</div>
+          <div class="c">${tagsHtml}<span class="tag" style="background:#222;color:#fff;">🪙 Estalecas: ${estalecasVal}</span></div>
         </div>
 
         <div class="drawerGrid">
@@ -14946,7 +15572,139 @@ if (ws.indicadoLiderId === p.id && p.status.alive) tags.push({ t: "☝️ Indica
   }
 
   /* ===== Render ===== */
-  function render() {
+  
+
+function renderEstalecasTab() {
+  try { ensureEstalecasState(); } catch { /* noop */ }
+  const panel = document.getElementById('tabEstalecas');
+  if (!panel) return;
+
+  const e = state.estalecas || {};
+  const wk = e.week || {};
+
+  const alive = alivePlayers();
+
+  const sel = document.getElementById('estalecasWeekSel');
+  const summary = document.getElementById('estalecasWeekSummary');
+  const tbody = document.getElementById('estalecasPlayersBody');
+  const histBody = document.getElementById('estalecasHistBody');
+  const logs = document.getElementById('estalecasLogs');
+
+  if (sel) {
+    const weeks = Object.keys(e.historyByWeek || {}).map(x => Number(x)).filter(n => Number.isFinite(n)).sort((a,b)=>a-b);
+    const curW = Number(state.week || 1);
+    if (!weeks.includes(curW)) weeks.push(curW);
+    weeks.sort((a,b)=>a-b);
+
+    const prev = Number(sel.value || curW);
+    sel.innerHTML = weeks.map(w => `<option value="${w}">Semana ${w}</option>`).join('');
+    sel.value = String(weeks.includes(prev) ? prev : curW);
+    sel.onchange = () => { render(); };
+  }
+
+  const wSel = Number(sel?.value || state.week || 1);
+  const hw = (e.historyByWeek || {})[wSel] || null;
+
+  // Summary semana atual
+  if (summary) {
+    const baseBudget = alive.length * 40;
+    const budgetTotal = Number(wk.budgetTotal || (hw?.marketSummary?.budgetTotal) || baseBudget);
+    const spentTotal = Number(wk.spentTotal || (hw?.marketSummary?.spentTotal) || 0);
+    const pun = (hw?.logs?.punish || wk.punishLog || []);
+    const punLost = pun.reduce((a,x)=>a + (Number(x?.delta||0)<0 ? Math.abs(Number(x.delta||0)) : 0), 0);
+    const auc = (hw?.logs?.auction || wk.auctionLog || []);
+
+    summary.innerHTML = `
+      <div class="small" style="margin-bottom:8px;opacity:.9;">Resumo</div>
+      <div class="tableWrap" style="overflow:auto;">
+        <table>
+          <tbody>
+            <tr><td><b>Orçamento do mercado</b></td><td>${budgetTotal} (base: ${baseBudget})</td></tr>
+            <tr><td><b>Gasto no mercado</b></td><td>${spentTotal}</td></tr>
+            <tr><td><b>Punições</b></td><td>${pun.length} (perda total: ${punLost})</td></tr>
+            <tr><td><b>Leilão</b></td><td>${auc.length ? 'Teve' : 'Não teve'}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // Tabela jogadores vivos (semana atual)
+  if (tbody) {
+    const rows = alive.map((p) => {
+      const pe = (() => { try { return ensurePlayerEstalecas(p.id); } catch { return { current: 0, weekStart: 0, weekDelta: 0, history: [] }; } })();
+      const last = (pe.history || []).slice().reverse()[0];
+      const lastTxt = last ? `${escapeHtml(String(last.reason || ''))}` : '—';
+      return `
+        <tr>
+          <td>${escapeHtml(displayName(p))}</td>
+          <td>${Number(pe.current || 0)}</td>
+          <td>${Number(pe.weekStart || 0)}</td>
+          <td>${Number(pe.weekDelta || 0)}</td>
+          <td class="small" style="opacity:.9;">${lastTxt}</td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.innerHTML = rows || `
+      <tr><td colspan="5" class="small" style="opacity:.8;">Sem participantes vivos.</td></tr>
+    `;
+  }
+
+  // Histórico por semana
+  if (histBody) {
+    const hw2 = hw || { start: {}, end: {}, deltas: {} };
+    const allIds = new Set([
+      ...Object.keys(hw2.start || {}),
+      ...Object.keys(hw2.end || {}),
+      ...Object.keys(hw2.deltas || {})
+    ]);
+
+    const rows = [...allIds].map((id) => {
+      const p = (state.players || []).find(pp => String(pp.id) === String(id));
+      const name = p ? displayName(p) : String(id);
+      const st = Number(hw2.start?.[id] ?? 0);
+      const en = Number(hw2.end?.[id] ?? st);
+      const de = Number(hw2.deltas?.[id] ?? (en - st));
+      return `
+        <tr>
+          <td>${escapeHtml(name)}</td>
+          <td>${st}</td>
+          <td>${en}</td>
+          <td>${de}</td>
+        </tr>
+      `;
+    }).join('');
+
+    histBody.innerHTML = rows || `
+      <tr><td colspan="4" class="small" style="opacity:.8;">Sem dados para esta semana.</td></tr>
+    `;
+  }
+
+  // Logs
+  if (logs) {
+    const mk = hw?.logs?.market || [];
+    const pu = hw?.logs?.punish || [];
+    const au = hw?.logs?.auction || [];
+
+    const mkHtml = mk.length ? `<ul>${mk.map(x => `<li>${escapeHtml(String(x.itemName || 'item'))} (${escapeHtml(String(x.category || ''))}) por ${Number(x.cost||0)} <span class="small" style="opacity:.8;">(${escapeHtml(String((state.players||[]).find(p=>String(p.id)===String(x.chosenByPlayerId))?.baseName||''))})</span></li>`).join('')}</ul>` : '<div class="small" style="opacity:.8;">Sem compras registradas.</div>';
+    const puHtml = pu.length ? `<ul>${pu.map(x => `<li>${escapeHtml(String(x.playerName||''))}: ${escapeHtml(String(x.reason||'Punição'))} (${Number(x.delta||0)})</li>`).join('')}</ul>` : '<div class="small" style="opacity:.8;">Sem punições.</div>';
+    const auHtml = au.length ? `<ul>${au.map(x => {
+      if (x.title) return `<li>${escapeHtml(String(x.title))}: ${escapeHtml(String(x.winnerName||''))} pagou ${Number(x.cost||0)}</li>`;
+      return `<li>${escapeHtml(String(x.playerName||''))}: ${escapeHtml(String(x.reason||'Leilão'))} (${Number(x.delta||0)})</li>`;
+    }).join('')}</ul>` : '<div class="small" style="opacity:.8;">Sem leilão.</div>';
+
+    logs.innerHTML = `
+      <div class="small" style="margin-top:8px;opacity:.9;"><b>Compras do mercado</b></div>
+      ${mkHtml}
+      <div class="small" style="margin-top:10px;opacity:.9;"><b>Punições</b></div>
+      ${puHtml}
+      <div class="small" style="margin-top:10px;opacity:.9;"><b>Leilão</b></div>
+      ${auHtml}
+    `;
+  }
+}
+function render() {
     const alive = alivePlayers();
     const aliveN = alive.length;
     const ctx = dayCtx();
