@@ -11641,6 +11641,13 @@ function snapshotPopForWeek(weekNumber) {
     }
   } catch {}
 
+  // Estalecas: fechamento da semana (preenche end/deltas e congela logs)
+  try {
+    if (state?.estalecas?.enabled) {
+      estalecasWeekClose(Number(state.week || 1));
+    }
+  } catch { /* noop */ }
+
   resetWeekState();
 
   if (opts.advanceWeek) {
@@ -15704,6 +15711,7 @@ function renderEstalecasTab() {
     `;
   }
 }
+
 function render() {
     const alive = alivePlayers();
     const aliveN = alive.length;
@@ -16364,6 +16372,11 @@ list.appendChild(tr);
       cfgGrid.innerHTML = "";
       state.players.slice().sort((a,b)=> (a.name||"").localeCompare((b.name||""),"pt-BR",{sensitivity:"base"})).forEach((p) => cfgGrid.appendChild(playerCard(p)));
     }
+    }
+
+    if (activeTab === "tabEstalecas") {
+      // Estalecas: painel e histórico
+      try { renderEstalecasTab(); } catch (e) { /* silencioso */ }
     }
 
     if ($("meta")) $("meta").textContent = `${aliveN}/${state.players.length} ainda na casa`;
